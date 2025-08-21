@@ -7,12 +7,49 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  SALESMAN
+  ADMIN
+}
+
+enum OrderSource {
+  WEBSITE
+  SHOWROOM
+  WHOLESALE
+  MANUAL
+}
+
+enum SaleType {
+  SINGLE
+  BULK
+}
+
+enum OrderStatus {
+  CANCEL
+  PROCESSING
+  DELIVERED
+}
+
+enum ExpenseStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELED
+}
+
+enum Unit {
+  ML
+  GM
+  PIECE
+}
+
 model User {
   id                      String     @id @default(auto()) @map("_id") @db.ObjectId
   name                    String
   email                   String     @unique
-  imageUrl                String?
   password                String?
+  imageUrl                String?
   contact                 String?
   address                 String?
   role                    Role       @default(USER)
@@ -23,12 +60,13 @@ model User {
   verificationTokenExpiry DateTime?
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
-  Blog                    Blog[]
-  Order                   Order[]
-  Review                  Review[]
-  wishlist                wishlist[]
-  Sale                    Sale[]
-  Expense                 Expense[]
+
+  Blog           Blog[]
+  Review         Review[]
+  wishlist       wishlist[]
+  Expense        Expense[]
+  customerOrders Order[] @relation("CustomerOrders")
+  salesmanOrders Order[] @relation("SalesmanOrders")
 
   @@map("users")
 }
@@ -37,7 +75,6 @@ model Category {
   id           String    @id @default(auto()) @map("_id") @db.ObjectId
   categoryName String    @unique
   imageUrl     String
-  sizes        String[]
   published    Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -46,34 +83,49 @@ model Category {
   @@map("categories")
 }
 
-model Material {
-  id           String    @id @default(auto()) @map("_id") @db.ObjectId
-  materialName String    @unique
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  Product      Product[]
-
-  @@map("materials")
-}
-
 model Product {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  description String
-  imageUrl    String[]
-  tags        String[]
-  salesCount  Int      @default(0)
-  published   Boolean  @default(false)
-  materialId  String   @db.ObjectId
-  material    Material @relation(fields: [materialId], references: [id])
-  categoryId  String   @db.ObjectId
-  category    Category @relation(fields: [categoryId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  Sale        Sale[]
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  description   String
+  primaryImage  String
+  otherImages   String[]
+  videoUrl      String?
+  tags          String[]
+  salesCount    Int      @default(0)
+  published     Boolean  @default(false)
 
-  Review   Review[]
-  variants ProductVariant[]
+  // Perfume specifications
+  origin        String?
+  brand         String?
+  gender        String?
+  perfumeNotes  Json?     // { top: [...], middle: [...], base: [...] }
+  accords       String[]
+  performance   String?
+  longevity     String?
+  projection    String?
+  sillage       String?
+  bestFor       String[]
+
+  materialId    String   @db.ObjectId
+  categoryId    String   @db.ObjectId
+  category      Category @relation(fields: [categoryId], references: [id])
+
+  // Variants and combos
+  variants        ProductVariant[]
+  comboVariants   ComboVariant[]
+
+  // Discounts (can be applied per product)
+  discounts       Discount[]
+
+  // Related products (self-relation)
+  // relatedProducts Product[] @relation("RelatedProducts", references: [id])
+  // relatedTo       Product[] @relation("RelatedProducts")  
+
+  // Reviews
+  Review          Review[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@map("products")
 }
@@ -81,69 +133,99 @@ model Product {
 model ProductVariant {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   productId String   @db.ObjectId
-  size      String
-  color     String
+  sku       String   @unique
+  unit      Unit
+  size      Float       // e.g. 3, 6, 12 ml or 100, 500 gm
   price     Float
-  quantity  Int
+  stock     Float       // tracks ml or gm left in inventory
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   product  Product    @relation(fields: [productId], references: [id])
   wishlist wishlist[]
+  comboVariants ComboVariant[]
 
   @@map("product_variants")
 }
 
-model Order {
-  id         String      @id @default(auto()) @map("_id") @db.ObjectId
-  orderTime  DateTime    @default(now())
-  customerId String      @db.ObjectId
-  method     String
-  email      String
-  address    String
-  zipcode    String?
-  note       String?
-  amount     Float
-  phone      String?
-  isPaid     Boolean
-  cartItems  Json
-  status     OrderStatus @default(PROCESSING)
-  customer   User        @relation(fields: [customerId], references: [id])
-
+model ComboProduct {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  description String?
+  primaryImage String
+  otherImages  String[]
+  price     Float
+  published Boolean @default(false)
+  tags      String[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  variants ComboVariant[]
+
+  @@map("combo_products")
+}
+
+model ComboVariant {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  comboId     String   @db.ObjectId
+  productId   String   @db.ObjectId
+  variantId   String   @db.ObjectId
+  quantity    Int      @default(1)
+
+  combo   ComboProduct  @relation(fields: [comboId], references: [id])
+  product Product       @relation(fields: [productId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("combo_variants")
+}
+
+model Order {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  orderTime   DateTime    @default(now())
+  amount      Float
+  isPaid      Boolean
+  cartItems   Json
+  status      OrderStatus @default(PROCESSING)
+  orderSource OrderSource @default(WEBSITE)
+
+  // Website orders
+  customerId  String?     @db.ObjectId
+  customer    User?       @relation("CustomerOrders", fields: [customerId], references: [id])
+
+  // Manual sales
+  salesmanId  String?     @db.ObjectId
+  salesman    User?       @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  saleType    SaleType?   @default(SINGLE)
+
+  // Optional walk-in customer info
+  name        String?
+  phone       String?
+  address     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("orders")
 }
 
-model Sale {
-  id         String     @id @default(auto()) @map("_id") @db.ObjectId
-  saleTime   DateTime   @default(now())
-  salesmanId String     @db.ObjectId
-  amount     Float
-  method     String
-  isPaid     Boolean
-  name       String?
-  phone      String?
-  address    String?
-  reference  String?
-  cartItems  Json?
-  productId  String?    @db.ObjectId
-  product    Product?   @relation(fields: [productId], references: [id])
-  status     SaleStatus @default(PENDING)
-  saleType   SaleType?  @default(SINGLE)
-  salesman   User       @relation(fields: [salesmanId], references: [id])
+model Discount {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId   String   @db.ObjectId
+  code        String?  // e.g., "SUMMER25", optional if auto discount
+  type        String   // "percentage" | "fixed"
+  value       Float
+  maxUsage    Int?     // Optional: max number of times the discount can be used
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("sales")
+  product     Product @relation(fields: [productId], references: [id])
 }
 
 model Expense {
   id          String        @id @default(auto()) @map("_id") @db.ObjectId
-  saleTime    DateTime      @default(now())
-  salesmanId  String        @db.ObjectId
+  expenseTime DateTime      @default(now())
   amount      Float
   method      String
   isPaid      Boolean
@@ -151,10 +233,12 @@ model Expense {
   description String?
   reference   String?
   status      ExpenseStatus @default(PENDING)
-  salesman    User          @relation(fields: [salesmanId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId      String?       @db.ObjectId
+  user        User?         @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("expenses")
 }
@@ -179,7 +263,6 @@ model Review {
   rating  Int
   title   String
   comment String
-
   isPublished Boolean @default(false)
 
   productId String @db.ObjectId
@@ -199,35 +282,4 @@ model wishlist {
   variant   ProductVariant @relation(fields: [variantId], references: [id])
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
-}
-
-enum Role {
-  USER
-  SALESMAN
-  ADMIN
-}
-
-enum OrderStatus {
-  CANCEL
-  PROCESSING
-  DELIVERED
-}
-
-enum SaleStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  CANCELED
-}
-
-enum ExpenseStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  CANCELED
-}
-
-enum SaleType {
-  SINGLE
-  BULK
 }

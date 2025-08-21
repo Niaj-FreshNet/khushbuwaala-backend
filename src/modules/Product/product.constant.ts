@@ -9,9 +9,8 @@ export const productSearchFields = ['name', 'description'];
 
 // Nested filtering config
 export const productNestedFilters: NestedFilter[] = [
-  // { key: "user", searchOption: "search", queryFields: ["name"] },
+  { key: "user", searchOption: "search", queryFields: ["name"] },
   { key: 'category', searchOption: 'exact', queryFields: ['categoryName'] },
-  { key: 'material', searchOption: 'exact', queryFields: ['materialName'] },
 ];
 
 // Range-based filtering config
