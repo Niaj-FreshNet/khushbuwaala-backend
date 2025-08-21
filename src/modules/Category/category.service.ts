@@ -2,7 +2,6 @@ import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
 import { ICategory } from './category.interface';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
-import { deleteFromDigitalOceanAWS } from '../../utils/sendImageToCloudinary';
 import { deleteFile } from '../../helpers/fileDelete';
 
 const createCategory = async (payload: ICategory) => {
