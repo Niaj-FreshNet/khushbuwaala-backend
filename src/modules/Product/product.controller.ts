@@ -1,231 +1,318 @@
+import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
 import catchAsync from '../../utils/catchAsync';
-import { uploadToDigitalOceanAWS } from '../../utils/sendImageToCloudinary';
 import sendResponse from '../../utils/sendResponse';
 import { ProductServices } from './product.service';
+import { IProduct, IUpdateProduct } from './product.interface';
+import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 
+// Create Product
 const createProduct = catchAsync(async (req, res) => {
   const { categoryId, materialId, variants } = req.body;
 
-  if (!categoryId) throw new Error('Category is required');
-  if (!materialId) throw new Error('Material is required');
+  // Validation
+  if (!categoryId) {
+    throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
+  }
+  if (!materialId) {
+    throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.MATERIAL_REQUIRED);
+  }
 
+  // Image handling
   if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-    throw new Error('At least one image is required');
+    throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.IMAGE_REQUIRED);
   }
 
-  const uploadPromises = (req.files as Express.Multer.File[]).map(
-    (file) => file.filename,
+  const uploadedFiles = req.files as Express.Multer.File[];
+  const imageUrls = uploadedFiles.map(
+    (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
   );
 
-  const uploadResults = await Promise.all(uploadPromises);
-  const imageUrls = uploadResults.map(
-    (upload) => `${process.env.BACKEND_LIVE_URL}/uploads/${upload}`,
-  );
-
-  if (req.body.published && typeof req.body.published === 'string') {
-    req.body.published = req.body.published === 'true';
-  }
-
-  // Handle tags
-  const tags =
-    typeof req.body.tags === 'string'
-      ? req.body.tags.split(',')
-      : req.body.tags;
-
-  // Handle variants
-  let parsedVariants: {
-    size: string;
-    color: string;
-    price: number;
-    quantity: number;
-  }[] = [];
-
-  if (typeof variants === 'string') {
-    parsedVariants = JSON.parse(variants);
-  } else if (Array.isArray(variants)) {
-    parsedVariants = variants;
-  } else {
-    throw new Error('Variants must be provided as an array or JSON string');
-  }
-
-  if (typeof req.body.published === 'string') {
-    req.body.published = req.body.published === 'true' ? true : false;
-  }
-
-  const productPayload = {
-    name: req.body.name,
-    description: req.body.description,
-    imageUrl: imageUrls,
-    tags,
-    materialId,
-    categoryId,
-    published: req.body.published,
-    variants: parsedVariants,
+  // Parse data
+  const parsedData = {
+    ...req.body,
+    primaryImage: imageUrls[0],
+    otherImages: imageUrls.slice(1),
+    published: req.body.published === 'true',
+    tags: typeof req.body.tags === 'string' ? req.body.tags.split(',') : req.body.tags || [],
+    accords: typeof req.body.accords === 'string' ? req.body.accords.split(',') : req.body.accords || [],
+    bestFor: typeof req.body.bestFor === 'string' ? req.body.bestFor.split(',') : req.body.bestFor || [],
+    perfumeNotes: req.body.perfumeNotes ? JSON.parse(req.body.perfumeNotes) : undefined,
+    variants: typeof variants === 'string' ? JSON.parse(variants) : variants,
   };
 
-  const result = await ProductServices.createProduct(productPayload);
-  const isOk = result ? true : false;
+  const result = await ProductServices.createProduct(parsedData as IProduct);
 
   sendResponse(res, {
-    statusCode: isOk ? 201 : 400,
-    success: isOk ? true : false,
-    message: isOk ? 'Product created successfully' : 'Product creation failed',
-    Data: isOk ? result : [],
-  });
-});
-
-const getAllProducts = catchAsync(async (req, res) => {
-  const result = await ProductServices.getAllProducts(req);
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok
-      ? 'Products Fetched Successfully'
-      : 'Products Fetching Failed',
-    Data: isok ? result : [],
-  });
-});
-
-const getAllProductsAdmin = catchAsync(async (req, res) => {
-  const result = await ProductServices.getAllProductsAdmin(req);
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok
-      ? 'Products Fetched Successfully'
-      : 'Products Fetching Failed',
-    Data: isok ? result : [],
-  });
-});
-
-const getProduct = catchAsync(async (req, res) => {
-  const result = await ProductServices.getProduct(req.params.id);
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok
-      ? 'Product Fetched Successfully'
-      : 'Product Fetching Failed, No Product Found With This ID',
-    Data: isok ? result : [],
-  });
-});
-
-const updateProduct = catchAsync(async (req, res) => {
-  const id = req.params.id;
-  const {
-    name,
-    description,
-    tags,
-    materialId,
-    categoryId,
-    published,
-    variants,
-  } = req.body;
-
-  console.log(variants, 'variants in updateProduct');
-
-  let imageUrlsToKeep: string[] = [];
-
-  if (req.body.imageUrlsToKeep) {
-    try {
-      imageUrlsToKeep =
-        typeof req.body.imageUrlsToKeep === 'string'
-          ? JSON.parse(req.body.imageUrlsToKeep)
-          : req.body.imageUrlsToKeep;
-
-      if (!Array.isArray(imageUrlsToKeep)) {
-        throw new AppError(400, 'imageUrlsToKeep must be an array');
-      }
-    } catch {
-      throw new AppError(400, 'Invalid imageUrlsToKeep format');
-    }
-  }
-
-  let newImageUrls: string[] = [];
-  if (req.files && Array.isArray(req.files)) {
-    const uploadPromises = (req.files as Express.Multer.File[]).map(
-      (file) => file.filename,
-    );
-    newImageUrls = (await Promise.all(uploadPromises)).map(
-      (upload) => `${process.env.BACKEND_LIVE_URL}/uploads/${upload}`,
-    );
-  }
-
-  const parsedVariants =
-    typeof variants === 'string' ? JSON.parse(variants) : variants;
-
-  const updatePayload = {
-    name,
-    description,
-    tags: typeof tags === 'string' ? tags.split(',') : tags,
-    materialId,
-    categoryId,
-    published:
-      published === 'true' ? true : published === 'false' ? false : undefined,
-    imageUrlsToKeep,
-    newImageUrls,
-    variants: parsedVariants,
-  };
-
-  const result = await ProductServices.updateProduct(id, updatePayload);
-
-  sendResponse(res, {
-    statusCode: result ? 200 : 400,
-    success: !!result,
-    message: result ? 'Product Updated Successfully' : 'Product Update Failed',
-    Data: result || [],
-  });
-});
-
-const deleteProduct = catchAsync(async (req, res) => {
-  const result = await ProductServices.deleteProduct(req.params.id);
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Product Deleted Successfully' : 'Product Deletion Failed',
-    Data: isok ? result : [],
-  });
-});
-
-// Get Trending Products In Home Page
-const getTrendingProducts = catchAsync(async (req, res) => {
-  const result = await ProductServices.getTrendingProducts();
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok
-      ? 'Trending Products Fetched Successfully'
-      : 'Trending Products Fetching Failed',
-    Data: isok ? result : [],
-  });
-});
-
-const getNavbarProducts = catchAsync(async (req, res) => {
-  const result = await ProductServices.getNavbarProducts();
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok
-      ? 'Navbar Products Fetched Successfully'
-      : 'Navbar Products Fetching Failed',
-    Data: isok ? result : [],
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: 'Product created successfully',
+    data: result,
   });
 });
 
 export const ProductController = {
   createProduct,
   getAllProducts,
+  getAllProductsAdmin,
   getProduct,
   updateProduct,
   deleteProduct,
-  getAllProductsAdmin,
   getTrendingProducts,
   getNavbarProducts,
+  getFeaturedProducts,
+  getNewArrivals,
+  getProductsByCategory,
+  getRelatedProducts,
+  searchProducts,
+  getProductVariants,
+  updateVariantStock,
+  getProductAnalytics,
+  getLowStockProducts,
+  getBestsellers,
 };
+
+// Get All Products (Public)
+const getAllProducts = catchAsync(async (req, res) => {
+  const result = await ProductServices.getAllProducts(req.query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Products retrieved successfully',
+    meta: result.meta,
+    data: result.data,
+  });
+});
+
+// Get All Products (Admin)
+const getAllProductsAdmin = catchAsync(async (req, res) => {
+  const result = await ProductServices.getAllProductsAdmin(req.query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Products retrieved successfully',
+    meta: result.meta,
+    data: result.data,
+  });
+});
+
+// Get Single Product
+const getProduct = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await ProductServices.getProduct(id);
+
+  if (!result) {
+    throw new AppError(httpStatus.NOT_FOUND, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+  }
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Product retrieved successfully',
+    data: result,
+  });
+});
+
+// Update Product
+const updateProduct = catchAsync(async (req, res) => {
+  const { id } = req.params;
+
+  // Handle new images
+  let newImageUrls: string[] = [];
+  if (req.files && Array.isArray(req.files)) {
+    const uploadedFiles = req.files as Express.Multer.File[];
+    newImageUrls = uploadedFiles.map(
+      (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
+    );
+  }
+
+  // Parse data
+  const parsedData = {
+    ...req.body,
+    published: req.body.published === 'true' ? true : req.body.published === 'false' ? false : undefined,
+    tags: typeof req.body.tags === 'string' ? req.body.tags.split(',') : req.body.tags,
+    accords: typeof req.body.accords === 'string' ? req.body.accords.split(',') : req.body.accords,
+    bestFor: typeof req.body.bestFor === 'string' ? req.body.bestFor.split(',') : req.body.bestFor,
+    perfumeNotes: req.body.perfumeNotes ? JSON.parse(req.body.perfumeNotes) : undefined,
+    variants: typeof req.body.variants === 'string' ? JSON.parse(req.body.variants) : req.body.variants,
+    imagesToKeep: req.body.imagesToKeep ? 
+      typeof req.body.imagesToKeep === 'string' ? JSON.parse(req.body.imagesToKeep) : req.body.imagesToKeep : [],
+    newImages: newImageUrls,
+  };
+
+  const result = await ProductServices.updateProduct(id, parsedData as IUpdateProduct);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Product updated successfully',
+    data: result,
+  });
+});
+
+// Delete Product
+const deleteProduct = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await ProductServices.deleteProduct(id);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Product deleted successfully',
+    data: result,
+  });
+});
+
+// Get Trending Products
+const getTrendingProducts = catchAsync(async (req, res) => {
+  const result = await ProductServices.getTrendingProducts();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Trending products retrieved successfully',
+    data: result,
+  });
+});
+
+// Get Navbar Products
+const getNavbarProducts = catchAsync(async (req, res) => {
+  const result = await ProductServices.getNavbarProducts();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Navbar products retrieved successfully',
+    data: result,
+  });
+});
+
+// Get Featured Products
+const getFeaturedProducts = catchAsync(async (req, res) => {
+  const result = await ProductServices.getFeaturedProducts();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Featured products retrieved successfully',
+    data: result,
+  });
+});
+
+// Get New Arrivals
+const getNewArrivals = catchAsync(async (req, res) => {
+  const result = await ProductServices.getNewArrivals();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'New arrivals retrieved successfully',
+    data: result,
+  });
+});
+
+// Get Products by Category
+const getProductsByCategory = catchAsync(async (req, res) => {
+  const { categoryId } = req.params;
+  const result = await ProductServices.getProductsByCategory(categoryId, req.query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Category products retrieved successfully',
+    meta: result.meta,
+    data: result.data,
+  });
+});
+
+// Get Related Products
+const getRelatedProducts = catchAsync(async (req, res) => {
+  const { productId } = req.params;
+  const result = await ProductServices.getRelatedProducts(productId);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Related products retrieved successfully',
+    data: result,
+  });
+});
+
+// Search Products
+const searchProducts = catchAsync(async (req, res) => {
+  const result = await ProductServices.searchProducts(req.query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Products search completed successfully',
+    meta: result.meta,
+    data: result.data,
+    filters: result.filters,
+  });
+});
+
+// Get Product Variants
+const getProductVariants = catchAsync(async (req, res) => {
+  const { productId } = req.params;
+  const result = await ProductServices.getProductVariants(productId);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Product variants retrieved successfully',
+    data: result,
+  });
+});
+
+// Update Variant Stock
+const updateVariantStock = catchAsync(async (req, res) => {
+  const { variantId } = req.params;
+  const { newStock, reason } = req.body;
+
+  const result = await ProductServices.updateVariantStock(variantId, newStock, reason);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Variant stock updated successfully',
+    data: result,
+  });
+});
+
+// Get Product Analytics
+const getProductAnalytics = catchAsync(async (req, res) => {
+  const result = await ProductServices.getProductAnalytics();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Product analytics retrieved successfully',
+    data: result,
+  });
+});
+
+// Get Low Stock Products
+const getLowStockProducts = catchAsync(async (req, res) => {
+  const threshold = parseInt(req.query.threshold as string) || 10;
+  const result = await ProductServices.getLowStockProducts(threshold);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Low stock products retrieved successfully',
+    data: result,
+  });
+});
+
+// Get Bestsellers
+const getBestsellers = catchAsync(async (req, res) => {
+  const result = await ProductServices.getBestsellers();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Bestsellers retrieved successfully',
+    data: result,

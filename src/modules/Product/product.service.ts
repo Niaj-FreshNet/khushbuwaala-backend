@@ -1,55 +1,102 @@
 import { subDays, subMonths } from 'date-fns';
-import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
-import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
-import { deleteFromDigitalOceanAWS } from '../../utils/sendImageToCloudinary';
+import AppError from '../../errors/AppError';
+import { deleteFile } from '../../helpers/fileDelete';
 import QueryBuilder from '../../helpers/queryBuilder';
 import {
+  IProduct,
+  IUpdateProduct,
+  IProductQuery,
+  IProductResponse,
+  IProductAnalytics,
+  ITrendingProduct,
+  IRelatedProductsResponse,
+  IProductSearchResult,
+} from './product.interface';
+import {
   productFilterFields,
-  productInclude,
+  productSearchFields,
+  productArraySearchFields,
   productNestedFilters,
   productRangeFilter,
-  productSearchFields,
+  productInclude,
+  productDetailInclude,
+  productAdminInclude,
+  QUERY_DEFAULTS,
+  PRODUCT_ERROR_MESSAGES,
 } from './product.constant';
-import { deleteFile } from '../../helpers/fileDelete';
 
-const createProduct = async (payload: IProduct) => {
+// Create Product
+const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
+  // Check if category exists
+  const categoryExists = await prisma.category.findUnique({
+    where: { id: payload.categoryId },
+  });
+  if (!categoryExists) {
+    throw new AppError(404, 'Category not found');
+  }
+
+  // Check for duplicate SKUs
+  const existingSKUs = await prisma.productVariant.findMany({
+    where: { sku: { in: payload.variants.map(v => v.sku) } },
+    select: { sku: true },
+  });
+
+  if (existingSKUs.length > 0) {
+    throw new AppError(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
+  }
+
   const result = await prisma.product.create({
     data: {
       name: payload.name,
       description: payload.description,
-      imageUrl: payload.imageUrl,
+      primaryImage: payload.primaryImage,
+      otherImages: payload.otherImages || [],
+      videoUrl: payload.videoUrl,
       tags: payload.tags,
+      
+      // Perfume specifications
+      origin: payload.origin,
+      brand: payload.brand,
+      gender: payload.gender,
+      perfumeNotes: payload.perfumeNotes,
+      accords: payload.accords,
+      performance: payload.performance,
+      longevity: payload.longevity,
+      projection: payload.projection,
+      sillage: payload.sillage,
+      bestFor: payload.bestFor,
+      
       materialId: payload.materialId,
       categoryId: payload.categoryId,
       published: payload.published,
+      
       variants: {
-        create: payload.variants.map((v) => ({
-          size: v.size,
-          color: v.color,
-          price: v.price,
-          quantity: v.quantity,
+        create: payload.variants.map((variant) => ({
+          sku: variant.sku,
+          unit: variant.unit,
+          size: variant.size,
+          price: variant.price,
+          stock: variant.stock,
         })),
       },
     },
-    include: {
-      variants: true,
-    },
+    include: productInclude,
   });
 
-  return result;
+  return formatProductResponse(result);
 };
 
-const getAllProducts = async (req: any) => {
-  const sortBy = req.query.sortBy as string;
-  const stockFilter = req.query.stock; // 'in' | 'out'
-
-  const queryBuilder = new QueryBuilder(req.query, prisma.product);
+// Get All Products (Public)
+const getAllProducts = async (query: IProductQuery) => {
+  const queryBuilder = new QueryBuilder(query, prisma.product);
+  
   let results = await queryBuilder
     .filter(productFilterFields)
     .search(productSearchFields)
+    // .arraySearch(productArraySearchFields)
     .nestedFilter(productNestedFilters)
-    .sort() // Default Prisma sort
+    .sort()
     .paginate()
     .include(productInclude)
     .fields()
@@ -59,375 +106,336 @@ const getAllProducts = async (req: any) => {
 
   const meta = await queryBuilder.countTotal();
 
-  // 🔁 Apply stock filter after query
-  if (stockFilter === 'in') {
+  // Apply stock filtering
+  if (query.stock === 'in') {
     results = results.filter((product: any) =>
-      product.variants.some((v: any) => v.quantity > 0),
+      product.variants.some((v: any) => v.stock > 0)
     );
-  } else if (stockFilter === 'out') {
+  } else if (query.stock === 'out') {
     results = results.filter((product: any) =>
-      product.variants.every((v: any) => v.quantity === 0),
+      product.variants.every((v: any) => v.stock === 0)
     );
   }
 
-  // 🔁 Apply price-based sorting after stock filtering
-  if (sortBy === 'price_asc') {
-    results = results.sort((a: any, b: any) => {
-      const minA = Math.min(...a.variants.map((v: any) => v.price));
-      const minB = Math.min(...b.variants.map((v: any) => v.price));
-      return minA - minB;
-    });
-  } else if (sortBy === 'price_desc') {
-    results = results.sort((a: any, b: any) => {
-      const minA = Math.min(...a.variants.map((v: any) => v.price));
-      const minB = Math.min(...b.variants.map((v: any) => v.price));
-      return minB - minA;
-    });
-  }
+  // Apply custom sorting
+  results = applySorting(results, query.sortBy);
 
-  return { data: results, meta };
+  return {
+    data: results.map(formatProductResponse),
+    meta,
+  };
 };
 
-const getAllProductsAdmin = async (req: any) => {
-  const sortBy = req.query.sortBy as string;
-  const stockFilter = req.query.stock; // 'in' | 'out'
-
-  const queryBuilder = new QueryBuilder(req.query, prisma.product);
+// Get All Products (Admin)
+const getAllProductsAdmin = async (query: IProductQuery) => {
+  const queryBuilder = new QueryBuilder(query, prisma.product);
+  
   let results = await queryBuilder
     .filter(productFilterFields)
     .search(productSearchFields)
+    // .arraySearch(productArraySearchFields)
     .nestedFilter(productNestedFilters)
-    .sort() // Default Prisma sort
+    .sort()
     .paginate()
-    .include(productInclude)
+    .include(productAdminInclude)
     .fields()
     .filterByRange(productRangeFilter)
     .execute();
 
   const meta = await queryBuilder.countTotal();
 
-  // 🔁 Apply stock filter after query
-  if (stockFilter === 'in') {
+  // Apply stock filtering
+  if (query.stock === 'in') {
     results = results.filter((product: any) =>
-      product.variants.some((v: any) => v.quantity > 0),
+      product.variants.some((v: any) => v.stock > 0)
     );
-  } else if (stockFilter === 'out') {
+  } else if (query.stock === 'out') {
     results = results.filter((product: any) =>
-      product.variants.every((v: any) => v.quantity === 0),
+      product.variants.every((v: any) => v.stock === 0)
     );
   }
 
-  // 🔁 Apply price-based sorting after stock filtering
-  if (sortBy === 'price_asc') {
-    results = results.sort((a: any, b: any) => {
-      const minA = Math.min(...a.variants.map((v: any) => v.price));
-      const minB = Math.min(...b.variants.map((v: any) => v.price));
-      return minA - minB;
-    });
-  } else if (sortBy === 'price_desc') {
-    results = results.sort((a: any, b: any) => {
-      const minA = Math.min(...a.variants.map((v: any) => v.price));
-      const minB = Math.min(...b.variants.map((v: any) => v.price));
-      return minB - minA;
-    });
-  }
+  // Apply custom sorting
+  results = applySorting(results, query.sortBy);
 
-  return { data: results, meta };
+  return {
+    data: results.map(formatProductResponse),
+    meta,
+  };
 };
 
-// Get Product By ID
-const getProduct = async (id: string) => {
+// Get Single Product
+const getProduct = async (id: string): Promise<IProductResponse | null> => {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: {
-      category: true,
-      material: true,
-      variants: true,
-    },
+    include: productDetailInclude,
   });
 
   if (!product) return null;
 
-  // Get other products from the same category
+  // Get related products
   const relatedProducts = await prisma.product.findMany({
     where: {
-      categoryId: product.categoryId,
+      OR: [
+        { categoryId: product.categoryId },
+        { brand: product.brand },
+        { accords: { hasSome: product.accords } },
+      ],
       id: { not: id },
       published: true,
     },
-    include: {
-      category: true,
-      material: true,
-      variants: true,
-    },
-    take: 6,
-    orderBy: { createdAt: 'desc' },
+    include: productInclude,
+    take: QUERY_DEFAULTS.RELATED_LIMIT,
+    orderBy: { salesCount: 'desc' },
   });
 
-  // Get good reviews (rating >= 4)
-  const goodReviews = await prisma.review.findMany({
-    where: {
-      productId: id,
-      isPublished: true,
-      rating: { gte: 4 },
-    },
-    include: {
-      user: {
-        select: {
-          name: true,
-          imageUrl: true,
-        },
-      },
-    },
-    take: 6,
-    orderBy: { createdAt: 'desc' },
-  });
-
+  const formattedProduct = formatProductResponse(product);
+  
   return {
-    ...product,
-    relatedProducts,
-    goodReviews,
-  };
+    ...formattedProduct,
+    relatedProducts: relatedProducts.map(formatProductResponse),
+  } as any;
 };
 
-interface ProductVariantPayload {
-  size: string;
-  color: string;
-  price: number;
-  quantity: number;
-}
-
-export interface UpdateProductPayload {
-  name?: string;
-  description?: string;
-  tags?: string[];
-  materialId?: string;
-  categoryId?: string;
-  published?: boolean;
-  imageUrlsToKeep?: string[];
-  newImageUrls?: string[];
-  variants?: ProductVariantPayload[];
-}
-
 // Update Product
-export const updateProduct = async (
-  id: string,
-  payload: UpdateProductPayload,
-) => {
+const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProductResponse> => {
   const existingProduct = await prisma.product.findUnique({
     where: { id },
     include: { variants: true },
   });
 
-  if (!existingProduct) throw new AppError(404, 'Product not found!');
-
-  // 🖼 Handle image updates
-  let finalImageUrls = existingProduct.imageUrl || [];
-
-  const hasImageUpdate =
-    (payload.imageUrlsToKeep?.length || 0) > 0 ||
-    (payload.newImageUrls?.length || 0) > 0;
-
-  if (hasImageUpdate) {
-    finalImageUrls = [
-      ...(payload.imageUrlsToKeep || []),
-      ...(payload.newImageUrls || []),
-    ];
-
-    const imagesToDelete = existingProduct.imageUrl.filter(
-      (url) => !finalImageUrls.includes(url),
-    );
-
-    await Promise.all(imagesToDelete.map(deleteFile));
+  if (!existingProduct) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
   }
 
-  // 🛠 Build product update payload
-  const updateProductData: any = {
-    ...(payload.name && { name: payload.name }),
-    ...(payload.description && { description: payload.description }),
-    ...(payload.tags && { tags: payload.tags }),
-    ...(payload.materialId && { materialId: payload.materialId }),
-    ...(payload.categoryId && { categoryId: payload.categoryId }),
-    ...(typeof payload.published === 'boolean' && {
-      published: payload.published,
-    }),
-    ...(hasImageUpdate &&
-      finalImageUrls.length > 0 && {
-        imageUrl: finalImageUrls,
-      }),
-  };
+  // Handle image updates
+  let primaryImage = existingProduct.primaryImage;
+  let otherImages = existingProduct.otherImages;
+
+  if (payload.imagesToKeep || payload.newImages) {
+    const imagesToKeep = payload.imagesToKeep || [];
+    const newImages = payload.newImages || [];
+    
+    // Determine images to delete
+    const currentImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
+    const imagesToDelete = currentImages.filter(img => 
+      img && !imagesToKeep.includes(img) && !newImages.includes(img)
+    );
+
+    // Delete unused images
+    await Promise.all(imagesToDelete.map(deleteFile));
+
+    // Set new image structure
+    const allNewImages = [...imagesToKeep, ...newImages];
+    if (allNewImages.length > 0) {
+      primaryImage = allNewImages[0];
+      otherImages = allNewImages.slice(1);
+    }
+  }
+
+  // Check for duplicate SKUs if variants are being updated
+  if (payload.variants) {
+    const existingSKUs = await prisma.productVariant.findMany({
+      where: { 
+        sku: { in: payload.variants.map(v => v.sku) },
+        productId: { not: id }
+      },
+      select: { sku: true },
+    });
+
+    if (existingSKUs.length > 0) {
+      throw new AppError(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
+    }
+  }
 
   // Update product
   const updatedProduct = await prisma.product.update({
     where: { id },
-    data: updateProductData,
-    include: { variants: true, category: true, material: true },
+    data: {
+      ...(payload.name && { name: payload.name }),
+      ...(payload.description && { description: payload.description }),
+      ...(primaryImage && { primaryImage }),
+      ...(otherImages && { otherImages }),
+      ...(payload.videoUrl !== undefined && { videoUrl: payload.videoUrl }),
+      ...(payload.tags && { tags: payload.tags }),
+      
+      // Perfume specifications
+      ...(payload.origin !== undefined && { origin: payload.origin }),
+      ...(payload.brand !== undefined && { brand: payload.brand }),
+      ...(payload.gender !== undefined && { gender: payload.gender }),
+      ...(payload.perfumeNotes !== undefined && { perfumeNotes: payload.perfumeNotes }),
+      ...(payload.accords && { accords: payload.accords }),
+      ...(payload.performance !== undefined && { performance: payload.performance }),
+      ...(payload.longevity !== undefined && { longevity: payload.longevity }),
+      ...(payload.projection !== undefined && { projection: payload.projection }),
+      ...(payload.sillage !== undefined && { sillage: payload.sillage }),
+      ...(payload.bestFor && { bestFor: payload.bestFor }),
+      
+      ...(payload.materialId && { materialId: payload.materialId }),
+      ...(payload.categoryId && { categoryId: payload.categoryId }),
+      ...(typeof payload.published === 'boolean' && { published: payload.published }),
+    },
+    include: productInclude,
   });
 
-  // Replace all variants
-  if (Array.isArray(payload.variants)) {
+  // Replace variants if provided
+  if (payload.variants) {
     await prisma.productVariant.deleteMany({ where: { productId: id } });
-
-    const newVariants = payload.variants.map((variant) => ({
-      size: variant.size,
-      color: variant.color,
-      price: parseFloat(String(variant.price)),
-      quantity: parseInt(String(variant.quantity)),
-      productId: id,
-    }));
-
-    await prisma.productVariant.createMany({ data: newVariants });
+    
+    await prisma.productVariant.createMany({
+      data: payload.variants.map((variant) => ({
+        ...variant,
+        productId: id,
+      })),
+    });
   }
 
-  return updatedProduct;
+  // Fetch updated product with variants
+  const result = await prisma.product.findUnique({
+    where: { id },
+    include: productInclude,
+  });
+
+  return formatProductResponse(result!);
 };
 
 // Delete Product
 const deleteProduct = async (id: string) => {
   const existingProduct = await prisma.product.findUnique({
     where: { id },
-    include: { variants: true, Review: true }, // include reviews too
+    include: { 
+      variants: true, 
+      Review: true,
+      wishlist: true,
+      comboVariants: true,
+    },
   });
 
-  if (!existingProduct) throw new AppError(404, 'Product not found!');
-
-  // Delete product images from storage
-  if (existingProduct.imageUrl && existingProduct.imageUrl.length > 0) {
-    await Promise.all(existingProduct.imageUrl.map((url) => deleteFile(url)));
+  if (!existingProduct) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
   }
 
-  // Delete all variants
-  if (existingProduct.variants.length > 0) {
-    await prisma.productVariant.deleteMany({
-      where: { productId: id },
-    });
+  // Check if product has active orders (optional business rule)
+  const hasActiveOrders = await prisma.order.findFirst({
+    where: {
+      cartItems: {
+        path: '$[*].productId',
+        equals: id,
+      },
+      status: { not: 'CANCEL' },
+    },
+  });
+
+  if (hasActiveOrders && existingProduct.published) {
+    throw new AppError(400, PRODUCT_ERROR_MESSAGES.PRODUCT_PUBLISHED_CANNOT_DELETE);
   }
 
-  // Delete all reviews
-  if (existingProduct.Review.length > 0) {
-    await prisma.review.deleteMany({
-      where: { productId: id },
-    });
-  }
+  // Delete related data
+  await prisma.$transaction(async (tx) => {
+    // Delete wishlist items
+    await tx.wishlist.deleteMany({ where: { variant: { productId: id } } });
+    
+    // Delete combo variants
+    await tx.comboVariant.deleteMany({ where: { productId: id } });
+    
+    // Delete reviews
+    await tx.review.deleteMany({ where: { productId: id } });
+    
+    // Delete variants
+    await tx.productVariant.deleteMany({ where: { productId: id } });
+    
+    // Delete discounts
+    await tx.discount.deleteMany({ where: { productId: id } });
+    
+    // Delete product
+    await tx.product.delete({ where: { id } });
+  });
 
-  // Now safe to delete the product itself
-  const result = await prisma.product.delete({ where: { id } });
+  // Delete images from storage
+  const allImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
+  await Promise.all(allImages.filter(Boolean).map(deleteFile));
 
-  return result;
+  return { id };
 };
 
 // Get Trending Products
-const getTrendingProducts = async () => {
+const getTrendingProducts = async (): Promise<ITrendingProduct[]> => {
   const threeMonthsAgo = subMonths(new Date(), 3);
 
-  // Step 1: Fetch orders in the last 3 months
-  const recentOrders = await prisma.order.findMany({
-    where: {
-      orderTime: {
-        gte: threeMonthsAgo,
-      },
-      isPaid: true,
-    },
-    select: {
-      cartItems: true,
-    },
-  });
-
-  // Step 2: Aggregate product sales count
-  const productSales: Record<string, number> = {};
-
-  for (const order of recentOrders) {
-    const cart = order.cartItems as Array<{
-      productId: string;
-      quantity: number;
-    }>;
-    for (const item of cart) {
-      if (item?.productId) {
-        productSales[item.productId] =
-          (productSales[item.productId] || 0) + item.quantity;
-      }
-    }
-  }
-
-  // Step 3: Sort productIds by quantity sold
-  const sortedProductIds = Object.entries(productSales)
-    .sort((a, b) => b[1] - a[1]) // descending order
-    .map(([productId]) => productId);
-
-  // Optional: limit top N trending products
-  const topProductIds = sortedProductIds.slice(0, 10);
-
-  // Step 4: Get full product details
-  const trendingProducts = await prisma.product.findMany({
-    where: {
-      id: { in: topProductIds },
-    },
-    include: {
-      category: true,
-      material: true,
-      variants: true,
-    },
-  });
-
-  // Optional: Return with sales count info
-  const trendingWithSales = trendingProducts.map((product) => ({
-    ...product,
-    totalSold: productSales[product.id] || 0,
-  }));
-
-  return trendingWithSales;
-};
-
-const getNavbarProducts = async () => {
-  const threeMonthsAgo = subMonths(new Date(), 3);
-
-  // Step 1: Fetch paid orders in last 3 months
   const recentOrders = await prisma.order.findMany({
     where: {
       orderTime: { gte: threeMonthsAgo },
       isPaid: true,
+      status: { not: 'CANCEL' },
     },
-    select: {
-      cartItems: true,
-    },
+    select: { cartItems: true },
   });
 
-  // Step 2: Build product sales map
   const productSales: Record<string, number> = {};
 
   for (const order of recentOrders) {
-    const cart = order.cartItems as Array<{
-      productId: string;
-      quantity: number;
-    }>;
+    const cart = order.cartItems as Array<{ productId: string; quantity: number }>;
     for (const item of cart) {
       if (item?.productId) {
-        productSales[item.productId] =
-          (productSales[item.productId] || 0) + item.quantity;
+        productSales[item.productId] = (productSales[item.productId] || 0) + item.quantity;
       }
     }
   }
 
-  const allProductIds = Object.keys(productSales);
+  const topProductIds = Object.entries(productSales)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, QUERY_DEFAULTS.TRENDING_LIMIT)
+    .map(([productId]) => productId);
 
-  // Step 3: Fetch product info with category
-  const products = await prisma.product.findMany({
+  const trendingProducts = await prisma.product.findMany({
     where: {
-      id: { in: allProductIds },
+      id: { in: topProductIds },
       published: true,
     },
-    include: {
-      category: true,
-    },
+    include: productInclude,
   });
 
-  // Use proper object array in categoryWise
-  const categoryWise: Record<
-    string,
-    { id: string; name: string; sold: number }[]
-  > = {};
-  const overallList: Array<{ id: string; name: string; totalSold: number }> =
-    [];
+  return trendingProducts.map((product) => ({
+    ...formatProductResponse(product),
+    totalSold: productSales[product.id] || 0,
+    trendingScore: Math.round((productSales[product.id] || 0) * 1.5), // Custom trending algorithm
+  }));
+};
+
+// Get Navbar Products
+const getNavbarProducts = async () => {
+  const threeMonthsAgo = subMonths(new Date(), 3);
+
+  const recentOrders = await prisma.order.findMany({
+    where: {
+      orderTime: { gte: threeMonthsAgo },
+      isPaid: true,
+      status: { not: 'CANCEL' },
+    },
+    select: { cartItems: true },
+  });
+
+  const productSales: Record<string, number> = {};
+
+  for (const order of recentOrders) {
+    const cart = order.cartItems as Array<{ productId: string; quantity: number }>;
+    for (const item of cart) {
+      if (item?.productId) {
+        productSales[item.productId] = (productSales[item.productId] || 0) + item.quantity;
+      }
+    }
+  }
+
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: Object.keys(productSales) },
+      published: true,
+    },
+    include: { category: true },
+  });
+
+  const categoryWise: Record<string, { id: string; name: string; sold: number }[]> = {};
+  const overallList: Array<{ id: string; name: string; totalSold: number }> = [];
 
   for (const product of products) {
     const sold = productSales[product.id] || 0;
@@ -450,7 +458,6 @@ const getNavbarProducts = async () => {
     });
   }
 
-  // Step 4: Fetch all published categories
   const publishedCategories = await prisma.category.findMany({
     where: { published: true },
   });
@@ -472,7 +479,6 @@ const getNavbarProducts = async () => {
     trendingByCategory[catName] = topProducts;
   }
 
-  // Step 5: Build overall top products list
   const overallTrending = overallList
     .sort((a, b) => b.totalSold - a.totalSold)
     .slice(0, 3)
@@ -487,13 +493,412 @@ const getNavbarProducts = async () => {
   };
 };
 
+// Get Featured Products
+const getFeaturedProducts = async (): Promise<IProductResponse[]> => {
+  const products = await prisma.product.findMany({
+    where: {
+      published: true,
+      salesCount: { gte: 10 }, // Products with good sales
+    },
+    include: productInclude,
+    orderBy: [
+      { salesCount: 'desc' },
+      { createdAt: 'desc' },
+    ],
+    take: 12,
+  });
+
+  return products.map(formatProductResponse);
+};
+
+// Get New Arrivals
+const getNewArrivals = async (): Promise<IProductResponse[]> => {
+  const cutoffDate = subDays(new Date(), QUERY_DEFAULTS.NEW_ARRIVALS_DAYS);
+
+  const products = await prisma.product.findMany({
+    where: {
+      published: true,
+      createdAt: { gte: cutoffDate },
+    },
+    include: productInclude,
+    orderBy: { createdAt: 'desc' },
+    take: 12,
+  });
+
+  return products.map(formatProductResponse);
+};
+
+// Get Products by Category
+const getProductsByCategory = async (categoryId: string, query: IProductQuery) => {
+  const categoryQuery = { ...query, category: categoryId };
+  const queryBuilder = new QueryBuilder(categoryQuery, prisma.product);
+  
+  let results = await queryBuilder
+    .filter(productFilterFields)
+    .search(productSearchFields)
+    .arraySearch(productArraySearchFields)
+    .nestedFilter(productNestedFilters)
+    .sort()
+    .paginate()
+    .include(productInclude)
+    .fields()
+    .filterByRange(productRangeFilter)
+    .rawFilter({ published: true, categoryId })
+    .execute();
+
+  const meta = await queryBuilder.countTotal();
+
+  // Apply custom sorting
+  results = applySorting(results, query.sortBy);
+
+  return {
+    data: results.map(formatProductResponse),
+    meta,
+  };
+};
+
+// Get Related Products
+const getRelatedProducts = async (productId: string): Promise<IRelatedProductsResponse> => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { categoryId: true, brand: true, accords: true },
+  });
+
+  if (!product) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+  }
+
+  const [sameBrand, sameCategory, similarAccords] = await Promise.all([
+    // Same brand products
+    prisma.product.findMany({
+      where: {
+        brand: product.brand,
+        id: { not: productId },
+        published: true,
+      },
+      include: productInclude,
+      take: 4,
+      orderBy: { salesCount: 'desc' },
+    }),
+
+    // Same category products
+    prisma.product.findMany({
+      where: {
+        categoryId: product.categoryId,
+        id: { not: productId },
+        published: true,
+      },
+      include: productInclude,
+      take: 4,
+      orderBy: { salesCount: 'desc' },
+    }),
+
+    // Similar accords
+    prisma.product.findMany({
+      where: {
+        accords: { hasSome: product.accords },
+        id: { not: productId },
+        published: true,
+      },
+      include: productInclude,
+      take: 4,
+      orderBy: { salesCount: 'desc' },
+    }),
+  ]);
+
+  return {
+    sameBrand: sameBrand.map(formatProductResponse),
+    sameCategory: sameCategory.map(formatProductResponse),
+    similarAccords: similarAccords.map(formatProductResponse),
+  };
+};
+
+// Search Products
+const searchProducts = async (query: IProductQuery): Promise<IProductSearchResult> => {
+  const result = await getAllProducts(query);
+  
+  // Get available filters
+  const [brands, categories, priceRange, origins, accords] = await Promise.all([
+    prisma.product.findMany({
+      where: { published: true, brand: { not: null } },
+      select: { brand: true },
+      distinct: ['brand'],
+    }),
+    prisma.category.findMany({
+      where: { published: true },
+      select: { id: true, categoryName: true },
+    }),
+    prisma.productVariant.aggregate({
+      _min: { price: true },
+      _max: { price: true },
+    }),
+    prisma.product.findMany({
+      where: { published: true, origin: { not: null } },
+      select: { origin: true },
+      distinct: ['origin'],
+    }),
+    prisma.product.findMany({
+      where: { published: true },
+      select: { accords: true },
+    }),
+  ]);
+
+  const uniqueAccords = [...new Set(accords.flatMap(p => p.accords))];
+
+  return {
+    ...result,
+    filters: {
+      brands: brands.map(b => b.brand!).filter(Boolean),
+      categories: categories.map(c => ({ id: c.id, name: c.categoryName })),
+      priceRange: {
+        min: priceRange._min.price || 0,
+        max: priceRange._max.price || 0,
+      },
+      origins: origins.map(o => o.origin!).filter(Boolean),
+      accords: uniqueAccords,
+    },
+  };
+};
+
+// Get Product Variants
+const getProductVariants = async (productId: string) => {
+  const variants = await prisma.productVariant.findMany({
+    where: { productId },
+    orderBy: [{ size: 'asc' }, { price: 'asc' }],
+  });
+
+  if (!variants.length) {
+    throw new AppError(404, 'No variants found for this product');
+  }
+
+  return variants;
+};
+
+// Update Variant Stock
+const updateVariantStock = async (variantId: string, newStock: number, reason?: string) => {
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+  });
+
+  if (!variant) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.VARIANT_NOT_FOUND);
+  }
+
+  const updatedVariant = await prisma.productVariant.update({
+    where: { id: variantId },
+    data: { stock: newStock },
+  });
+
+  // Optional: Log stock change for audit trail
+  // You can create a StockLog model for this
+  
+  return updatedVariant;
+};
+
+// Get Product Analytics
+const getProductAnalytics = async (): Promise<IProductAnalytics> => {
+  const [
+    totalProducts,
+    publishedProducts,
+    totalVariants,
+    priceStats,
+    categoryStats,
+    brandStats,
+    stockStats,
+  ] = await Promise.all([
+    prisma.product.count(),
+    prisma.product.count({ where: { published: true } }),
+    prisma.productVariant.count(),
+    prisma.productVariant.aggregate({
+      _avg: { price: true },
+      _sum: { price: true },
+    }),
+    prisma.product.groupBy({
+      by: ['categoryId'],
+      _count: { _all: true },
+      where: { published: true },
+    }),
+    prisma.product.groupBy({
+      by: ['brand'],
+      _count: { _all: true },
+      where: { published: true, brand: { not: null } },
+    }),
+    prisma.productVariant.aggregate({
+      where: { stock: { lte: QUERY_DEFAULTS.LOW_STOCK_THRESHOLD } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  // Get category names
+  const categories = await prisma.category.findMany({
+    where: { id: { in: categoryStats.map(c => c.categoryId) } },
+  });
+
+  const categoryMap = categories.reduce((acc, cat) => {
+    acc[cat.id] = cat.categoryName;
+    return acc;
+  }, {} as Record<string, string>);
+
+  const topCategories = categoryStats.map(stat => ({
+    categoryName: categoryMap[stat.categoryId] || 'Unknown',
+    productCount: stat._count._all,
+    percentage: Math.round((stat._count._all / publishedProducts) * 100),
+  }));
+
+  const topBrands = brandStats.map(stat => ({
+    brand: stat.brand || 'Unknown',
+    productCount: stat._count._all,
+    percentage: Math.round((stat._count._all / publishedProducts) * 100),
+  }));
+
+  const outOfStockCount = await prisma.productVariant.count({
+    where: { stock: 0 },
+  });
+
+  return {
+    totalProducts,
+    publishedProducts,
+    unpublishedProducts: totalProducts - publishedProducts,
+    totalVariants,
+    lowStockProducts: stockStats._count._all,
+    outOfStockProducts: outOfStockCount,
+    totalValue: priceStats._sum.price || 0,
+    averagePrice: priceStats._avg.price || 0,
+    topCategories: topCategories.slice(0, 5),
+    topBrands: topBrands.slice(0, 5),
+  };
+};
+
+// Get Low Stock Products
+const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_THRESHOLD) => {
+  const products = await prisma.product.findMany({
+    where: {
+      variants: {
+        some: {
+          stock: { lte: threshold },
+        },
+      },
+    },
+    include: {
+      variants: {
+        where: { stock: { lte: threshold } },
+      },
+      category: { select: { categoryName: true } },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  return products.map(product => ({
+    id: product.id,
+    name: product.name,
+    category: product.category.categoryName,
+    lowStockVariants: product.variants.map(v => ({
+      id: v.id,
+      sku: v.sku,
+      size: v.size,
+      unit: v.unit,
+      stock: v.stock,
+    })),
+  }));
+};
+
+// Get Bestsellers
+const getBestsellers = async (): Promise<ITrendingProduct[]> => {
+  const products = await prisma.product.findMany({
+    where: { published: true },
+    include: productInclude,
+    orderBy: { salesCount: 'desc' },
+    take: 20,
+  });
+
+  return products.map((product, index) => ({
+    ...formatProductResponse(product),
+    totalSold: product.salesCount,
+    trendingScore: 100 - index, // Simple ranking score
+  }));
+};
+
+// Helper Functions
+const formatProductResponse = (product: any): IProductResponse => {
+  const variants = product.variants || [];
+  const prices = variants.map((v: any) => v.price);
+  const stocks = variants.map((v: any) => v.stock);
+
+  return {
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    primaryImage: product.primaryImage,
+    otherImages: product.otherImages || [],
+    videoUrl: product.videoUrl,
+    tags: product.tags || [],
+    salesCount: product.salesCount,
+    published: product.published,
+
+    // Perfume specifications
+    origin: product.origin,
+    brand: product.brand,
+    gender: product.gender,
+    perfumeNotes: product.perfumeNotes,
+    accords: product.accords || [],
+    performance: product.performance,
+    longevity: product.longevity,
+    projection: product.projection,
+    sillage: product.sillage,
+    bestFor: product.bestFor || [],
+
+    materialId: product.materialId,
+    categoryId: product.categoryId,
+    category: product.category,
+
+    variants: variants,
+
+    // Computed fields
+    minPrice: prices.length > 0 ? Math.min(...prices) : 0,
+    maxPrice: prices.length > 0 ? Math.max(...prices) : 0,
+    totalStock: stocks.reduce((sum: number, stock: number) => sum + stock, 0),
+    inStock: stocks.some((stock: number) => stock > 0),
+
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+};
+
+const applySorting = (results: any[], sortBy?: string) => {
+  if (sortBy === 'price_asc') {
+    return results.sort((a, b) => {
+      const minA = Math.min(...a.variants.map((v: any) => v.price));
+      const minB = Math.min(...b.variants.map((v: any) => v.price));
+      return minA - minB;
+    });
+  } else if (sortBy === 'price_desc') {
+    return results.sort((a, b) => {
+      const minA = Math.min(...a.variants.map((v: any) => v.price));
+      const minB = Math.min(...b.variants.map((v: any) => v.price));
+      return minB - minA;
+    });
+  }
+  
+  return results;
+};
+
 export const ProductServices = {
   createProduct,
   getAllProducts,
+  getAllProductsAdmin,
   getProduct,
   updateProduct,
   deleteProduct,
-  getAllProductsAdmin,
   getTrendingProducts,
   getNavbarProducts,
+  getFeaturedProducts,
+  getNewArrivals,
+  getProductsByCategory,
+  getRelatedProducts,
+  searchProducts,
+  getProductVariants,
+  updateVariantStock,
+  getProductAnalytics,
+  getLowStockProducts,
+  getBestsellers,
 };
