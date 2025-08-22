@@ -1,5 +1,4 @@
-import { Unit } from '@prisma/client';
-import { IProductVariant } from './product.interface';
+import { IProductVariant } from '../modules/Product/product.interface';
 
 /**
  * Generate SKU based on product details and variant
@@ -8,7 +7,7 @@ export const generateSKU = (
   productName: string,
   brand?: string,
   size?: number,
-  unit?: Unit
+  unit?: string
 ): string => {
   const brandCode = brand ? brand.substring(0, 3).toUpperCase() : 'GEN';
   const nameCode = productName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, '');
@@ -74,7 +73,7 @@ export const getBestSellingVariants = (variants: any[]): any[] => {
 /**
  * Format perfume size for display
  */
-export const formatSize = (size: number, unit: Unit): string => {
+export const formatSize = (size: number, unit: string): string => {
   switch (unit) {
     case 'ML':
       return `${size} ml`;

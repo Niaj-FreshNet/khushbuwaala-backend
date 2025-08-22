@@ -1,9 +1,8 @@
-import { Unit, OrderStatus } from '@prisma/client';
 
 // Base Product Variant Interface (aligned with schema)
 export interface IProductVariant {
   sku: string;
-  unit: Unit;
+  unit: string;
   size: number; // Changed from string to number as per schema
   price: number;
   stock: number; // Changed from quantity to stock as per schema
@@ -144,7 +143,7 @@ export interface IProductResponse {
 export interface IProductVariantResponse {
   id: string;
   sku: string;
-  unit: Unit;
+  unit: string;
   size: number;
   price: number;
   stock: number;

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { NestedFilter, } from '../../helpers/queryBuilder';
+import { NestedFilter, rangeFilteringParams, } from '../../helpers/queryBuilder';
 
 // Basic filtering fields
 export const productFilterFields: string[] = [
@@ -43,22 +43,22 @@ export const productNestedFilters: NestedFilter[] = [
 ];
 
 // Range filters
-// export const productRangeFilter: rangeFilteringParams[] = [
-//   {
-//     field: 'price',
-//     nestedField: 'variants',
-//     maxQueryKey: 'maxPrice',
-//     minQueryKey: 'minPrice',
-//     dataType: 'number',
-//   },
-//   {
-//     field: 'stock',
-//     nestedField: 'variants',
-//     maxQueryKey: 'maxStock',
-//     minQueryKey: 'minStock',
-//     dataType: 'number',
-//   }
-// ];
+export const productRangeFilter: rangeFilteringParams[] = [
+  {
+    field: 'price',
+    nestedField: 'variants',
+    maxQueryKey: 'maxPrice',
+    minQueryKey: 'minPrice',
+    dataType: 'number',
+  },
+  {
+    field: 'stock',
+    nestedField: 'variants',
+    maxQueryKey: 'maxStock',
+    minQueryKey: 'minStock',
+    dataType: 'number',
+  }
+];
 
 // Prisma include config for basic product queries
 export const productInclude: Prisma.ProductInclude = {

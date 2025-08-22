@@ -17,7 +17,7 @@ import {
   productFilterFields,
   productSearchFields,
   productArraySearchFields,
-  productNestedFilters,
+  productNestedFilters,3
   productRangeFilter,
   productInclude,
   productDetailInclude,

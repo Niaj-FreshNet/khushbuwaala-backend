@@ -6,7 +6,7 @@ export type NestedFilter = {
   queryFields: string[];
 };
 
-export interface rangeFilteringPrams {
+export interface rangeFilteringParams {
   field: string;
   nestedField?: string;
   maxQueryKey: string;

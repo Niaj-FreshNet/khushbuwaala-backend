@@ -51,27 +51,6 @@ const createProduct = catchAsync(async (req, res) => {
   });
 });
 
-export const ProductController = {
-  createProduct,
-  getAllProducts,
-  getAllProductsAdmin,
-  getProduct,
-  updateProduct,
-  deleteProduct,
-  getTrendingProducts,
-  getNavbarProducts,
-  getFeaturedProducts,
-  getNewArrivals,
-  getProductsByCategory,
-  getRelatedProducts,
-  searchProducts,
-  getProductVariants,
-  updateVariantStock,
-  getProductAnalytics,
-  getLowStockProducts,
-  getBestsellers,
-};
-
 // Get All Products (Public)
 const getAllProducts = catchAsync(async (req, res) => {
   const result = await ProductServices.getAllProducts(req.query);
@@ -316,3 +295,27 @@ const getBestsellers = catchAsync(async (req, res) => {
     success: true,
     message: 'Bestsellers retrieved successfully',
     data: result,
+  });
+});
+
+
+export const ProductController = {
+  createProduct,
+  getAllProducts,
+  getAllProductsAdmin,
+  getProduct,
+  updateProduct,
+  deleteProduct,
+  getTrendingProducts,
+  getNavbarProducts,
+  getFeaturedProducts,
+  getNewArrivals,
+  getProductsByCategory,
+  getRelatedProducts,
+  searchProducts,
+  getProductVariants,
+  updateVariantStock,
+  getProductAnalytics,
+  getLowStockProducts,
+  getBestsellers,
+};
