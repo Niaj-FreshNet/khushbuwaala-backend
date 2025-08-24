@@ -26,13 +26,13 @@ router.get(
 
 router.get('/get-product/:id', ProductController.getProduct);
 
-// router.patch(
-//   '/update-product/:id',
-//   auth('ADMIN'),
-//   upload.array('images', 10),
-//   validateRequest(ProductValidation.updateProductZodSchema),
-//   ProductController.updateProduct
-// );
+router.patch(
+  '/update-product/:id',
+  auth('ADMIN'),
+  upload.array('images', 10),
+  validateRequest(ProductValidation.updateProductZodSchema),
+  ProductController.updateProduct
+);
 
 router.delete(
   '/delete-product/:id',
@@ -45,17 +45,17 @@ router.get('/get-trending-products', ProductController.getTrendingProducts);
 router.get('/get-navbar-products', ProductController.getNavbarProducts);
 router.get('/get-featured-products', ProductController.getFeaturedProducts);
 router.get('/get-new-arrivals', ProductController.getNewArrivals);
-// router.get('/get-products-by-category/:categoryId', ProductController.getProductsByCategory);
+router.get('/get-products-by-category/:categoryId', ProductController.getProductsByCategory);
 router.get('/get-related-products/:productId', ProductController.getRelatedProducts);
 router.get('/search-products', ProductController.searchProducts);
 
 // Product Variants Routes
 router.get('/get-product-variants/:productId', ProductController.getProductVariants);
-// router.patch(
-//   '/update-variant-stock/:variantId',
-//   auth('ADMIN'),
-//   ProductController.updateVariantStock
-// );
+router.patch(
+  '/update-variant-stock/:variantId',
+  auth('ADMIN'),
+  ProductController.updateVariantStock
+);
 
 // Product Analytics Routes
 router.get('/get-product-analytics', auth('ADMIN'), ProductController.getProductAnalytics);
