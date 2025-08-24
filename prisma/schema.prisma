@@ -45,28 +45,28 @@ enum Unit {
 }
 
 model User {
-  id                      String     @id @default(auto()) @map("_id") @db.ObjectId
+  id                      String    @id @default(auto()) @map("_id") @db.ObjectId
   name                    String
-  email                   String     @unique
+  email                   String    @unique
   password                String?
   imageUrl                String?
   contact                 String?
   address                 String?
-  role                    Role       @default(USER)
-  isVerified              Boolean    @default(false)
+  role                    Role      @default(USER)
+  isVerified              Boolean   @default(false)
   resetToken              String?
   resetTokenExpiry        DateTime?
   verificationToken       String?
   verificationTokenExpiry DateTime?
-  createdAt               DateTime   @default(now())
-  updatedAt               DateTime   @updatedAt
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   Blog           Blog[]
   Review         Review[]
-  wishlist       wishlist[]
+  wishlist       Wishlist[]
   Expense        Expense[]
-  customerOrders Order[] @relation("CustomerOrders")
-  salesmanOrders Order[] @relation("SalesmanOrders")
+  customerOrders Order[]    @relation("CustomerOrders")
+  salesmanOrders Order[]    @relation("SalesmanOrders")
 
   @@map("users")
 }
@@ -84,48 +84,49 @@ model Category {
 }
 
 model Product {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  name          String
-  description   String
-  primaryImage  String
-  otherImages   String[]
-  videoUrl      String?
-  tags          String[]
-  salesCount    Int      @default(0)
-  published     Boolean  @default(false)
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  description  String
+  primaryImage String
+  otherImages  String[]
+  videoUrl     String?
+  tags         String[]
+  salesCount   Int      @default(0)
+  published    Boolean  @default(false)
 
   // Perfume specifications
-  origin        String?
-  brand         String?
-  gender        String?
-  perfumeNotes  Json?     // { top: [...], middle: [...], base: [...] }
-  accords       String[]
-  performance   String?
-  longevity     String?
-  projection    String?
-  sillage       String?
-  bestFor       String[]
+  origin       String?
+  brand        String?
+  gender       String?
+  perfumeNotes Json? // { top: [...], middle: [...], base: [...] }
+  accords      String[]
+  performance  String?
+  longevity    String?
+  projection   String?
+  sillage      String?
+  bestFor      String[]
 
-  materialId    String   @db.ObjectId
-  categoryId    String   @db.ObjectId
-  category      Category @relation(fields: [categoryId], references: [id])
+  categoryId String   @db.ObjectId
+  category   Category @relation(fields: [categoryId], references: [id])
 
   // Variants and combos
-  variants        ProductVariant[]
-  comboVariants   ComboVariant[]
+  variants      ProductVariant[]
+  comboVariants ComboVariant[]
 
   // Discounts (can be applied per product)
-  discounts       Discount[]
+  discounts Discount[]
 
   // Related products (self-relation)
   // relatedProducts Product[] @relation("RelatedProducts", references: [id])
   // relatedTo       Product[] @relation("RelatedProducts")  
 
   // Reviews
-  Review          Review[]
+  Review Review[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  wishlist Wishlist[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("products")
 }
@@ -135,30 +136,30 @@ model ProductVariant {
   productId String   @db.ObjectId
   sku       String   @unique
   unit      Unit
-  size      Float       // e.g. 3, 6, 12 ml or 100, 500 gm
+  size      Float // e.g. 3, 6, 12 ml or 100, 500 gm
   price     Float
-  stock     Float       // tracks ml or gm left in inventory
+  stock     Float // tracks ml or gm left in inventory
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  product  Product    @relation(fields: [productId], references: [id])
-  wishlist wishlist[]
+  product       Product        @relation(fields: [productId], references: [id])
+  // wishlist wishlist[]
   comboVariants ComboVariant[]
 
   @@map("product_variants")
 }
 
 model ComboProduct {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  description String?
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  description  String?
   primaryImage String
   otherImages  String[]
-  price     Float
-  published Boolean @default(false)
-  tags      String[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  price        Float
+  published    Boolean  @default(false)
+  tags         String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   variants ComboVariant[]
 
@@ -166,14 +167,14 @@ model ComboProduct {
 }
 
 model ComboVariant {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  comboId     String   @db.ObjectId
-  productId   String   @db.ObjectId
-  variantId   String   @db.ObjectId
-  quantity    Int      @default(1)
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  comboId   String @db.ObjectId
+  productId String @db.ObjectId
+  variantId String @db.ObjectId
+  quantity  Int    @default(1)
 
-  combo   ComboProduct  @relation(fields: [comboId], references: [id])
-  product Product       @relation(fields: [productId], references: [id])
+  combo   ComboProduct   @relation(fields: [comboId], references: [id])
+  product Product        @relation(fields: [productId], references: [id])
   variant ProductVariant @relation(fields: [variantId], references: [id])
 
   @@map("combo_variants")
@@ -189,38 +190,40 @@ model Order {
   orderSource OrderSource @default(WEBSITE)
 
   // Website orders
-  customerId  String?     @db.ObjectId
-  customer    User?       @relation("CustomerOrders", fields: [customerId], references: [id])
+  customerId String? @db.ObjectId
+  customer   User?   @relation("CustomerOrders", fields: [customerId], references: [id])
 
+  productIds  String[]
+  
   // Manual sales
-  salesmanId  String?     @db.ObjectId
-  salesman    User?       @relation("SalesmanOrders", fields: [salesmanId], references: [id])
-  saleType    SaleType?   @default(SINGLE)
+  salesmanId String?   @db.ObjectId
+  salesman   User?     @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  saleType   SaleType? @default(SINGLE)
 
   // Optional walk-in customer info
-  name        String?
-  phone       String?
-  address     String?
+  name    String?
+  phone   String?
+  address String?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("orders")
 }
 
 model Discount {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  productId   String   @db.ObjectId
-  code        String?  // e.g., "SUMMER25", optional if auto discount
-  type        String   // "percentage" | "fixed"
-  value       Float
-  maxUsage    Int?     // Optional: max number of times the discount can be used
-  startDate   DateTime?
-  endDate     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  productId String    @db.ObjectId
+  code      String? // e.g., "SUMMER25", optional if auto discount
+  type      String // "percentage" | "fixed"
+  value     Float
+  maxUsage  Int? // Optional: max number of times the discount can be used
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  product     Product @relation(fields: [productId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
 }
 
 model Expense {
@@ -234,11 +237,11 @@ model Expense {
   reference   String?
   status      ExpenseStatus @default(PENDING)
 
-  userId      String?       @db.ObjectId
-  user        User?         @relation(fields: [userId], references: [id])
+  userId String? @db.ObjectId
+  user   User?   @relation(fields: [userId], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("expenses")
 }
@@ -259,10 +262,10 @@ model Blog {
 }
 
 model Review {
-  id      String @id @default(auto()) @map("_id") @db.ObjectId
-  rating  Int
-  title   String
-  comment String
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  rating      Int
+  title       String
+  comment     String
   isPublished Boolean @default(false)
 
   productId String @db.ObjectId
@@ -274,12 +277,12 @@ model Review {
   updatedAt DateTime @updatedAt
 }
 
-model wishlist {
-  id        String         @id @default(auto()) @map("_id") @db.ObjectId
-  variantId String         @db.ObjectId
-  userId    String         @db.ObjectId
-  user      User           @relation(fields: [userId], references: [id])
-  variant   ProductVariant @relation(fields: [variantId], references: [id])
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+model Wishlist {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId String   @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

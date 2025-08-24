@@ -78,7 +78,7 @@ export interface IUpdateProduct {
 // Query Interfaces
 export interface IProductQuery {
   search?: string;
-  category?: string;
+  categories: { id: string; name: string }[]; // update here
   brand?: string;
   gender?: string;
   origin?: string;
@@ -91,6 +91,7 @@ export interface IProductQuery {
   sortBy?: 'name' | 'price_asc' | 'price_desc' | 'newest' | 'oldest' | 'popularity';
   page?: number;
   limit?: number;
+  [key: string]: unknown;
 }
 
 // Response Interfaces
@@ -192,7 +193,7 @@ export interface IProductSearchResult {
   };
   filters: {
     brands: string[];
-    categories: string[];
+    categories: { id: string; name: string }[];
     priceRange: {
       min: number;
       max: number;

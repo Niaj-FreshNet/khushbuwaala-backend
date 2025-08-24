@@ -9,7 +9,7 @@ import {
   COMMON_ACCORDS,
   BEST_FOR_OCCASIONS,
   PRODUCT_VALIDATION
-} from './product.constant';
+} from '../modules/Product/product.constant';
 
 // Perfume Notes Schema
 const perfumeNotesSchema = z.object({

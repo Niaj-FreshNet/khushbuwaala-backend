@@ -5,17 +5,16 @@ import sendResponse from '../../utils/sendResponse';
 import { ProductServices } from './product.service';
 import { IProduct, IUpdateProduct } from './product.interface';
 import { PRODUCT_ERROR_MESSAGES } from './product.constant';
+import { parseProductQuery } from '../../helpers/queryBuilder';
+// import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 
 // Create Product
 const createProduct = catchAsync(async (req, res) => {
-  const { categoryId, materialId, variants } = req.body;
+  const { categoryId, variants } = req.body;
 
   // Validation
   if (!categoryId) {
     throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
-  }
-  if (!materialId) {
-    throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.MATERIAL_REQUIRED);
   }
 
   // Image handling
@@ -53,7 +52,9 @@ const createProduct = catchAsync(async (req, res) => {
 
 // Get All Products (Public)
 const getAllProducts = catchAsync(async (req, res) => {
-  const result = await ProductServices.getAllProducts(req.query);
+  const query = parseProductQuery(req.query);
+
+  const result = await ProductServices.getAllProducts(query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -66,7 +67,9 @@ const getAllProducts = catchAsync(async (req, res) => {
 
 // Get All Products (Admin)
 const getAllProductsAdmin = catchAsync(async (req, res) => {
-  const result = await ProductServices.getAllProductsAdmin(req.query);
+  const query = parseProductQuery(req.query);
+
+  const result = await ProductServices.getAllProductsAdmin(query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -195,7 +198,9 @@ const getNewArrivals = catchAsync(async (req, res) => {
 // Get Products by Category
 const getProductsByCategory = catchAsync(async (req, res) => {
   const { categoryId } = req.params;
-  const result = await ProductServices.getProductsByCategory(categoryId, req.query);
+  const query = parseProductQuery(req.query);
+
+  const result = await ProductServices.getProductsByCategory(categoryId, query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -221,7 +226,9 @@ const getRelatedProducts = catchAsync(async (req, res) => {
 
 // Search Products
 const searchProducts = catchAsync(async (req, res) => {
-  const result = await ProductServices.searchProducts(req.query);
+  const query = parseProductQuery(req.query);
+
+  const result = await ProductServices.searchProducts(query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
