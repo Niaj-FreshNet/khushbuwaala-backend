@@ -33,9 +33,10 @@ export interface IProduct {
   sillage?: string;
   bestFor: string[];
   
-  materialId: string;
   categoryId: string;
   published: boolean;
+
+  stock: number;
   variants: IProductVariant[];
 }
 
@@ -64,7 +65,6 @@ export interface IUpdateProduct {
   sillage?: string;
   bestFor?: string[];
   
-  materialId?: string;
   categoryId?: string;
   published?: boolean;
   
@@ -72,6 +72,7 @@ export interface IUpdateProduct {
   imagesToKeep?: string[];
   newImages?: string[];
   
+  stock?: number;
   variants?: IProductVariant[];
 }
 
@@ -177,6 +178,7 @@ export interface IProductAnalytics {
 
 // Stock Update Interface
 export interface IStockUpdate {
+  productId: string;
   variantId: string;
   newStock: number;
   reason?: string;

@@ -10,7 +10,8 @@ export const productFilterFields: string[] = [
   'performance',
   'longevity',
   'projection',
-  'sillage'
+  'sillage',
+  'stock'
 ];
 
 // Searchable fields
@@ -76,7 +77,7 @@ export const productInclude: Prisma.ProductInclude = {
       unit: true,
       size: true,
       price: true,
-      stock: true,
+      // stock: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -129,6 +130,7 @@ export const productAdminInclude: Prisma.ProductInclude = {
       },
     },
   },
+  // stock: true,
   discounts: true,
   // wishlist: true,
   comboVariants: true
@@ -270,6 +272,7 @@ export const CACHE_KEYS = {
 // Error messages
 export const PRODUCT_ERROR_MESSAGES = {
   NOT_FOUND: 'Product not found',
+  PRODUCT_NOT_FOUND: 'Product not found',
   VARIANT_NOT_FOUND: 'Product variant not found',
   INSUFFICIENT_STOCK: 'Insufficient stock available',
   INVALID_VARIANT_DATA: 'Invalid variant data provided',

@@ -29,6 +29,7 @@ import { Unit } from '@prisma/client';
 
 // Create Product
 const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
+  console.log()
   // Check if category exists
   const categoryExists = await prisma.category.findUnique({
     where: { id: payload.categoryId },
@@ -71,13 +72,15 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
       categoryId: payload.categoryId,
       published: payload.published,
 
+      stock: payload.stock,
+
       variants: {
         create: payload.variants.map((variant) => ({
           sku: variant.sku,
           unit: Unit.ML,
           size: variant.size,
           price: variant.price,
-          stock: variant.stock,
+          // stock: variant.stock,
         })),
       },
     },
@@ -271,7 +274,8 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
       ...(payload.sillage !== undefined && { sillage: payload.sillage }),
       ...(payload.bestFor && { bestFor: payload.bestFor }),
 
-      ...(payload.materialId && { materialId: payload.materialId }),
+      ...(payload.stock !== undefined && { origin: payload.origin }),
+
       ...(payload.categoryId && { categoryId: payload.categoryId }),
       ...(typeof payload.published === 'boolean' && { published: payload.published }),
     },
@@ -680,24 +684,56 @@ const getProductVariants = async (productId: string) => {
 };
 
 // Update Variant Stock
-const updateVariantStock = async (variantId: string, newStock: number, reason?: string) => {
-  const variant = await prisma.productVariant.findUnique({
-    where: { id: variantId },
+// const updateVariantStock = async (variantId: string, newStock: number, reason?: string) => {
+//   const variant = await prisma.productVariant.findUnique({
+//     where: { id: variantId },
+//   });
+
+//   if (!variant) {
+//     throw new AppError(404, PRODUCT_ERROR_MESSAGES.VARIANT_NOT_FOUND);
+//   }
+
+//   const updatedVariant = await prisma.productVariant.update({
+//     where: { id: variantId },
+//     data: { stock: newStock },
+//   });
+
+//   // Optional: Log stock change for audit trail
+//   // You can create a StockLog model for this
+
+//   return updatedVariant;
+// };
+
+// Update Product Stock
+const updateProductStock = async (productId: string, addedStock: number, reason?: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
   });
 
-  if (!variant) {
-    throw new AppError(404, PRODUCT_ERROR_MESSAGES.VARIANT_NOT_FOUND);
+  if (!product) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
   }
 
-  const updatedVariant = await prisma.productVariant.update({
-    where: { id: variantId },
-    data: { stock: newStock },
+  const newTotalStock = (product.stock ?? 0) + addedStock;
+
+  const updatedProduct = await prisma.product.update({
+    where: { id: productId },
+    data: {
+      stock: newTotalStock,
+    },
   });
 
-  // Optional: Log stock change for audit trail
-  // You can create a StockLog model for this
+  // 🔥 Optional: create a StockLog entry for auditing
+  // await prisma.stockLog.create({
+  //   data: {
+  //     productId,
+  //     change: addedStock,
+  //     newStock: newTotalStock,
+  //     reason: reason || "Stock updated",
+  //   },
+  // });
 
-  return updatedVariant;
+  return updatedProduct;
 };
 
 // Get Product Analytics
@@ -728,7 +764,11 @@ const getProductAnalytics = async (): Promise<IProductAnalytics> => {
       _count: { _all: true },
       where: { published: true, brand: { not: null } },
     }),
-    prisma.productVariant.aggregate({
+    // prisma.productVariant.aggregate({
+    //   where: { stock: { lte: QUERY_DEFAULTS.LOW_STOCK_THRESHOLD } },
+    //   _count: { _all: true },
+    // }),
+    prisma.product.aggregate({
       where: { stock: { lte: QUERY_DEFAULTS.LOW_STOCK_THRESHOLD } },
       _count: { _all: true },
     }),
@@ -756,7 +796,11 @@ const getProductAnalytics = async (): Promise<IProductAnalytics> => {
     percentage: Math.round((stat._count._all / publishedProducts) * 100),
   }));
 
-  const outOfStockCount = await prisma.productVariant.count({
+  // const outOfStockCount = await prisma.productVariant.count({
+  //   where: { stock: 0 },
+  // });
+
+  const outOfStockCount = await prisma.product.count({
     where: { stock: 0 },
   });
 
@@ -775,19 +819,46 @@ const getProductAnalytics = async (): Promise<IProductAnalytics> => {
 };
 
 // Get Low Stock Products
+// const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_THRESHOLD) => {
+//   const products = await prisma.product.findMany({
+//     where: {
+//       variants: {
+//         some: {
+//           stock: { lte: threshold },
+//         },
+//       },
+//     },
+//     include: {
+//       variants: {
+//         where: { stock: { lte: threshold } },
+//       },
+//       category: { select: { categoryName: true } },
+//     },
+//     orderBy: { name: 'asc' },
+//   });
+
+//   return products.map(product => ({
+//     id: product.id,
+//     name: product.name,
+//     category: product.category.categoryName,
+//     lowStockVariants: product.variants.map(v => ({
+//       id: v.id,
+//       sku: v.sku,
+//       size: v.size,
+//       unit: v.unit,
+//       stock: v.stock,
+//     })),
+//   }));
+// };
+
+// Get Low Stock Products
 const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_THRESHOLD) => {
   const products = await prisma.product.findMany({
     where: {
-      variants: {
-        some: {
-          stock: { lte: threshold },
-        },
-      },
+      stock: { lte: threshold }, // check stock on product
     },
     include: {
-      variants: {
-        where: { stock: { lte: threshold } },
-      },
+      variants: true, // include variants for display
       category: { select: { categoryName: true } },
     },
     orderBy: { name: 'asc' },
@@ -797,12 +868,14 @@ const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_
     id: product.id,
     name: product.name,
     category: product.category.categoryName,
-    lowStockVariants: product.variants.map(v => ({
+    stock: product.stock, // product-level stock
+    variants: product.variants.map(v => ({
       id: v.id,
       sku: v.sku,
       size: v.size,
       unit: v.unit,
-      stock: v.stock,
+      price: v.price,
+      // discount: v.discount,
     })),
   }));
 };
@@ -902,7 +975,8 @@ export const ProductServices = {
   getRelatedProducts,
   searchProducts,
   getProductVariants,
-  updateVariantStock,
+  // updateVariantStock,
+  updateProductStock,
   getProductAnalytics,
   getLowStockProducts,
   getBestsellers,

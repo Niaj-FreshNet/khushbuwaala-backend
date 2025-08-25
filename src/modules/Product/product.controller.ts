@@ -10,6 +10,8 @@ import { parseProductQuery } from '../../helpers/queryBuilder';
 
 // Create Product
 const createProduct = catchAsync(async (req, res) => {
+  console.log("hello")
+  console.log(req.body)
   const { categoryId, variants } = req.body;
 
   // Validation
@@ -32,13 +34,15 @@ const createProduct = catchAsync(async (req, res) => {
     ...req.body,
     primaryImage: imageUrls[0],
     otherImages: imageUrls.slice(1),
-    published: req.body.published === 'true',
-    tags: typeof req.body.tags === 'string' ? req.body.tags.split(',') : req.body.tags || [],
-    accords: typeof req.body.accords === 'string' ? req.body.accords.split(',') : req.body.accords || [],
-    bestFor: typeof req.body.bestFor === 'string' ? req.body.bestFor.split(',') : req.body.bestFor || [],
-    perfumeNotes: req.body.perfumeNotes ? JSON.parse(req.body.perfumeNotes) : undefined,
-    variants: typeof variants === 'string' ? JSON.parse(variants) : variants,
+    published: req.body.published === true || req.body.published === 'true',
+    tags: req.body.tags || [],
+    accords: req.body.accords || [],
+    bestFor: req.body.bestFor || [],
+    perfumeNotes: req.body.perfumeNotes,
+    stock: req.body.stock,
+    variants: variants,
   };
+  console.log("parsed data:", parsedData)
 
   const result = await ProductServices.createProduct(parsedData as IProduct);
 
@@ -113,14 +117,15 @@ const updateProduct = catchAsync(async (req, res) => {
   // Parse data
   const parsedData = {
     ...req.body,
-    published: req.body.published === 'true' ? true : req.body.published === 'false' ? false : undefined,
-    tags: typeof req.body.tags === 'string' ? req.body.tags.split(',') : req.body.tags,
-    accords: typeof req.body.accords === 'string' ? req.body.accords.split(',') : req.body.accords,
-    bestFor: typeof req.body.bestFor === 'string' ? req.body.bestFor.split(',') : req.body.bestFor,
-    perfumeNotes: req.body.perfumeNotes ? JSON.parse(req.body.perfumeNotes) : undefined,
-    variants: typeof req.body.variants === 'string' ? JSON.parse(req.body.variants) : req.body.variants,
-    imagesToKeep: req.body.imagesToKeep ? 
-      typeof req.body.imagesToKeep === 'string' ? JSON.parse(req.body.imagesToKeep) : req.body.imagesToKeep : [],
+    published: req.body.published,
+    tags: req.body.tags,
+    accords: req.body.accords,
+    bestFor: req.body.bestFor,
+    perfumeNotes: req.body.perfumeNotes,
+    stock: req.body.stock,
+    variants: req.body.variants,
+    imagesToKeep: req.body.imagesToKeep ?
+      req.body.imagesToKeep : [],
     newImages: newImageUrls,
   };
 
@@ -254,16 +259,31 @@ const getProductVariants = catchAsync(async (req, res) => {
 });
 
 // Update Variant Stock
-const updateVariantStock = catchAsync(async (req, res) => {
-  const { variantId } = req.params;
-  const { newStock, reason } = req.body;
+// const updateVariantStock = catchAsync(async (req, res) => {
+//   const { variantId } = req.params;
+//   const { newStock, reason } = req.body;
 
-  const result = await ProductServices.updateVariantStock(variantId, newStock, reason);
+//   const result = await ProductServices.updateVariantStock(variantId, newStock, reason);
+
+//   sendResponse(res, {
+//     statusCode: httpStatus.OK,
+//     success: true,
+//     message: 'Variant stock updated successfully',
+//     data: result,
+//   });
+// });
+
+// Update product Stock
+const updateProductStock = catchAsync(async (req, res) => {
+  const { productId } = req.params;
+  const { addedStock, reason } = req.body;
+
+  const result = await ProductServices.updateProductStock(productId, Number(addedStock), reason);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'Variant stock updated successfully',
+    message: 'Product stock updated successfully',
     data: result,
   });
 });
@@ -321,7 +341,8 @@ export const ProductController = {
   getRelatedProducts,
   searchProducts,
   getProductVariants,
-  updateVariantStock,
+  // updateVariantStock,
+  updateProductStock,
   getProductAnalytics,
   getLowStockProducts,
   getBestsellers,

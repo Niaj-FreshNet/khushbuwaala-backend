@@ -1,9 +1,10 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { ProductController } from './product.controller';
 import auth from '../../middlewares/auth';
 import { upload } from '../../helpers/fileUploader';
 import validateRequest from '../../middlewares/validateRequest';
 import { ProductValidation } from '../../validations/product.validation';
+import { parseJsonFields } from '../../middlewares/parseJson';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ router.post(
   '/create-product',
   auth('ADMIN'),
   upload.array('images', 10), // Max 10 images
+  parseJsonFields,
   validateRequest(ProductValidation.createProductZodSchema),
   ProductController.createProduct
 );
@@ -30,6 +32,7 @@ router.patch(
   '/update-product/:id',
   auth('ADMIN'),
   upload.array('images', 10),
+  parseJsonFields,
   validateRequest(ProductValidation.updateProductZodSchema),
   ProductController.updateProduct
 );
@@ -51,11 +54,11 @@ router.get('/search-products', ProductController.searchProducts);
 
 // Product Variants Routes
 router.get('/get-product-variants/:productId', ProductController.getProductVariants);
-router.patch(
-  '/update-variant-stock/:variantId',
-  auth('ADMIN'),
-  ProductController.updateVariantStock
-);
+// router.patch(
+//   '/update-variant-stock/:variantId',
+//   auth('ADMIN'),
+//   ProductController.updateVariantStock
+// );
 
 // Product Analytics Routes
 router.get('/get-product-analytics', auth('ADMIN'), ProductController.getProductAnalytics);
