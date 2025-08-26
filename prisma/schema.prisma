@@ -44,6 +44,12 @@ enum Unit {
   PIECE
 }
 
+enum CartItemStatus {
+  IN_CART
+  ORDERED
+  SOLD
+}
+
 model User {
   id                      String    @id @default(auto()) @map("_id") @db.ObjectId
   name                    String
@@ -63,6 +69,7 @@ model User {
 
   Blog           Blog[]
   Review         Review[]
+  orderItems     CartItem[]
   wishlist       Wishlist[]
   Expense        Expense[]
   customerOrders Order[]    @relation("CustomerOrders")
@@ -127,7 +134,8 @@ model Product {
   // Reviews
   Review Review[]
 
-  wishlist Wishlist[]
+  orderItems CartItem[]
+  wishlist   Wishlist[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -150,7 +158,8 @@ model ProductVariant {
   // wishlist wishlist[]
   comboVariants ComboVariant[]
 
-  stocklogs StockLog[]
+  orderItems CartItem[]
+  stocklogs  StockLog[]
 
   // Discounts (can be applied per variant)
   discounts Discount[]
@@ -214,10 +223,40 @@ model Order {
   phone   String?
   address String?
 
+  // Relation to CartItem
+  orderItems CartItem[] @relation("Order_CartItems")
+
+  payments       Payment[]
+  orderDiscounts OrderDiscount[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("orders")
+}
+
+model CartItem {
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String? @db.ObjectId // optional, for guest carts
+  productId String  @db.ObjectId
+  variantId String? @db.ObjectId
+  quantity  Int     @default(1)
+  price     Float
+
+  status CartItemStatus @default(IN_CART) // IN_CART, ORDERED, SOLD
+
+  // Relations
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+  user    User?           @relation(fields: [userId], references: [id])
+
+  orderId String? @db.ObjectId
+  order   Order?  @relation("Order_CartItems", fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cart_items")
 }
 
 model StockLog {
@@ -229,6 +268,16 @@ model StockLog {
   change    Float // +10 (restock), -2 (sold), etc.
   reason    String // e.g. SALE, RETURN, ADJUSTMENT
   createdAt DateTime       @default(now())
+}
+
+model Payment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId   String   @db.ObjectId
+  amount    Float
+  method    String
+  status    String
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id])
 }
 
 model Discount {
@@ -245,8 +294,18 @@ model Discount {
   product Product         @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id])
 
+  OrderDiscount OrderDiscount[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model OrderDiscount {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId    String   @db.ObjectId
+  discountId String   @db.ObjectId
+  order      Order    @relation(fields: [orderId], references: [id])
+  discount   Discount @relation(fields: [discountId], references: [id])
 }
 
 model Expense {

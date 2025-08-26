@@ -11,7 +11,7 @@ import { OrderRoutes } from '../modules/Order/order.route';
 import { ReviewRoutes } from '../modules/Review/review.routes';
 import { OverviewRoutes } from '../modules/overview/overview.routes';
 import { WishlistRoutes } from '../modules/Wishlist/wishlist.route';
-import { SalesRoutes } from '../modules/Sale/sale.route';
+import { SalesRoutes } from '../modules/Sales/sales.route';
 import { ExpenseRoutes } from '../modules/Expense/expense.route';
 
 const router = express.Router();

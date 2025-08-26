@@ -54,11 +54,10 @@ router.get('/search-products', ProductController.searchProducts);
 
 // Product Variants Routes
 router.get('/get-product-variants/:productId', ProductController.getProductVariants);
-// router.patch(
-//   '/update-variant-stock/:variantId',
-//   auth('ADMIN'),
-//   ProductController.updateVariantStock
-// );
+// router.patch( '/update-variant-stock/:variantId', auth('ADMIN'), ProductController.updateVariantStock );
+
+// Add Product New Stock
+router.patch('/update-product-stock/:productId', auth('ADMIN'), ProductController.updateProductStock);
 
 // Product Analytics Routes
 router.get('/get-product-analytics', auth('ADMIN'), ProductController.getProductAnalytics);
