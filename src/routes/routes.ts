@@ -11,8 +11,9 @@ import { OrderRoutes } from '../modules/Order/order.route';
 import { ReviewRoutes } from '../modules/Review/review.routes';
 import { OverviewRoutes } from '../modules/overview/overview.routes';
 import { WishlistRoutes } from '../modules/Wishlist/wishlist.route';
-import { SalesRoutes } from '../modules/Sales/sales.route';
+import { SalesRoutes } from '../modules/Sales/sales.routes';
 import { ExpenseRoutes } from '../modules/Expense/expense.route';
+import { CartItemRoutes } from '../modules/Cart/cart.routes';
 
 const router = express.Router();
 
@@ -48,6 +49,10 @@ const moduleRoutes = [
   {
     path: '/payment',
     route: PaymentRoutes,
+  },
+  {
+    path: '/cart',
+    route: CartItemRoutes,
   },
   {
     path: '/order',
