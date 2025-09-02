@@ -12,6 +12,7 @@ export interface IProductVariant {
 export interface IProduct {
   name: string;
   description: string;
+  slug: string;
   primaryImage: string;
   otherImages?: string[];
   videoUrl?: string;
@@ -99,6 +100,7 @@ export interface IProductQuery {
 export interface IProductResponse {
   id: string;
   name: string;
+  slug: string;
   description: string;
   primaryImage: string;
   otherImages: string[];

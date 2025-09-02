@@ -52,6 +52,7 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
     data: {
       name: payload.name,
       description: payload.description,
+      slug: payload.slug,
       primaryImage: payload.primaryImage,
       otherImages: payload.otherImages || [],
       videoUrl: payload.videoUrl,
@@ -185,6 +186,39 @@ const getProduct = async (id: string): Promise<IProductResponse | null> => {
         { accords: { hasSome: product.accords } },
       ],
       id: { not: id },
+      published: true,
+    },
+    include: productInclude,
+    take: QUERY_DEFAULTS.RELATED_LIMIT,
+    orderBy: { salesCount: 'desc' },
+  });
+
+  const formattedProduct = formatProductResponse(product);
+
+  return {
+    ...formattedProduct,
+    relatedProducts: relatedProducts.map(formatProductResponse),
+  } as any;
+};
+
+// Get Product By Slug
+const getProductBySlug = async (slug: string): Promise<IProductResponse | null> => {
+  const product = await prisma.product.findUnique({
+    where: { slug },
+    include: productDetailInclude,
+  });
+
+  if (!product) return null;
+
+  // Get related products (similar to getProduct)
+  const relatedProducts = await prisma.product.findMany({
+    where: {
+      OR: [
+        { categoryId: product.categoryId },
+        { brand: product.brand },
+        { accords: { hasSome: product.accords } },
+      ],
+      id: { not: product.id },
       published: true,
     },
     include: productInclude,
@@ -905,6 +939,7 @@ const formatProductResponse = (product: any): IProductResponse => {
   return {
     id: product.id,
     name: product.name,
+    slug: product.slug,
     description: product.description,
     primaryImage: product.primaryImage,
     otherImages: product.otherImages || [],
@@ -965,6 +1000,7 @@ export const ProductServices = {
   getAllProducts,
   getAllProductsAdmin,
   getProduct,
+  getProductBySlug,
   updateProduct,
   deleteProduct,
   getTrendingProducts,
