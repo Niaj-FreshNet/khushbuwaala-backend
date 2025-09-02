@@ -123,7 +123,6 @@ export interface IProductResponse {
   sillage?: string;
   bestFor: string[];
   
-  materialId: string;
   categoryId: string;
   category?: {
     categoryName: string;

@@ -925,7 +925,6 @@ const formatProductResponse = (product: any): IProductResponse => {
     sillage: product.sillage,
     bestFor: product.bestFor || [],
 
-    materialId: product.materialId,
     categoryId: product.categoryId,
     category: product.category,
 
