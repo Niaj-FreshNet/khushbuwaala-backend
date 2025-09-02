@@ -101,6 +101,22 @@ const getProduct = catchAsync(async (req, res) => {
   });
 });
 
+const getProductBySlug = catchAsync(async (req, res) => {
+  const { slug } = req.params;
+  const result = await ProductServices.getProductBySlug(slug);
+
+  if (!result) {
+    throw new AppError(httpStatus.NOT_FOUND, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+  }
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Product retrieved successfully',
+    data: result,
+  });
+});
+
 // Update Product
 const updateProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
@@ -331,6 +347,7 @@ export const ProductController = {
   getAllProducts,
   getAllProductsAdmin,
   getProduct,
+  getProductBySlug,
   updateProduct,
   deleteProduct,
   getTrendingProducts,

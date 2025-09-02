@@ -93,6 +93,7 @@ model Category {
 model Product {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   name         String
+  slug         String   @unique
   description  String
   primaryImage String
   otherImages  String[]

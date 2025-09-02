@@ -28,6 +28,8 @@ router.get(
 
 router.get('/get-product/:id', ProductController.getProduct);
 
+router.get('/get-product-by-slug/:slug', ProductController.getProductBySlug);
+
 router.patch(
   '/update-product/:id',
   auth('ADMIN'),

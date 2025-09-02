@@ -1,7 +1,7 @@
 {
-  "name": "benglians-prisma-server",
+  "name": "khushbuwaala-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.ts",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
