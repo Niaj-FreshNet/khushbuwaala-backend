@@ -34,7 +34,7 @@ const createCheckoutSession = catchAsync(async (req, res) => {
 
   // Quantity check
   for (const item of cartItems) {
-    const variant = variants.find((v) => v.id === item.variantId);
+    const variant = variants.find((v: any) => v.id === item.variantId);
     if (!variant) {
       throw new AppError(404, `Variant not found for ID: ${item.variantId}`);
     }
@@ -48,7 +48,7 @@ const createCheckoutSession = catchAsync(async (req, res) => {
 
   // Stripe line items
   const line_items = cartItems.map((item: any) => {
-    const variant = variants.find((v) => v.id === item.variantId)!;
+    const variant = variants.find((v: any) => v.id === item.variantId)!;
     return {
       price_data: {
         currency: 'usd',
@@ -85,7 +85,7 @@ const createCheckoutSession = catchAsync(async (req, res) => {
     statusCode: 200,
     success: true,
     message: 'Checkout Session Created Successfully',
-    Data: { url: session.url },
+    data: { url: session.url },
   });
 });
 

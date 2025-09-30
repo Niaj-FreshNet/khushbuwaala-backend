@@ -1,5 +1,5 @@
-import { Prisma } from '@prisma/client';
 import { NestedFilter, rangeFilteringParams, } from '../../helpers/queryBuilder';
+import { Prisma } from '@prisma/client';
 
 // Basic filtering fields
 export const productFilterFields: string[] = [

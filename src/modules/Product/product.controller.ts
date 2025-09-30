@@ -14,9 +14,6 @@ const createProduct = catchAsync(async (req, res) => {
   if (!categoryId) {
     throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
   }
-  if (!materialId) {
-    throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.MATERIAL_REQUIRED);
-  }
 
   // Image handling
   if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
