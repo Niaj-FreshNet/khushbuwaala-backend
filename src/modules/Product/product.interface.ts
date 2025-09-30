@@ -12,6 +12,7 @@ export interface IProductVariant {
 export interface IProduct {
   name: string;
   description: string;
+  slug: string;
   primaryImage: string;
   otherImages?: string[];
   videoUrl?: string;
@@ -33,9 +34,10 @@ export interface IProduct {
   sillage?: string;
   bestFor: string[];
   
-  materialId: string;
   categoryId: string;
   published: boolean;
+
+  stock: number;
   variants: IProductVariant[];
 }
 
@@ -64,7 +66,6 @@ export interface IUpdateProduct {
   sillage?: string;
   bestFor?: string[];
   
-  materialId?: string;
   categoryId?: string;
   published?: boolean;
   
@@ -72,13 +73,14 @@ export interface IUpdateProduct {
   imagesToKeep?: string[];
   newImages?: string[];
   
+  stock?: number;
   variants?: IProductVariant[];
 }
 
 // Query Interfaces
 export interface IProductQuery {
   search?: string;
-  category?: string;
+  categories: { id: string; name: string }[]; // update here
   brand?: string;
   gender?: string;
   origin?: string;
@@ -91,12 +93,14 @@ export interface IProductQuery {
   sortBy?: 'name' | 'price_asc' | 'price_desc' | 'newest' | 'oldest' | 'popularity';
   page?: number;
   limit?: number;
+  [key: string]: unknown;
 }
 
 // Response Interfaces
 export interface IProductResponse {
   id: string;
   name: string;
+  slug: string;
   description: string;
   primaryImage: string;
   otherImages: string[];
@@ -121,7 +125,6 @@ export interface IProductResponse {
   sillage?: string;
   bestFor: string[];
   
-  materialId: string;
   categoryId: string;
   category?: {
     categoryName: string;
@@ -176,6 +179,7 @@ export interface IProductAnalytics {
 
 // Stock Update Interface
 export interface IStockUpdate {
+  productId: string;
   variantId: string;
   newStock: number;
   reason?: string;
@@ -192,7 +196,7 @@ export interface IProductSearchResult {
   };
   filters: {
     brands: string[];
-    categories: string[];
+    categories: { id: string; name: string }[];
     priceRange: {
       min: number;
       max: number;

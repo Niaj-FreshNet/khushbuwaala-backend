@@ -25,9 +25,11 @@ import {
   QUERY_DEFAULTS,
   PRODUCT_ERROR_MESSAGES,
 } from './product.constant';
+import { Unit } from '@prisma/client';
 
 // Create Product
 const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
+  console.log()
   // Check if category exists
   const categoryExists = await prisma.category.findUnique({
     where: { id: payload.categoryId },
@@ -50,11 +52,12 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
     data: {
       name: payload.name,
       description: payload.description,
+      slug: payload.slug,
       primaryImage: payload.primaryImage,
       otherImages: payload.otherImages || [],
       videoUrl: payload.videoUrl,
       tags: payload.tags,
-      
+
       // Perfume specifications
       origin: payload.origin,
       brand: payload.brand,
@@ -66,18 +69,19 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
       projection: payload.projection,
       sillage: payload.sillage,
       bestFor: payload.bestFor,
-      
-      materialId: payload.materialId,
+
       categoryId: payload.categoryId,
       published: payload.published,
-      
+
+      stock: payload.stock,
+
       variants: {
         create: payload.variants.map((variant) => ({
           sku: variant.sku,
-          unit: variant.unit,
+          unit: Unit.ML,
           size: variant.size,
           price: variant.price,
-          stock: variant.stock,
+          // stock: variant.stock,
         })),
       },
     },
@@ -90,7 +94,7 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
 // Get All Products (Public)
 const getAllProducts = async (query: IProductQuery) => {
   const queryBuilder = new QueryBuilder(query, prisma.product);
-  
+
   let results = await queryBuilder
     .filter(productFilterFields)
     .search(productSearchFields)
@@ -129,7 +133,7 @@ const getAllProducts = async (query: IProductQuery) => {
 // Get All Products (Admin)
 const getAllProductsAdmin = async (query: IProductQuery) => {
   const queryBuilder = new QueryBuilder(query, prisma.product);
-  
+
   let results = await queryBuilder
     .filter(productFilterFields)
     .search(productSearchFields)
@@ -190,7 +194,40 @@ const getProduct = async (id: string): Promise<IProductResponse | null> => {
   });
 
   const formattedProduct = formatProductResponse(product);
-  
+
+  return {
+    ...formattedProduct,
+    relatedProducts: relatedProducts.map(formatProductResponse),
+  } as any;
+};
+
+// Get Product By Slug
+const getProductBySlug = async (slug: string): Promise<IProductResponse | null> => {
+  const product = await prisma.product.findUnique({
+    where: { slug },
+    include: productDetailInclude,
+  });
+
+  if (!product) return null;
+
+  // Get related products (similar to getProduct)
+  const relatedProducts = await prisma.product.findMany({
+    where: {
+      OR: [
+        { categoryId: product.categoryId },
+        { brand: product.brand },
+        { accords: { hasSome: product.accords } },
+      ],
+      id: { not: product.id },
+      published: true,
+    },
+    include: productInclude,
+    take: QUERY_DEFAULTS.RELATED_LIMIT,
+    orderBy: { salesCount: 'desc' },
+  });
+
+  const formattedProduct = formatProductResponse(product);
+
   return {
     ...formattedProduct,
     relatedProducts: relatedProducts.map(formatProductResponse),
@@ -215,10 +252,10 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
   if (payload.imagesToKeep || payload.newImages) {
     const imagesToKeep = payload.imagesToKeep || [];
     const newImages = payload.newImages || [];
-    
+
     // Determine images to delete
     const currentImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
-    const imagesToDelete = currentImages.filter(img => 
+    const imagesToDelete = currentImages.filter(img =>
       img && !imagesToKeep.includes(img) && !newImages.includes(img)
     );
 
@@ -236,7 +273,7 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
   // Check for duplicate SKUs if variants are being updated
   if (payload.variants) {
     const existingSKUs = await prisma.productVariant.findMany({
-      where: { 
+      where: {
         sku: { in: payload.variants.map(v => v.sku) },
         productId: { not: id }
       },
@@ -258,7 +295,7 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
       ...(otherImages && { otherImages }),
       ...(payload.videoUrl !== undefined && { videoUrl: payload.videoUrl }),
       ...(payload.tags && { tags: payload.tags }),
-      
+
       // Perfume specifications
       ...(payload.origin !== undefined && { origin: payload.origin }),
       ...(payload.brand !== undefined && { brand: payload.brand }),
@@ -270,8 +307,9 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
       ...(payload.projection !== undefined && { projection: payload.projection }),
       ...(payload.sillage !== undefined && { sillage: payload.sillage }),
       ...(payload.bestFor && { bestFor: payload.bestFor }),
-      
-      ...(payload.materialId && { materialId: payload.materialId }),
+
+      ...(payload.stock !== undefined && { origin: payload.origin }),
+
       ...(payload.categoryId && { categoryId: payload.categoryId }),
       ...(typeof payload.published === 'boolean' && { published: payload.published }),
     },
@@ -281,11 +319,12 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
   // Replace variants if provided
   if (payload.variants) {
     await prisma.productVariant.deleteMany({ where: { productId: id } });
-    
+
     await prisma.productVariant.createMany({
       data: payload.variants.map((variant) => ({
         ...variant,
         productId: id,
+        unit: Unit.ML
       })),
     });
   }
@@ -303,8 +342,8 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
 const deleteProduct = async (id: string) => {
   const existingProduct = await prisma.product.findUnique({
     where: { id },
-    include: { 
-      variants: true, 
+    include: {
+      variants: true,
       Review: true,
       wishlist: true,
       comboVariants: true,
@@ -316,12 +355,11 @@ const deleteProduct = async (id: string) => {
   }
 
   // Check if product has active orders (optional business rule)
+
+
   const hasActiveOrders = await prisma.order.findFirst({
     where: {
-      cartItems: {
-        path: '$[*].productId',
-        equals: id,
-      },
+      productIds: { has: id }, // ✅ works on String[]
       status: { not: 'CANCEL' },
     },
   });
@@ -330,23 +368,24 @@ const deleteProduct = async (id: string) => {
     throw new AppError(400, PRODUCT_ERROR_MESSAGES.PRODUCT_PUBLISHED_CANNOT_DELETE);
   }
 
+
   // Delete related data
   await prisma.$transaction(async (tx) => {
     // Delete wishlist items
-    await tx.wishlist.deleteMany({ where: { variant: { productId: id } } });
-    
+    await tx.wishlist.deleteMany({ where: { productId: id } });
+
     // Delete combo variants
     await tx.comboVariant.deleteMany({ where: { productId: id } });
-    
+
     // Delete reviews
     await tx.review.deleteMany({ where: { productId: id } });
-    
+
     // Delete variants
     await tx.productVariant.deleteMany({ where: { productId: id } });
-    
+
     // Delete discounts
     await tx.discount.deleteMany({ where: { productId: id } });
-    
+
     // Delete product
     await tx.product.delete({ where: { id } });
   });
@@ -532,7 +571,7 @@ const getNewArrivals = async (): Promise<IProductResponse[]> => {
 const getProductsByCategory = async (categoryId: string, query: IProductQuery) => {
   const categoryQuery = { ...query, category: categoryId };
   const queryBuilder = new QueryBuilder(categoryQuery, prisma.product);
-  
+
   let results = await queryBuilder
     .filter(productFilterFields)
     .search(productSearchFields)
@@ -616,7 +655,7 @@ const getRelatedProducts = async (productId: string): Promise<IRelatedProductsRe
 // Search Products
 const searchProducts = async (query: IProductQuery): Promise<IProductSearchResult> => {
   const result = await getAllProducts(query);
-  
+
   // Get available filters
   const [brands, categories, priceRange, origins, accords] = await Promise.all([
     prisma.product.findMany({
@@ -657,6 +696,10 @@ const searchProducts = async (query: IProductQuery): Promise<IProductSearchResul
       origins: origins.map(o => o.origin!).filter(Boolean),
       accords: uniqueAccords,
     },
+    meta: {
+      ...result.meta,
+      totalPages: result.meta.totalPage,
+    },
   };
 };
 
@@ -675,24 +718,56 @@ const getProductVariants = async (productId: string) => {
 };
 
 // Update Variant Stock
-const updateVariantStock = async (variantId: string, newStock: number, reason?: string) => {
-  const variant = await prisma.productVariant.findUnique({
-    where: { id: variantId },
+// const updateVariantStock = async (variantId: string, newStock: number, reason?: string) => {
+//   const variant = await prisma.productVariant.findUnique({
+//     where: { id: variantId },
+//   });
+
+//   if (!variant) {
+//     throw new AppError(404, PRODUCT_ERROR_MESSAGES.VARIANT_NOT_FOUND);
+//   }
+
+//   const updatedVariant = await prisma.productVariant.update({
+//     where: { id: variantId },
+//     data: { stock: newStock },
+//   });
+
+//   // Optional: Log stock change for audit trail
+//   // You can create a StockLog model for this
+
+//   return updatedVariant;
+// };
+
+// Update Product Stock
+const updateProductStock = async (productId: string, addedStock: number, reason?: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
   });
 
-  if (!variant) {
-    throw new AppError(404, PRODUCT_ERROR_MESSAGES.VARIANT_NOT_FOUND);
+  if (!product) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
   }
 
-  const updatedVariant = await prisma.productVariant.update({
-    where: { id: variantId },
-    data: { stock: newStock },
+  const newTotalStock = (product.stock ?? 0) + addedStock;
+
+  const updatedProduct = await prisma.product.update({
+    where: { id: productId },
+    data: {
+      stock: newTotalStock,
+    },
   });
 
-  // Optional: Log stock change for audit trail
-  // You can create a StockLog model for this
-  
-  return updatedVariant;
+  // 🔥 Optional: create a StockLog entry for auditing
+  // await prisma.stockLog.create({
+  //   data: {
+  //     productId,
+  //     change: addedStock,
+  //     newStock: newTotalStock,
+  //     reason: reason || "Stock updated",
+  //   },
+  // });
+
+  return updatedProduct;
 };
 
 // Get Product Analytics
@@ -723,7 +798,11 @@ const getProductAnalytics = async (): Promise<IProductAnalytics> => {
       _count: { _all: true },
       where: { published: true, brand: { not: null } },
     }),
-    prisma.productVariant.aggregate({
+    // prisma.productVariant.aggregate({
+    //   where: { stock: { lte: QUERY_DEFAULTS.LOW_STOCK_THRESHOLD } },
+    //   _count: { _all: true },
+    // }),
+    prisma.product.aggregate({
       where: { stock: { lte: QUERY_DEFAULTS.LOW_STOCK_THRESHOLD } },
       _count: { _all: true },
     }),
@@ -751,7 +830,11 @@ const getProductAnalytics = async (): Promise<IProductAnalytics> => {
     percentage: Math.round((stat._count._all / publishedProducts) * 100),
   }));
 
-  const outOfStockCount = await prisma.productVariant.count({
+  // const outOfStockCount = await prisma.productVariant.count({
+  //   where: { stock: 0 },
+  // });
+
+  const outOfStockCount = await prisma.product.count({
     where: { stock: 0 },
   });
 
@@ -770,19 +853,46 @@ const getProductAnalytics = async (): Promise<IProductAnalytics> => {
 };
 
 // Get Low Stock Products
+// const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_THRESHOLD) => {
+//   const products = await prisma.product.findMany({
+//     where: {
+//       variants: {
+//         some: {
+//           stock: { lte: threshold },
+//         },
+//       },
+//     },
+//     include: {
+//       variants: {
+//         where: { stock: { lte: threshold } },
+//       },
+//       category: { select: { categoryName: true } },
+//     },
+//     orderBy: { name: 'asc' },
+//   });
+
+//   return products.map(product => ({
+//     id: product.id,
+//     name: product.name,
+//     category: product.category.categoryName,
+//     lowStockVariants: product.variants.map(v => ({
+//       id: v.id,
+//       sku: v.sku,
+//       size: v.size,
+//       unit: v.unit,
+//       stock: v.stock,
+//     })),
+//   }));
+// };
+
+// Get Low Stock Products
 const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_THRESHOLD) => {
   const products = await prisma.product.findMany({
     where: {
-      variants: {
-        some: {
-          stock: { lte: threshold },
-        },
-      },
+      stock: { lte: threshold }, // check stock on product
     },
     include: {
-      variants: {
-        where: { stock: { lte: threshold } },
-      },
+      variants: true, // include variants for display
       category: { select: { categoryName: true } },
     },
     orderBy: { name: 'asc' },
@@ -792,12 +902,14 @@ const getLowStockProducts = async (threshold: number = QUERY_DEFAULTS.LOW_STOCK_
     id: product.id,
     name: product.name,
     category: product.category.categoryName,
-    lowStockVariants: product.variants.map(v => ({
+    stock: product.stock, // product-level stock
+    variants: product.variants.map(v => ({
       id: v.id,
       sku: v.sku,
       size: v.size,
       unit: v.unit,
-      stock: v.stock,
+      price: v.price,
+      // discount: v.discount,
     })),
   }));
 };
@@ -827,6 +939,7 @@ const formatProductResponse = (product: any): IProductResponse => {
   return {
     id: product.id,
     name: product.name,
+    slug: product.slug,
     description: product.description,
     primaryImage: product.primaryImage,
     otherImages: product.otherImages || [],
@@ -847,7 +960,6 @@ const formatProductResponse = (product: any): IProductResponse => {
     sillage: product.sillage,
     bestFor: product.bestFor || [],
 
-    materialId: product.materialId,
     categoryId: product.categoryId,
     category: product.category,
 
@@ -878,7 +990,7 @@ const applySorting = (results: any[], sortBy?: string) => {
       return minB - minA;
     });
   }
-  
+
   return results;
 };
 
@@ -887,6 +999,7 @@ export const ProductServices = {
   getAllProducts,
   getAllProductsAdmin,
   getProduct,
+  getProductBySlug,
   updateProduct,
   deleteProduct,
   getTrendingProducts,
@@ -897,7 +1010,8 @@ export const ProductServices = {
   getRelatedProducts,
   searchProducts,
   getProductVariants,
-  updateVariantStock,
+  // updateVariantStock,
+  updateProductStock,
   getProductAnalytics,
   getLowStockProducts,
   getBestsellers,

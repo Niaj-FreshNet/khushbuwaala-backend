@@ -13,7 +13,7 @@ const register = catchAsync(async (req, res) => {
     message: isok
       ? 'Registration Successfull please verify your email!'
       : 'Registration Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -30,7 +30,7 @@ const verifyEmail = catchAsync(async (req, res) => {
     message: isok
       ? 'Email Verification Successfull'
       : 'Email Verification Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -43,7 +43,7 @@ const login = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok,
     message: isok ? 'Login Successfull' : 'Login Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -106,7 +106,7 @@ const refreshToken = catchAsync(async (req, res) => {
     message: isok
       ? 'Access Token Generated Successfully'
       : 'Access Token Generation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -138,7 +138,7 @@ const makeAdmin = catchAsync(async (req, res) => {
     success: isok,
     message: isok ? 'Admin Created Successfully!' : 'Admin Creation Failed',
 
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -154,7 +154,7 @@ const makeSalesman = catchAsync(async (req, res) => {
     success: isok,
     message: isok ? 'Admin Created Successfully!' : 'Admin Creation Failed',
 
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -165,7 +165,7 @@ const socialLogin = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok,
     message: isok ? 'Login Successfull' : 'Login Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

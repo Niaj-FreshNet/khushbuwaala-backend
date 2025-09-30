@@ -27,11 +27,11 @@ const createCategory = catchAsync(async (req, res) => {
     req.body.sizes = JSON.parse(req.body.sizes);
   }
 
-  const categoryData: ICategory = {
+  const categorydata: ICategory = {
     ...req.body,
     imageUrl,
   };
-  const result = await CategoryServices.createCategory(categoryData);
+  const result = await CategoryServices.createCategory(categorydata);
 
   const isok = result ? true : false;
   sendResponse(res, {
@@ -40,7 +40,7 @@ const createCategory = catchAsync(async (req, res) => {
     message: isok
       ? 'Category Created Successfully'
       : 'Category Creation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -53,7 +53,7 @@ const getAllCategories = catchAsync(async (req, res) => {
     message: isok
       ? 'Categories Fetched Successfully'
       : 'Categories Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -66,7 +66,7 @@ const getAllCategoriesAdmin = catchAsync(async (req, res) => {
     message: isok
       ? 'Categories Fetched Successfully'
       : 'Categories Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -79,7 +79,7 @@ const getCategory = catchAsync(async (req, res) => {
     message: isok
       ? 'Category Fetched Successfully'
       : 'Category Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -88,7 +88,7 @@ const updateCategory = catchAsync(async (req, res) => {
   if (!category) {
     throw new AppError(400, 'Category not found');
   }
-  let updatedData = { ...req.body };
+  let updateddata = { ...req.body };
 
   // Handle image update
   if (req.file?.filename) {
@@ -96,12 +96,12 @@ const updateCategory = catchAsync(async (req, res) => {
       await deleteFile(category.imageUrl);
     }
 
-    updatedData.imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
+    updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
   }
 
   const result = await CategoryServices.updateCategory(
     req.params.id,
-    updatedData,
+    updateddata,
   );
   const isok = result ? true : false;
   sendResponse(res, {
@@ -110,7 +110,7 @@ const updateCategory = catchAsync(async (req, res) => {
     message: isok
       ? 'Category Updated Successfully'
       : 'Category Updation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -123,7 +123,7 @@ const deleteCategory = catchAsync(async (req, res) => {
     message: isok
       ? 'Category Deleted Successfully'
       : 'Category Deletion Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

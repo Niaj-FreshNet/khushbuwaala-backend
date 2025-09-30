@@ -23,11 +23,12 @@ export const corsOptions = {
   credentials: true,
 };
 
-app.post(
-  '/api/payment/webhook',
-  express.raw({ type: 'application/json' }),
-  PaymentController.webhook,
-);
+
+// app.post(
+//   '/api/payment/webhook',
+//   express.raw({ type: 'application/json' }),
+//   PaymentController.webhook,
+// );
 
 //middleware
 app.use(cors(corsOptions));
