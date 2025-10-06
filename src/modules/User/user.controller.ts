@@ -11,12 +11,11 @@ import { UserServices } from './user.service';
 const getAllUsers = catchAsync(async (req, res) => {
   const result = await UserServices.getAllUsers(req.user.id, req.query);
 
-  const isok = result ? true : false;
-  res.status(isok ? 200 : 400).json({
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Users Fetched Successfully' : 'Users Fetching Failed',
-    Data: isok ? result : [],
+  res.status(200).json({
+    statusCode: 200,
+    success: true,
+    message: 'Users Fetched Successfully',
+    data: result.data, // <-- return only the array
   });
 });
 
@@ -27,7 +26,7 @@ const getUser = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'User Fetched Successfully' : 'User Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -40,46 +39,35 @@ const changePassword = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Password Changed Successfully' : 'Password Change Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
 const updateUser = catchAsync(async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.params.id; // <-- use params
   const user = await prisma.user.findUnique({
-    where: {
-      id: userId,
-    },
+    where: { id: userId },
   });
 
-  if (!user) {
-    throw new AppError(404, 'User not found');
-  }
+  if (!user) throw new AppError(404, 'User not found');
 
   const { name, contact, address } = req.body;
   let imageUrl = user.imageUrl;
 
   if (req.file?.filename) {
-    if (user.imageUrl) {
-      await deleteFile(user.imageUrl);
-    }
+    if (user.imageUrl) await deleteFile(user.imageUrl);
     imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
   }
 
-  const updatedData = {
-    name,
-    contact,
-    address,
-    imageUrl,
-  };
+  const updatedData = { name, contact, address, imageUrl, role: req.body.role };
 
   const result = await UserServices.updateUser(userId, updatedData);
-  const isok = result ? true : false;
-  res.status(isok ? 200 : 400).json({
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'User Updated Successfully' : 'User Update Failed',
-    Data: isok ? result : [],
+
+  res.status(200).json({
+    statusCode: 200,
+    success: true,
+    message: 'User Updated Successfully',
+    data: result,
   });
 });
 

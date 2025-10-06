@@ -88,7 +88,13 @@ const updateCategory = catchAsync(async (req, res) => {
   if (!category) {
     throw new AppError(400, 'Category not found');
   }
+
   let updateddata = { ...req.body };
+
+  // ✅ Convert string booleans to actual booleans
+  if (typeof updateddata.published === 'string') {
+    updateddata.published = updateddata.published === 'true';
+  }
 
   // Handle image update
   if (req.file?.filename) {
@@ -103,10 +109,12 @@ const updateCategory = catchAsync(async (req, res) => {
     req.params.id,
     updateddata,
   );
-  const isok = result ? true : false;
+
+  const isok = !!result;
+
   sendResponse(res, {
     statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
+    success: isok,
     message: isok
       ? 'Category Updated Successfully'
       : 'Category Updation Failed',

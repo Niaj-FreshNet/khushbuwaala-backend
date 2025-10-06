@@ -1,7 +1,7 @@
 import config from '../../config';
 
 import { prisma } from '../../../prisma/client';
-import { ILoginUser, IUser } from './auth.interface';
+import { ILoginUser, IUser, IUserPayload } from './auth.interface';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { Role } from '@prisma/client';
@@ -110,7 +110,7 @@ const verifyEmail = async (email: string, token: string) => {
 
   const refreshToken = createToken(
     JwtPayload,
-    config.refressh_token_secret as string,
+    config.refresh_token_secret as string,
     config.refresh_token_expires as string,
   );
 
@@ -171,7 +171,7 @@ const login = async (payload: ILoginUser) => {
   //refresh token
   const refreshToken = createToken(
     JwtPayload,
-    config.refressh_token_secret as string,
+    config.refresh_token_secret as string,
     config.refresh_token_expires as string,
   );
 
@@ -305,13 +305,13 @@ const refreshToken = async (refreshToken: string) => {
   }
   const decoded = verifyToken(
     refreshToken,
-    config.refressh_token_secret as string,
+    config.refresh_token_secret as string,
   );
 
   if (!decoded) {
     throw new AppError(401, 'Invalid or expired refresh token!');
   }
-  console.log(decoded);
+  // console.log(decoded);
 
   const user = await prisma.user.findUnique({
     where: {
@@ -324,8 +324,8 @@ const refreshToken = async (refreshToken: string) => {
   }
 
   const JwtPayload = {
-    id: user.id,
     email: user.email,
+    userId: user.id,
     role: user.role,
   };
 
@@ -371,83 +371,66 @@ const resendVerifyEmail = async (email: string) => {
   return true;
 };
 
-interface IMakeAdmin {
-  name: string;
-  password: string;
-  email: string;
-  state: string;
-  phone: string;
-}
-
-const makeAdmin = async (payload: IMakeAdmin) => {
+const makeAdmin = async (payload: IUserPayload) => {
   const { name, email, password } = payload;
-  const user = await prisma.user.findUnique({
-    where: {
-      email,
-    },
-  });
+
+  let user = await prisma.user.findUnique({ where: { email } });
+  let result;
 
   if (user) {
-    throw new AppError(400, 'User already exists with this email');
+    result = await prisma.user.update({ where: { email }, data: { role: Role.ADMIN } });
+  } else {
+    result = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: await bcrypt.hash(password, Number(config.salt_round)),
+        isVerified: true,
+        role: Role.ADMIN,
+      },
+    });
   }
 
-  const result = await prisma.user.create({
-    data: {
-      name,
-      email,
-      password: await bcrypt.hash(password, Number(config.salt_round)),
-      isVerified: true,
-      role: 'ADMIN',
-    },
-  });
+  const JwtPayload = { email: result.email, userId: result.id, role: result.role };
+  const accessToken = createToken(JwtPayload, config.access_token_secret!, config.access_token_expires!);
+  const refreshToken = createToken(JwtPayload, config.refresh_token_secret!, config.refresh_token_expires!);
 
-  return result;
+  return { result, accessToken, refreshToken };
 };
 
-interface IMakeSalesman {
-  name: string;
-  password: string;
-  email: string;
-  state: string;
-  phone: string;
-  address?: string;
-  imageUrl?: string;
-}
-
-const makeSalesman = async (payload: IMakeSalesman) => {
+const makeSalesman = async (payload: IUserPayload) => {
   const { name, email, password } = payload;
-  const user = await prisma.user.findUnique({
-    where: {
-      email,
-    },
-  });
+
+  let user = await prisma.user.findUnique({ where: { email } });
+  let result;
 
   if (user) {
-    throw new AppError(400, 'User already exists with this email');
+    result = await prisma.user.update({ where: { email }, data: { role: Role.SALESMAN } });
+  } else {
+    result = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: await bcrypt.hash(password, Number(config.salt_round)),
+        isVerified: true,
+        role: Role.SALESMAN,
+      },
+    });
   }
 
-  const result = await prisma.user.create({
-    data: {
-      name,
-      email,
-      password: await bcrypt.hash(password, Number(config.salt_round)),
-      isVerified: true,
-      role: 'SALESMAN',
-    },
-  });
+  const JwtPayload = { email: result.email, userId: result.id, role: result.role };
+  const accessToken = createToken(JwtPayload, config.access_token_secret!, config.access_token_expires!);
+  const refreshToken = createToken(JwtPayload, config.refresh_token_secret!, config.refresh_token_expires!);
 
-  return result;
+  return { result, accessToken, refreshToken };
 };
+
 
 const socialLogin = async (payload: { email: string; name: string }) => {
-  const userExist = await prisma.user.findUnique({
-    where: {
-      email: payload.email,
-    },
-  });
+  let user = await prisma.user.findUnique({ where: { email: payload.email } });
 
-  if (!userExist) {
-    const result = await prisma.user.create({
+  if (!user) {
+    user = await prisma.user.create({
       data: {
         name: payload.name,
         email: payload.email,
@@ -456,50 +439,40 @@ const socialLogin = async (payload: { email: string; name: string }) => {
     });
   }
 
+  const JwtPayload = {
+    email: user.email,
+    userId: user.id,
+    role: user.role,
+  };
+
+  const accessToken = createToken(JwtPayload, config.access_token_secret!, config.access_token_expires!);
+  const refreshToken = createToken(JwtPayload, config.refresh_token_secret!, config.refresh_token_expires!);
+
+  return { user, accessToken, refreshToken };
+};
+
+const getMe = async (userId: string | undefined) => {
+  if (!userId) {
+    throw new AppError(400, 'User ID is required');
+  }
+
   const user = await prisma.user.findUnique({
-    where: {
-      email: payload.email,
-    },
+    where: { id: userId },
     select: {
       id: true,
-      email: true,
       name: true,
-      password: true,
+      email: true,
       role: true,
-      isVerified: true,
       imageUrl: true,
+      isVerified: true,
     },
   });
 
   if (!user) {
-    throw new AppError(400, 'User not found with this email');
+    throw new AppError(404, 'User not found');
   }
 
-  const JwtPayload = {
-    email: user.email,
-    userId: user?.id,
-    role: user.role,
-  };
-
-  //create toke and send to the client
-  const accessToken = createToken(
-    JwtPayload,
-    config.access_token_secret as string,
-    config.access_token_expires as string,
-  );
-
-  //refresh token
-  const refreshToken = createToken(
-    JwtPayload,
-    config.refressh_token_secret as string,
-    config.refresh_token_expires as string,
-  );
-
-  return {
-    user,
-    accessToken,
-    refreshToken,
-  };
+  return user;
 };
 
 export const AuthServices = {
@@ -514,4 +487,5 @@ export const AuthServices = {
   makeAdmin,
   makeSalesman,
   socialLogin,
+  getMe
 };

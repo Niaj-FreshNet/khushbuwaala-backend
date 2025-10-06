@@ -7,29 +7,29 @@ const router = Router();
 
 router.post(
   '/create-category',
-  auth('ADMIN'),
+  auth('ADMIN','SUPER_ADMIN'),
   upload.single('image'),
   CategoryController.createCategory,
 );
 
-router.get('/get-all-categories', CategoryController.getAllCategories);
+router.get('/get-categories', CategoryController.getAllCategories);
 router.get(
-  '/get-all-categories/admin',
-  auth('ADMIN'),
+  '/get-all-categories',
+  auth('ADMIN','SUPER_ADMIN'),
   CategoryController.getAllCategoriesAdmin,
 );
 router.get('/get-category/:id', CategoryController.getCategory);
 
 router.patch(
   '/update-category/:id',
-  auth('ADMIN'),
+  auth('ADMIN','SUPER_ADMIN'),
   upload.single('image'),
   CategoryController.updateCategory,
 );
 
 router.delete(
   '/delete-category/:id',
-  auth('ADMIN'),
+  auth('ADMIN','SUPER_ADMIN'),
   CategoryController.deleteCategory,
 );
 

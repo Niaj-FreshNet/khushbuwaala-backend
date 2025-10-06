@@ -11,7 +11,7 @@ const createMaterial = catchAsync(async (req, res) => {
     message: isok
       ? 'Material Created Successfully'
       : 'Material Creation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -24,7 +24,7 @@ export const getAllMaterials = catchAsync(async (req, res) => {
     message: isok
       ? 'Materials Fetched Successfully'
       : 'Materials Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -37,7 +37,7 @@ const getMaterial = catchAsync(async (req, res) => {
     message: isok
       ? 'Material Fetched Successfully'
       : 'Material Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -50,7 +50,7 @@ const updateMaterial = catchAsync(async (req, res) => {
     message: isok
       ? 'Material Updated Successfully'
       : 'Material Updation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -63,7 +63,7 @@ const deleteMaterial = catchAsync(async (req, res) => {
     message: isok
       ? 'Material Deleted Successfully'
       : 'Material Deletion Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

@@ -5,6 +5,7 @@ import cors from 'cors';
 import NotFound from './middlewares/NotFound';
 import path from 'path';
 import { PaymentController } from './modules/Payment/payment.controller';
+import cookieParser from 'cookie-parser';
 
 const app = express();
 
@@ -33,6 +34,8 @@ export const corsOptions = {
 //middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser());
+
 app.use('/api', router);
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));

@@ -13,7 +13,7 @@ router.patch(
   UserController.changePassword,
 );
 router.patch(
-  '/update-profile',
+  '/update-profile/:id',
   auth('ADMIN', 'USER'),
   upload.single('image'),
   UserController.updateUser,

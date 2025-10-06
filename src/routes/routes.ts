@@ -14,6 +14,7 @@ import { WishlistRoutes } from '../modules/Wishlist/wishlist.route';
 import { SalesRoutes } from '../modules/Sales/sales.routes';
 import { ExpenseRoutes } from '../modules/Expense/expense.route';
 import { CartItemRoutes } from '../modules/Cart/cart.routes';
+import { FragranceRoutes } from '../modules/Fragrance/fragrance.routes';
 
 const router = express.Router();
 
@@ -29,6 +30,10 @@ const moduleRoutes = [
   {
     path: '/materials',
     route: MaterialRoutes,
+  },
+  {
+    path: '/fragrances',
+    route: FragranceRoutes,
   },
   {
     path: '/products',

@@ -12,16 +12,16 @@ router.post(
 );
 
 // Admin order management
-router.get('/get-all-orders', auth('ADMIN'), OrderController.getAllOrders);
-router.get('/get-order-by-id/:id', auth('ADMIN'), OrderController.getOrderById);
+router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getAllOrders);
+router.get('/get-order-by-id/:id', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getOrderById);
 router.patch(
   '/update-order-status/:id',
-  auth('ADMIN'),
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
   OrderController.updateOrderStatus,
 );
 
 // Customer management
-router.get('/get-all-customers', auth('ADMIN'), OrderController.getAllCustomers);
+router.get('/get-all-customers', auth('SUPER_ADMIN', 'ADMIN'), OrderController.getAllCustomers);
 
 // User orders (customer)
 router.get('/get-user-orders/:id', OrderController.getUserOrders);

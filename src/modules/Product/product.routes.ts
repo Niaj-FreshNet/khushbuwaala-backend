@@ -11,7 +11,7 @@ const router = Router();
 // Product CRUD Operations
 router.post(
   '/create-product',
-  auth('ADMIN'),
+  // auth('ADMIN', 'SUPER_ADMIN'),
   upload.array('images', 10), // Max 10 images
   parseJsonFields,
   validateRequest(ProductValidation.createProductZodSchema),
@@ -22,7 +22,7 @@ router.get('/get-all-products', ProductController.getAllProducts);
 
 router.get(
   '/get-all-products/admin',
-  auth('ADMIN'),
+  auth('ADMIN', 'SUPER_ADMIN'),
   ProductController.getAllProductsAdmin
 );
 
@@ -32,7 +32,7 @@ router.get('/get-product-by-slug/:slug', ProductController.getProductBySlug);
 
 router.patch(
   '/update-product/:id',
-  auth('ADMIN'),
+  auth('ADMIN', 'SUPER_ADMIN'),
   upload.array('images', 10),
   parseJsonFields,
   validateRequest(ProductValidation.updateProductZodSchema),
@@ -41,7 +41,7 @@ router.patch(
 
 router.delete(
   '/delete-product/:id',
-  auth('ADMIN'),
+  auth('ADMIN', 'SUPER_ADMIN'),
   ProductController.deleteProduct
 );
 
@@ -56,14 +56,14 @@ router.get('/search-products', ProductController.searchProducts);
 
 // Product Variants Routes
 router.get('/get-product-variants/:productId', ProductController.getProductVariants);
-// router.patch( '/update-variant-stock/:variantId', auth('ADMIN'), ProductController.updateVariantStock );
+// router.patch( '/update-variant-stock/:variantId', auth('ADMIN', 'SUPER_ADMIN'), ProductController.updateVariantStock );
 
 // Add Product New Stock
-router.patch('/update-product-stock/:productId', auth('ADMIN'), ProductController.updateProductStock);
+router.patch('/update-product-stock/:productId', auth('ADMIN', 'SUPER_ADMIN'), ProductController.updateProductStock);
 
 // Product Analytics Routes
-router.get('/get-product-analytics', auth('ADMIN'), ProductController.getProductAnalytics);
-router.get('/get-low-stock-products', auth('ADMIN'), ProductController.getLowStockProducts);
+router.get('/get-product-analytics', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getProductAnalytics);
+router.get('/get-low-stock-products', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getLowStockProducts);
 router.get('/get-bestsellers', ProductController.getBestsellers);
 
 export const ProductRoutes = router;

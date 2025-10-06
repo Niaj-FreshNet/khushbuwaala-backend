@@ -37,13 +37,32 @@ const verifyEmail = catchAsync(async (req, res) => {
 const login = catchAsync(async (req, res) => {
   const { email, password } = req.body;
   const result = await AuthServices.login({ email, password });
-  const isok = result ? true : false;
+
+  if (!result) {
+    return sendResponse(res, {
+      statusCode: 400,
+      success: false,
+      message: 'Login Failed',
+      data: [],
+    });
+  }
+
+  // set refresh token in httpOnly cookie
+  res.cookie('refreshToken', result.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
 
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok,
-    message: isok ? 'Login Successfull' : 'Login Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Login Successful',
+    data: {
+      user: result.user,
+      accessToken: result.accessToken,
+    },
   });
 });
 
@@ -81,7 +100,7 @@ const changePassword = catchAsync(async (req, res) => {
   const { oldPassword, newPassword } =
     authValidation.changePasswordValidationSchema.parse(req.body);
 
-  console.log(email, oldPassword, newPassword);
+  // console.log(email, oldPassword, newPassword);
 
   const result = await AuthServices.changePassword(
     email,
@@ -97,16 +116,21 @@ const changePassword = catchAsync(async (req, res) => {
 });
 
 const refreshToken = catchAsync(async (req, res) => {
-  const { refreshToken } = req.body;
-  const result = await AuthServices.refreshToken(refreshToken);
-  const isok = result ? true : false;
+  const token = req.cookies['refreshToken'];
+
+  if (!token) {
+    throw new AppError(401, 'Refresh token missing');
+  }
+
+  const result = await AuthServices.refreshToken(token);
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok,
-    message: isok
+    statusCode: result ? 200 : 400,
+    success: !!result,
+    message: result
       ? 'Access Token Generated Successfully'
       : 'Access Token Generation Failed',
-    data: isok ? result : [],
+    data: result || [],
   });
 });
 
@@ -127,45 +151,96 @@ const resendVerifyEmail = catchAsync(async (req, res) => {
 });
 
 const makeAdmin = catchAsync(async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!email || !name || !password) {
-    throw new AppError(400, 'All fields is required! Please try again');
-  }
   const result = await AuthServices.makeAdmin(req.body);
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok,
-    message: isok ? 'Admin Created Successfully!' : 'Admin Creation Failed',
 
-    data: isok ? result : [],
+  // set refresh token in httpOnly cookie
+  res.cookie('refreshToken', result.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Admin created/updated successfully!',
+    data: {
+      user: result.result,
+      accessToken: result.accessToken,
+    },
   });
 });
 
 const makeSalesman = catchAsync(async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!email || !name || !password) {
-    throw new AppError(400, 'All fields is required! Please try again');
-  }
   const result = await AuthServices.makeSalesman(req.body);
-  const isok = result ? true : false;
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok,
-    message: isok ? 'Admin Created Successfully!' : 'Admin Creation Failed',
 
-    data: isok ? result : [],
+  // set refresh token in httpOnly cookie
+  res.cookie('refreshToken', result.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Salesman created/updated successfully!',
+    data: {
+      user: result.result,
+      accessToken: result.accessToken,
+    },
   });
 });
 
 const socialLogin = catchAsync(async (req, res) => {
   const result = await AuthServices.socialLogin(req.body);
-  const isok = result ? true : false;
+
+  // set refresh token in httpOnly cookie
+  res.cookie('refreshToken', result.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok,
-    message: isok ? 'Login Successfull' : 'Login Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Login Successful',
+    data: {
+      user: result.user,
+      accessToken: result.accessToken,
+    },
+  });
+});
+
+const getMe = catchAsync(async (req, res) => {
+  // console.log('req.user:', req.user);
+  // console.log('req.user?.id:', req.user?.id);
+
+  const user = await AuthServices.getMe(req.user?.id);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'User retrieved successfully',
+    data: user,
+  });
+});
+
+const logout = catchAsync(async (req, res) => {
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Logged out successfully',
   });
 });
 
@@ -181,4 +256,6 @@ export const AuthController = {
   makeAdmin,
   makeSalesman,
   socialLogin,
+  getMe,
+  logout
 };

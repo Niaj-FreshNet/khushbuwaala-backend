@@ -7,7 +7,17 @@ export interface IUser {
   role: Role;
 }
 
-export type TRole = 'ADMIN' | 'USER';
+export interface IUserPayload {
+  name: string;
+  email: string;
+  password: string;
+  state?: string;
+  phone?: string;
+  address?: string;
+  imageUrl?: string;
+}
+
+export type TRole = 'USER' | 'SALESMAN' | 'ADMIN' | 'SUPER_ADMIN';
 
 export interface ILoginUser {
   email: string;

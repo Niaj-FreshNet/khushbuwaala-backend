@@ -16,6 +16,7 @@ const createMaterial = async (payload: IMAterial) => {
   const result = await prisma.material.create({
     data: {
       materialName: payload.materialName,
+      imageUrl: payload.imageUrl,
     },
   });
   return result;

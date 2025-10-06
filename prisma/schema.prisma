@@ -11,6 +11,7 @@ enum Role {
   USER
   SALESMAN
   ADMIN
+  SUPER_ADMIN
 }
 
 enum OrderSource {
@@ -81,13 +82,40 @@ model User {
 model Category {
   id           String    @id @default(auto()) @map("_id") @db.ObjectId
   categoryName String    @unique
-  imageUrl     String
+  imageUrl     String?
+  sizes        String[]  @default([])
   published    Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   Product      Product[]
 
   @@map("categories")
+}
+
+model Material {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  materialName String   @unique
+  imageUrl     String?
+  published    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ProductMaterial ProductMaterial[]
+
+  @@map("materials")
+}
+
+model Fragrance {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  fragranceName String   @unique
+  imageUrl      String?
+  published     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ProductFragrance ProductFragrance[]
+
+  @@map("fragrances")
 }
 
 model Product {
@@ -117,6 +145,9 @@ model Product {
   categoryId String   @db.ObjectId
   category   Category @relation(fields: [categoryId], references: [id])
 
+  ProductMaterial  ProductMaterial[]
+  ProductFragrance ProductFragrance[]
+
   // Variants and combos
   variants      ProductVariant[]
   comboVariants ComboVariant[]
@@ -142,6 +173,31 @@ model Product {
   updatedAt DateTime @updatedAt
 
   @@map("products")
+}
+
+// Junction tables
+model ProductMaterial {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  productId  String @db.ObjectId
+  materialId String @db.ObjectId
+
+  product  Product  @relation(fields: [productId], references: [id])
+  material Material @relation(fields: [materialId], references: [id])
+
+  @@unique([productId, materialId])
+  @@map("product_materials")
+}
+
+model ProductFragrance {
+  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  productId   String @db.ObjectId
+  fragranceId String @db.ObjectId
+
+  product   Product   @relation(fields: [productId], references: [id])
+  fragrance Fragrance @relation(fields: [fragranceId], references: [id])
+
+  @@unique([productId, fragranceId])
+  @@map("product_fragrances")
 }
 
 model ProductVariant {

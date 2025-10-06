@@ -35,6 +35,7 @@ export interface IProduct {
   bestFor: string[];
   
   categoryId: string;
+  materialId: string;
   published: boolean;
 
   stock: number;

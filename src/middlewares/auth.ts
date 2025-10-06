@@ -1,52 +1,64 @@
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { NextFunction, Response, Request } from 'express';
-import { IUser, TuserRole } from '../modules/User/user.interface';
+import { TuserRole } from '../modules/User/user.interface';
 import catchAsync from '../utils/catchAsync';
 import AppError from '../errors/AppError';
 import config from '../config';
 import { prisma } from '../../prisma/client';
-
 import httpStatus from 'http-status';
 
 const auth = (...requiredRoles: TuserRole[]) => {
   return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const token = req.headers.authorization;
-    //check if token sent from the client
+    let token =
+      req.headers.authorization?.split(' ')[1] ||
+      req.cookies?.accessToken;
+
     if (!token) {
-      throw new AppError(
-        500,
-        'forbidden',
-        'You are not authorized to access this route',
-      );
+      throw new AppError(httpStatus.UNAUTHORIZED, 'Unauthorized: Token missing');
     }
 
-    // Verify the token asynchronously
-    const decoded = jwt.verify(
-      token,
-      config.access_token_secret as string,
-    ) as JwtPayload;
-    //check if the user has the required role to access the route
-
-    const { role, email, iat } = decoded;
-    // checking if the user is exist
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      throw new AppError(httpStatus.NOT_FOUND, 'This user is not found !');
+    if (token.startsWith('Bearer ')) {
+      token = token.slice(7);
     }
 
-    if (requiredRoles && !requiredRoles.includes(role)) {
-      throw new AppError(
-        httpStatus.UNAUTHORIZED,
-        'You are not authorized  hi!',
-      );
-    }
+    try {
+      const decoded = jwt.verify(
+        token,
+        config.access_token_secret as string
+      ) as JwtPayload;
 
-    (req.user as any) = user;
-    next();
+      if (!decoded || !decoded.userId) {
+        throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid token payload');
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          imageUrl: true,
+          isVerified: true,
+        },
+      });
+
+      if (!user) {
+        throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+      }
+
+      if (requiredRoles.length && !requiredRoles.includes(user.role)) {
+        throw new AppError(httpStatus.FORBIDDEN, 'You are not authorized');
+      }
+
+      (req as any).user = user;
+      next();
+    } catch (error: any) {
+      console.error('❌ Token verification failed:', error.message);
+      throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid or expired token');
+    }
   });
 };
+
 
 export default auth;

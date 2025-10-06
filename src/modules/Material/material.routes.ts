@@ -8,21 +8,21 @@ router.get('/get-all-materials', MaterialController.getAllMaterials);
 
 router.post(
   '/create-material',
-  auth('ADMIN'),
+  auth('ADMIN','SUPER_ADMIN'),
   MaterialController.createMaterial,
 );
 
-router.get('/get-material/:id', auth('ADMIN'), MaterialController.getMaterial);
+router.get('/get-material/:id', auth('ADMIN','SUPER_ADMIN'), MaterialController.getMaterial);
 
 router.patch(
   '/update-material/:id',
-  auth('ADMIN'),
+  auth('ADMIN','SUPER_ADMIN'),
   MaterialController.updateMaterial,
 );
 
 router.delete(
   '/delete-material/:id',
-  auth('ADMIN'),
+  auth('ADMIN','SUPER_ADMIN'),
   MaterialController.deleteMaterial,
 );
 

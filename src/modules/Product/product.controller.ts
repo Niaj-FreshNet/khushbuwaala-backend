@@ -11,7 +11,7 @@ import { parseProductQuery } from '../../helpers/queryBuilder';
 // Create Product
 const createProduct = catchAsync(async (req, res) => {
   console.log("hello")
-  console.log(req.body)
+  console.log('req bodyyyy',req.body)
   const { categoryId, variants } = req.body;
 
   // Validation
@@ -20,20 +20,20 @@ const createProduct = catchAsync(async (req, res) => {
   }
 
   // Image handling
-  if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-    throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.IMAGE_REQUIRED);
-  }
+  // if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+  //   throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.IMAGE_REQUIRED);
+  // }
 
-  const uploadedFiles = req.files as Express.Multer.File[];
-  const imageUrls = uploadedFiles.map(
-    (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
-  );
+  // const uploadedFiles = req.files as Express.Multer.File[];
+  // const imageUrls = uploadedFiles.map(
+  //   (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
+  // );
 
   // Parse data
   const parsedData = {
     ...req.body,
-    primaryImage: imageUrls[0],
-    otherImages: imageUrls.slice(1),
+    // primaryImage: imageUrls[0],
+    // otherImages: imageUrls.slice(1),
     published: req.body.published === true || req.body.published === 'true',
     tags: req.body.tags || [],
     accords: req.body.accords || [],

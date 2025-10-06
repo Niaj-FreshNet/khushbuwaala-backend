@@ -18,7 +18,7 @@ const createCategory = async (payload: ICategory) => {
     data: {
       categoryName: payload.categoryName.toUpperCase(),
       published: payload.published,
-      // sizes: payload.sizes,
+      sizes: payload.sizes,
       imageUrl: payload.imageUrl,
     },
   });
@@ -87,9 +87,9 @@ const updateCategory = async (id: string, payload: Partial<ICategory>) => {
     throw new AppError(400, 'Category not found');
   }
 
-  // if (payload.sizes && typeof payload.sizes === 'string') {
-  //   payload.sizes = JSON.parse(payload.sizes);
-  // }
+  if (payload.sizes && typeof payload.sizes === 'string') {
+    payload.sizes = JSON.parse(payload.sizes);
+  }
 
   const imageUrl: string | undefined = payload.imageUrl;
 
@@ -99,7 +99,7 @@ const updateCategory = async (id: string, payload: Partial<ICategory>) => {
     },
     data: {
       categoryName: payload?.categoryName?.toUpperCase(),
-      // sizes: payload.sizes,
+      sizes: payload.sizes,
       imageUrl: imageUrl,
       published: payload.published,
     },
@@ -110,13 +110,19 @@ const updateCategory = async (id: string, payload: Partial<ICategory>) => {
 
 const deleteCategory = async (id: string) => {
   const isExist = await prisma.category.findUnique({
-    where: {
-      id,
-    },
+    where: { id },
+    include: { Product: true },
   });
 
   if (!isExist) {
-    throw new AppError(400, 'Category not found');
+    throw new AppError(404, 'Category not found');
+  }
+
+  if (isExist.Product.length > 0) {
+    throw new AppError(
+      400,
+      'Cannot delete category that has products linked to it. Please remove or reassign those products first.'
+    );
   }
 
   if (isExist.imageUrl) {

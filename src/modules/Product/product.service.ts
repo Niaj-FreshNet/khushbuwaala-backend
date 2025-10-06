@@ -26,6 +26,7 @@ import {
   PRODUCT_ERROR_MESSAGES,
 } from './product.constant';
 import { Unit } from '@prisma/client';
+import slugify from 'slugify';
 
 // Create Product
 const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
@@ -47,12 +48,15 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
   if (existingSKUs.length > 0) {
     throw new AppError(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
   }
+  
+    // generate slug from product name
+    const slug = slugify(payload.name, { lower: true, strict: true });
 
   const result = await prisma.product.create({
     data: {
       name: payload.name,
       description: payload.description,
-      slug: payload.slug,
+      slug,
       primaryImage: payload.primaryImage,
       otherImages: payload.otherImages || [],
       videoUrl: payload.videoUrl,

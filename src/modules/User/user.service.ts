@@ -25,6 +25,7 @@ const getAllUsers = async (
       id: true,
       name: true,
       email: true,
+      role: true,
       contact: true,
       imageUrl: true,
       address: true,
@@ -90,6 +91,7 @@ const updateUser = async (id: string, data: any) => {
     select: {
       name: true,
       email: true,
+      role: true,
       contact: true,
       imageUrl: true,
       address: true,
