@@ -152,6 +152,7 @@ model Product {
   variants      ProductVariant[]
   comboVariants ComboVariant[]
 
+  supplier  String?
   // Stock for the product (aggregate for all variants)
   stock     Float      @default(0) // e.g., 1 kg or 1000 ml
   stocklogs StockLog[]

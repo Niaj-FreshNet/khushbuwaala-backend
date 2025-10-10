@@ -38,6 +38,7 @@ export interface IProduct {
   materialId: string;
   published: boolean;
 
+  supplier: string;
   stock: number;
   variants: IProductVariant[];
 }
@@ -131,6 +132,8 @@ export interface IProductResponse {
     categoryName: string;
     imageUrl: string;
   };
+
+  supplier: string;
   
   variants: IProductVariantResponse[];
   

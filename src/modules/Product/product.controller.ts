@@ -10,8 +10,8 @@ import { parseProductQuery } from '../../helpers/queryBuilder';
 
 // Create Product
 const createProduct = catchAsync(async (req, res) => {
-  console.log("hello")
-  console.log('req bodyyyy',req.body)
+  // console.log("hello")
+  // console.log('req bodyyyy',req.body)
   const { categoryId, variants } = req.body;
 
   // Validation
@@ -42,7 +42,7 @@ const createProduct = catchAsync(async (req, res) => {
     stock: req.body.stock,
     variants: variants,
   };
-  console.log("parsed data:", parsedData)
+  // console.log("parsed data:", parsedData)
 
   const result = await ProductServices.createProduct(parsedData as IProduct);
 

@@ -77,6 +77,7 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
       categoryId: payload.categoryId,
       published: payload.published,
 
+      supplier: payload.supplier,
       stock: payload.stock,
 
       variants: {
@@ -938,7 +939,7 @@ const getBestsellers = async (): Promise<ITrendingProduct[]> => {
 const formatProductResponse = (product: any): IProductResponse => {
   const variants = product.variants || [];
   const prices = variants.map((v: any) => v.price);
-  const stocks = variants.map((v: any) => v.stock);
+  // const stocks = variants.map((v: any) => v.stock);
 
   return {
     id: product.id,
@@ -967,13 +968,15 @@ const formatProductResponse = (product: any): IProductResponse => {
     categoryId: product.categoryId,
     category: product.category,
 
+    supplier: product.supplier,
+    
     variants: variants,
 
     // Computed fields
     minPrice: prices.length > 0 ? Math.min(...prices) : 0,
     maxPrice: prices.length > 0 ? Math.max(...prices) : 0,
-    totalStock: stocks.reduce((sum: number, stock: number) => sum + stock, 0),
-    inStock: stocks.some((stock: number) => stock > 0),
+    totalStock: product.stock,
+    inStock: product.stock > 0,
 
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
