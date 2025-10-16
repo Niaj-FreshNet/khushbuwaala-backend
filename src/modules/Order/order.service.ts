@@ -1,203 +1,392 @@
-import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
-import { OrderSource, SaleType } from '@prisma/client';
+import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
+import { OrderSource } from '@prisma/client';// ✅ Get All Orders (with customer + salesman info)
 
 const getAllOrders = async (queryParams: Record<string, unknown>) => {
   const { searchTerm, status, ...rest } = queryParams;
-  const queryBuilder = new PrismaQueryBuilder(rest, ['title', 'content']);
-  const prismaQuery = queryBuilder.buildWhere().buildSort().buildPagination().buildSelect().getQuery();
+  const queryBuilder = new PrismaQueryBuilder(rest, ['id', 'customer.name']);
+  const prismaQuery = queryBuilder
+    .buildWhere()
+    .buildSort()
+    .buildPagination()
+    .getQuery();
+
   const where: any = prismaQuery.where || {};
 
   if (searchTerm) {
     where.OR = [
       ...(where.OR || []),
-      {
-        customer: {
-          name: {
-            contains: String(searchTerm),
-            mode: 'insensitive',
-          },
-        },
-      },
+      { name: { contains: String(searchTerm), mode: 'insensitive' } },
+      { email: { contains: String(searchTerm), mode: 'insensitive' } },
+      { phone: { contains: String(searchTerm), mode: 'insensitive' } },
     ];
   }
 
   if (status) where.status = status;
 
-  const result = await prisma.order.findMany({
+  // ✅ Explicitly type the result to include customer
+  const orders = await prisma.order.findMany({
     ...prismaQuery,
     where,
     include: {
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          imageUrl: true,
+        },
+      },
+      orderItems: {
+        include: {
+          product: { select: { id: true, name: true, primaryImage: true } },
+          variant: true,
+        },
+      },
+    },
+  });
+
+  const meta = await queryBuilder.getPaginationMeta({
+    count: (args: any) => prisma.order.count({ where: args.where }),
+  });
+
+  // Normalize customer info for guest orders
+  const normalizedOrders = orders.map((order) => {
+    const customerData = (order as any).customer ?? {
+      id: null,
+      name: order.name ?? null,
+      phone: order.phone ?? null,
+      email: order.email ?? null,
+      address: order.address ?? null,
+      imageUrl: null,
+    };
+    return { ...order, customer: customerData };
+  });
+
+  return { meta, data: normalizedOrders };
+};
+
+// ✅ Get Single Order (with full nested details)
+const getOrderById = async (orderId: string) => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      customer: { select: { id: true, name: true, imageUrl: true } }, // only valid fields
+      orderItems: {
+        include: {
+          product: { select: { id: true, name: true, primaryImage: true } },
+          variant: true,
+        },
+      },
+    },
+  });
+
+  if (!order) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+
+  // Normalize customer info for guest/manual orders
+  const customerData = order.customer || {
+    id: null,
+    name: order.name || null,
+    phone: order.phone || null,
+    email: order.email || null,
+    address: order.address || null,
+    imageUrl: null,
+  };
+
+  return { ...order, customer: customerData };
+};
+
+// ✅ Create Order with existing CartItems
+const createOrderWithCartItems = async (payload: {
+  customerId?: string | null;
+  cartItemIds: string[];
+  amount: number;
+  isPaid?: boolean;
+  orderSource?: OrderSource;
+  customerInfo?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+  } | null;
+}) => {
+  const { customerId, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
+
+  // 1️⃣ Fetch valid cart items
+  const cartItems = await prisma.cartItem.findMany({
+    where: { id: { in: cartItemIds }, status: 'IN_CART' },
+    include: { product: true, variant: true },
+  });
+
+  if (cartItems.length === 0) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
+  }
+
+  // 2️⃣ Start transaction with extended timeout
+  const order = await prisma.$transaction(
+    async (tx) => {
+      // Create Order
+      const newOrder = await tx.order.create({
+        data: {
+          customerId: customerId || null,
+          amount: Number(amount),
+          isPaid: isPaid || false,
+          orderSource: orderSource || 'WEBSITE',
+          name: customerInfo?.name || null,
+          phone: customerInfo?.phone || null,
+          email: customerInfo?.email || null,
+          address: customerInfo?.address || null,
+          cartItems: cartItems.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            price: Number(item.price),
+          })),
+        },
+      });
+
+      // Update CartItems as ordered
+      await tx.cartItem.updateMany({
+        where: { id: { in: cartItems.map((i) => i.id) } },
+        data: { orderId: newOrder.id, status: 'ORDERED' },
+      });
+
+      // Update stock and create logs
+      for (const item of cartItems) {
+        const variantId = item.variantId;
+        const productId = item.productId;
+        const qty = item.quantity;
+        const variantSize = item.variant?.size || 0;
+
+        // Update Product stock & salesCount
+        await tx.product.update({
+          where: { id: productId },
+          data: {
+            salesCount: { increment: qty },
+            stock: { decrement: variantSize * qty },
+          },
+        });
+
+        // Log stock change
+        await tx.stockLog.create({
+          data: {
+            productId,
+            variantId: variantId || '',
+            change: -(variantSize * qty),
+            reason: 'SALE',
+          },
+        });
+      }
+
+      return newOrder;
+    },
+    {
+      timeout: 20000, // ✅ 20 seconds instead of default 5s
+    }
+  );
+
+  // 3️⃣ Fetch full order
+  const fullOrder = await prisma.order.findUnique({
+    where: { id: order.id },
+    include: {
       customer: { select: { id: true, name: true, imageUrl: true } },
+      orderItems: {
+        include: {
+          product: { select: { id: true, name: true, primaryImage: true } },
+          variant: true,
+        },
+      },
+    },
+  });
+
+  if (!fullOrder) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+
+  const customerData = fullOrder.customer || {
+    id: null,
+    name: fullOrder.name || null,
+    phone: fullOrder.phone || null,
+    email: fullOrder.email || null,
+    address: fullOrder.address || null,
+    imageUrl: null,
+  };
+
+  return { ...fullOrder, customer: customerData };
+};
+
+const updateOrderStatus = async (orderId: string, payload: Record<string, unknown>) => {
+  const order = await prisma.order.update({
+    where: { id: orderId },
+    data: payload,
+  });
+  return order;
+};
+
+const getUserOrders = async (userId: string, queryParams: Record<string, unknown>) => {
+  const queryBuilder = new PrismaQueryBuilder(queryParams);
+  const prismaQuery = queryBuilder.buildSort().buildPagination().getQuery();
+
+  const where = { customerId: userId };
+
+  const [orders, totalOrders, totalAmount] = await Promise.all([
+    prisma.order.findMany({
+      ...prismaQuery,
+      where,
+      include: {
+        orderItems: {
+          include: {
+            product: { select: { id: true, name: true, primaryImage: true } },
+            variant: true,
+          },
+        },
+      },
+    }),
+    prisma.order.count({ where }),
+    prisma.order.aggregate({ where, _sum: { amount: true } }),
+  ]);
+
+  const meta = await queryBuilder.getPaginationMeta({
+    count: (args: any) => prisma.order.count({ where: args.where }),
+  });
+
+  return {
+    meta,
+    totalOrders,
+    totalAmount: totalAmount._sum.amount ?? 0,
+    data: orders,
+  };
+};
+
+// ✅ Get all orders for a specific user
+const getMyOrders = async (userId: string, queryParams: Record<string, unknown>) => {
+  const queryBuilder = new PrismaQueryBuilder(queryParams);
+  const prismaQuery = queryBuilder.buildSort().buildPagination().getQuery();
+
+  const where = { customerId: userId };
+
+  const [orders, totalOrders, totalAmount] = await Promise.all([
+    prisma.order.findMany({
+      ...prismaQuery,
+      where,
+      include: {
+        orderItems: {
+          include: {
+            product: { select: { id: true, name: true, primaryImage: true } },
+            variant: true,
+          },
+        },
+      },
+    }),
+    prisma.order.count({ where }),
+    prisma.order.aggregate({ where, _sum: { amount: true } }),
+  ]);
+
+  const meta = await queryBuilder.getPaginationMeta({
+    count: (args: any) => prisma.order.count({ where: args.where }),
+  });
+
+  return {
+    meta,
+    totalOrders,
+    totalAmount: totalAmount._sum.amount ?? 0,
+    data: orders,
+  };
+};
+
+// ✅ Get a single order belonging to logged-in user
+const getMyOrder = async (userId: string, orderId: string) => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, customerId: userId },
+    include: {
+      orderItems: {
+        include: {
+          product: { select: { id: true, name: true, primaryImage: true } },
+          variant: true,
+        },
+      },
+    },
+  });
+
+  if (!order) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+  return order;
+};
+
+// ✅ Get all customers who have orders (for admin)
+const getAllCustomers = async (queryParams: Record<string, unknown>) => {
+  const queryBuilder = new PrismaQueryBuilder(queryParams);
+  const prismaQuery = queryBuilder.buildSort().buildPagination().getQuery();
+
+  const customers = await prisma.user.findMany({
+    ...prismaQuery,
+    where: {
+      customerOrders: { // ✅ Use correct relation name from Prisma
+        some: {}, // fetch users who have at least one order as a customer
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      contact: true,
+      address: true,
+      imageUrl: true,
+      _count: { select: { customerOrders: true } }, // ✅ same here
     },
   });
 
   const meta = await queryBuilder.getPaginationMeta({
     count: (args: any) =>
-      prisma.order.count({ where: { ...args.where, ...where } }),
+      prisma.user.count({
+        where: {
+          customerOrders: { some: {} },
+        },
+      }),
   });
 
-  return { meta, data: result };
-};
-
-const getOrderById = async (orderId: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { customer: { select: { id: true, name: true, imageUrl: true } } },
-  });
-  if (!order) return null;
-
-  const cartItems = order.cartItems as { productId: string; quantity: number }[];
-  const productIds = cartItems.map((item) => item.productId);
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds } },
-    select: { id: true, name: true, primaryImage: true },
-  });
-
-  const detailedCartItems = cartItems.map((item) => ({
-    ...item,
-    product: products.find((p) => p.id === item.productId),
-  }));
-
-  return { ...order, cartItems: detailedCartItems };
-};
-
-// Create order from cart items
-const createOrderWithCartItems = async (payload: {
-  customerId?: string;
-  amount: number;
-  isPaid: boolean;
-  orderSource: OrderSource;
-  cartItemIds: string[];
-  name?: string;
-  phone?: string;
-  address?: string;
-  saleType?: SaleType;
-  salesmanId?: string;
-}) => {
-  const { cartItemIds, customerId, ...orderData } = payload;
-
-  const cartItems = await prisma.cartItem.findMany({
-    where: { id: { in: cartItemIds }, status: 'IN_CART' },
-  });
-
-  if (!cartItems.length) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Cart items not found');
-  }
-
-  const cartItemsJson = cartItems.map((item) => ({
-    productId: item.productId,
-    variantId: item.variantId,
-    quantity: item.quantity,
-    price: item.price,
-    userId: item.userId ?? null,
-  }));
-
-  const order = await prisma.order.create({
-    data: {
-      customerId,
-      ...orderData,
-      cartItems: cartItemsJson,
-      orderItems: {
-        create: cartItems.map((item) => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          price: item.price,
-          userId: item.userId ?? undefined,
-        })),
-      },
-    },
-    include: { orderItems: true },
-  });
-
-  await prisma.cartItem.updateMany({
-    where: { id: { in: cartItemIds } },
-    data: { status: 'ORDERED', orderId: order.id },
-  });
-
-  return order;
-};
-
-const getUserOrders = async (id: string, queryParams: Record<string, unknown>) => {
-  const { searchTerm, ...rest } = queryParams;
-  const queryBuilder = new PrismaQueryBuilder(rest);
-  const prismaQuery = queryBuilder.buildSort().buildPagination().buildSelect().getQuery();
-  const where: any = { customerId: id };
-
-  if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== '') {
-    const s = searchTerm.trim();
-    const allOrders = await prisma.order.findMany({
-      where: { customerId: id },
-      include: { customer: { select: { id: true, name: true, imageUrl: true } } },
-      orderBy: prismaQuery.orderBy,
-    });
-    const filteredOrders = allOrders.filter((order) =>
-      order.id.toLowerCase().includes(s.toLowerCase()),
-    );
-    const skip = prismaQuery.skip || 0;
-    const take = prismaQuery.take || 10;
-    const paginatedOrders = filteredOrders.slice(skip, skip + take);
-    const totalOrders = filteredOrders.length;
-    const totalAmount = filteredOrders.reduce((sum, order) => sum + order.amount, 0);
-    const totalPages = Math.ceil(totalOrders / take);
-    const currentPage = Math.floor(skip / take) + 1;
-
-    return { meta: { total: totalOrders, totalPage: totalPages, page: currentPage, limit: take }, totalOrders, totalAmount, data: paginatedOrders };
-  }
-
-  const orders = await prisma.order.findMany({ ...prismaQuery, where, include: { customer: { select: { id: true, name: true, imageUrl: true } } } });
-  const [totalOrders, totalAmount] = await Promise.all([prisma.order.count({ where }), prisma.order.aggregate({ where, _sum: { amount: true } })]);
-  const meta = await queryBuilder.getPaginationMeta({ count: (args: any) => prisma.order.count({ ...args, where }) });
-
-  return { meta, totalOrders, totalAmount: totalAmount._sum.amount ?? 0, data: orders };
-};
-
-const updateOrderStatus = async (orderId: string, payload: Record<string, unknown>) => {
-  await prisma.order.update({ where: { id: orderId }, data: payload });
-  return true;
-};
-
-const getMyOrders = async (userId: string, queryParams: Record<string, unknown>) => {
-  const queryBuilder = new PrismaQueryBuilder(queryParams, ['id']);
-  const prismaQuery = queryBuilder.buildWhere().buildSort().buildPagination().getQuery();
-  prismaQuery.where = { ...prismaQuery.where, customerId: userId };
-  prismaQuery.include = { customer: { select: { id: true, name: true, imageUrl: true } } };
-  const orders = await prisma.order.findMany(prismaQuery);
-  const meta = await queryBuilder.getPaginationMeta(prisma.order);
-  return { meta, data: orders };
-};
-
-const getMyOrder = async (userId: string, orderId: string) => {
-  const order = await prisma.order.findUnique({ where: { id: orderId, customerId: userId }, include: { customer: { select: { id: true, name: true, imageUrl: true } } } });
-  if (!order) return null;
-  const cartItems = order.cartItems as { productId: string; quantity: number }[];
-  const productIds = cartItems.map((item) => item.productId);
-  const products = await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true, primaryImage: true } });
-  const detailedCartItems = cartItems.map((item) => ({ ...item, product: products.find((p) => p.id === item.productId) }));
-  return { ...order, cartItems: detailedCartItems };
-};
-
-const getAllCustomers = async (queryParams: Record<string, unknown>) => {
-  const searchableFields = ['name'];
-  const queryBuilder = new PrismaQueryBuilder(queryParams, searchableFields).buildWhere().buildSort().buildPagination().buildSelect();
-  const prismaQuery = queryBuilder.getQuery();
-  prismaQuery.where = { ...prismaQuery.where, role: 'USER', Order: { some: {} } };
-  if (!prismaQuery.select) prismaQuery.select = { id: true, name: true, email: true, contact: true, address: true, imageUrl: true, createdAt: true };
-  const customers = await prisma.user.findMany(prismaQuery);
-  const meta = await queryBuilder.getPaginationMeta(prisma.user);
   return { meta, data: customers };
 };
+
+// const getMyOrders = async (userId: string, queryParams: Record<string, unknown>) => {
+//   const queryBuilder = new PrismaQueryBuilder(queryParams, ['id']);
+//   const prismaQuery = queryBuilder.buildWhere().buildSort().buildPagination().getQuery();
+//   prismaQuery.where = { ...prismaQuery.where, customerId: userId };
+//   prismaQuery.include = { customer: { select: { id: true, name: true, imageUrl: true } } };
+//   const orders = await prisma.order.findMany(prismaQuery);
+//   const meta = await queryBuilder.getPaginationMeta(prisma.order);
+//   return { meta, data: orders };
+// };
+
+// const getMyOrder = async (userId: string, orderId: string) => {
+//   const order = await prisma.order.findUnique({ where: { id: orderId, customerId: userId }, include: { customer: { select: { id: true, name: true, imageUrl: true } } } });
+//   if (!order) return null;
+//   const cartItems = order.cartItems as { productId: string; quantity: number }[];
+//   const productIds = cartItems.map((item) => item.productId);
+//   const products = await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true, primaryImage: true } });
+//   const detailedCartItems = cartItems.map((item) => ({ ...item, product: products.find((p) => p.id === item.productId) }));
+//   return { ...order, cartItems: detailedCartItems };
+// };
+
+// const getAllCustomers = async (queryParams: Record<string, unknown>) => {
+//   const searchableFields = ['name'];
+//   const queryBuilder = new PrismaQueryBuilder(queryParams, searchableFields).buildWhere().buildSort().buildPagination().buildSelect();
+//   const prismaQuery = queryBuilder.getQuery();
+//   prismaQuery.where = { ...prismaQuery.where, role: 'USER', Order: { some: {} } };
+//   if (!prismaQuery.select) prismaQuery.select = { id: true, name: true, email: true, contact: true, address: true, imageUrl: true, createdAt: true };
+//   const customers = await prisma.user.findMany(prismaQuery);
+//   const meta = await queryBuilder.getPaginationMeta(prisma.user);
+//   return { meta, data: customers };
+// };
 
 export const OrderServices = {
   getAllOrders,
   getOrderById,
-  getUserOrders,
   createOrderWithCartItems,
   updateOrderStatus,
+  getUserOrders,
   getMyOrders,
   getMyOrder,
-  getAllCustomers,
+  getAllCustomers
 };

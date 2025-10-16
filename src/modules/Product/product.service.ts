@@ -29,8 +29,7 @@ import { Unit } from '@prisma/client';
 import slugify from 'slugify';
 
 // Create Product
-const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
-  console.log()
+export const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
   // Check if category exists
   const categoryExists = await prisma.category.findUnique({
     where: { id: payload.categoryId },
@@ -46,12 +45,16 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
   });
 
   if (existingSKUs.length > 0) {
-    throw new AppError(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
+    throw new AppError(
+      400,
+      `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`
+    );
   }
-  
-    // generate slug from product name
-    const slug = slugify(payload.name, { lower: true, strict: true });
 
+  // Generate slug
+  const slug = slugify(payload.name, { lower: true, strict: true });
+
+  // 1️⃣ Create the product first
   const result = await prisma.product.create({
     data: {
       name: payload.name,
@@ -61,8 +64,6 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
       otherImages: payload.otherImages || [],
       videoUrl: payload.videoUrl,
       tags: payload.tags,
-
-      // Perfume specifications
       origin: payload.origin,
       brand: payload.brand,
       gender: payload.gender,
@@ -73,27 +74,69 @@ const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
       projection: payload.projection,
       sillage: payload.sillage,
       bestFor: payload.bestFor,
-
       categoryId: payload.categoryId,
       published: payload.published,
-
       supplier: payload.supplier,
       stock: payload.stock,
-
       variants: {
-        create: payload.variants.map((variant) => ({
-          sku: variant.sku,
+        create: payload.variants.map(v => ({
+          sku: v.sku,
+          size: v.size,
           unit: Unit.ML,
-          size: variant.size,
-          price: variant.price,
-          // stock: variant.stock,
+          price: v.price,
         })),
       },
     },
-    include: productInclude,
+    include: {
+      variants: true,
+      category: true,
+    },
   });
 
-  return formatProductResponse(result);
+  // 2️⃣ Add Material relations using upsert (safe for MongoDB)
+  if (payload.materialIds?.length) {
+    for (const materialId of payload.materialIds) {
+      await prisma.productMaterial.upsert({
+        where: {
+          productId_materialId: {
+            productId: result.id,
+            materialId,
+          },
+        },
+        create: { productId: result.id, materialId },
+        update: {}, // do nothing if exists
+      });
+    }
+  }
+
+  // 3️⃣ Add Fragrance relations using upsert
+  if (payload.fragranceIds?.length) {
+    for (const fragranceId of payload.fragranceIds) {
+      await prisma.productFragrance.upsert({
+        where: {
+          productId_fragranceId: {
+            productId: result.id,
+            fragranceId,
+          },
+        },
+        create: { productId: result.id, fragranceId },
+        update: {}, // do nothing if exists
+      });
+    }
+  }
+
+  // 4️⃣ Fetch the product again including materials & fragrances
+  const finalProduct = await prisma.product.findUnique({
+    where: { id: result.id },
+    include: {
+      variants: true,
+      category: true,
+      ProductMaterial: { include: { material: true } },
+      ProductFragrance: { include: { fragrance: true } },
+    },
+  });
+
+  return formatProductResponse(finalProduct!);
 };
 
 // Get All Products (Public)
@@ -240,17 +283,35 @@ const getProductBySlug = async (slug: string): Promise<IProductResponse | null> 
 };
 
 // Update Product
-const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProductResponse> => {
+export const updateProduct = async (
+  id: string,
+  payload: IUpdateProduct
+): Promise<IProductResponse> => {
+  // 1️⃣ Fetch existing product
   const existingProduct = await prisma.product.findUnique({
     where: { id },
-    include: { variants: true },
+    include: {
+      variants: true,
+      ProductMaterial: true,
+      ProductFragrance: true,
+    },
   });
 
   if (!existingProduct) {
-    throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+    throw new AppError(404, 'Product not found');
   }
 
-  // Handle image updates
+  // 2️⃣ Check category if provided
+  if (payload.categoryId) {
+    const categoryExists = await prisma.category.findUnique({
+      where: { id: payload.categoryId },
+    });
+    if (!categoryExists) {
+      throw new AppError(404, 'Category not found');
+    }
+  }
+
+  // 3️⃣ Handle image updates
   let primaryImage = existingProduct.primaryImage;
   let otherImages = existingProduct.otherImages;
 
@@ -258,16 +319,13 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
     const imagesToKeep = payload.imagesToKeep || [];
     const newImages = payload.newImages || [];
 
-    // Determine images to delete
     const currentImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
-    const imagesToDelete = currentImages.filter(img =>
-      img && !imagesToKeep.includes(img) && !newImages.includes(img)
+    const imagesToDelete = currentImages.filter(
+      img => img && !imagesToKeep.includes(img) && !newImages.includes(img)
     );
 
-    // Delete unused images
     await Promise.all(imagesToDelete.map(deleteFile));
 
-    // Set new image structure
     const allNewImages = [...imagesToKeep, ...newImages];
     if (allNewImages.length > 0) {
       primaryImage = allNewImages[0];
@@ -275,33 +333,30 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
     }
   }
 
-  // Check for duplicate SKUs if variants are being updated
-  if (payload.variants) {
+  // 4️⃣ Check for duplicate SKUs if variants are being updated
+  if (payload.variants?.length) {
     const existingSKUs = await prisma.productVariant.findMany({
       where: {
         sku: { in: payload.variants.map(v => v.sku) },
-        productId: { not: id }
+        productId: { not: id },
       },
       select: { sku: true },
     });
-
     if (existingSKUs.length > 0) {
       throw new AppError(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
     }
   }
 
-  // Update product
+  // 5️⃣ Update main product
   const updatedProduct = await prisma.product.update({
     where: { id },
     data: {
-      ...(payload.name && { name: payload.name }),
+      ...(payload.name && { name: payload.name, slug: slugify(payload.name, { lower: true, strict: true }) }),
       ...(payload.description && { description: payload.description }),
       ...(primaryImage && { primaryImage }),
       ...(otherImages && { otherImages }),
       ...(payload.videoUrl !== undefined && { videoUrl: payload.videoUrl }),
       ...(payload.tags && { tags: payload.tags }),
-
-      // Perfume specifications
       ...(payload.origin !== undefined && { origin: payload.origin }),
       ...(payload.brand !== undefined && { brand: payload.brand }),
       ...(payload.gender !== undefined && { gender: payload.gender }),
@@ -312,36 +367,77 @@ const updateProduct = async (id: string, payload: IUpdateProduct): Promise<IProd
       ...(payload.projection !== undefined && { projection: payload.projection }),
       ...(payload.sillage !== undefined && { sillage: payload.sillage }),
       ...(payload.bestFor && { bestFor: payload.bestFor }),
-
-      ...(payload.stock !== undefined && { origin: payload.origin }),
-
+      ...(payload.stock !== undefined && { stock: payload.stock }),
       ...(payload.categoryId && { categoryId: payload.categoryId }),
       ...(typeof payload.published === 'boolean' && { published: payload.published }),
     },
-    include: productInclude,
   });
 
-  // Replace variants if provided
-  if (payload.variants) {
+  // 6️⃣ Update variants
+  if (payload.variants?.length) {
     await prisma.productVariant.deleteMany({ where: { productId: id } });
 
     await prisma.productVariant.createMany({
-      data: payload.variants.map((variant) => ({
-        ...variant,
+      data: payload.variants.map(v => ({
+        sku: v.sku,
+        size: v.size,
+        unit: Unit.ML,
+        price: v.price,
         productId: id,
-        unit: Unit.ML
       })),
     });
   }
 
-  // Fetch updated product with variants
-  const result = await prisma.product.findUnique({
+  // 7️⃣ Update Material relations using upsert
+  if (payload.materialIds) {
+    // Delete any material that is not in the payload
+    await prisma.productMaterial.deleteMany({
+      where: { productId: id, materialId: { notIn: payload.materialIds } },
+    });
+
+    // Upsert each material
+    for (const materialId of payload.materialIds) {
+      await prisma.productMaterial.upsert({
+        where: {
+          productId_materialId: { productId: id, materialId },
+        },
+        create: { productId: id, materialId },
+        update: {}, // do nothing
+      });
+    }
+  }
+
+  // 8️⃣ Update Fragrance relations using upsert
+  if (payload.fragranceIds) {
+    await prisma.productFragrance.deleteMany({
+      where: { productId: id, fragranceId: { notIn: payload.fragranceIds } },
+    });
+
+    for (const fragranceId of payload.fragranceIds) {
+      await prisma.productFragrance.upsert({
+        where: {
+          productId_fragranceId: { productId: id, fragranceId },
+        },
+        create: { productId: id, fragranceId },
+        update: {},
+      });
+    }
+  }
+
+  // 9️⃣ Fetch the updated product with all relations
+  const finalProduct = await prisma.product.findUnique({
     where: { id },
-    include: productInclude,
+    include: {
+      variants: true,
+      category: true,
+      ProductMaterial: { include: { material: true } },
+      ProductFragrance: { include: { fragrance: true } },
+    },
   });
 
-  return formatProductResponse(result!);
+  return formatProductResponse(finalProduct!);
 };
+
 
 // Delete Product
 const deleteProduct = async (id: string) => {
@@ -968,8 +1064,12 @@ const formatProductResponse = (product: any): IProductResponse => {
     categoryId: product.categoryId,
     category: product.category,
 
+    // New: map material/fragrance IDs
+    materialIds: product.ProductMaterial?.map((pm: any) => pm.material.id) || [],
+    fragranceIds: product.ProductFragrance?.map((pf: any) => pf.fragrance.id) || [],
+
     supplier: product.supplier,
-    
+
     variants: variants,
 
     // Computed fields

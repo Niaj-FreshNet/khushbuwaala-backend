@@ -35,8 +35,10 @@ export interface IProduct {
   bestFor: string[];
   
   categoryId: string;
-  materialId: string;
   published: boolean;
+
+  materialIds: string[];
+  fragranceIds: string[];
 
   supplier: string;
   stock: number;
@@ -70,6 +72,9 @@ export interface IUpdateProduct {
   
   categoryId?: string;
   published?: boolean;
+
+  materialIds: string[];
+  fragranceIds: string[];
   
   // Image handling
   imagesToKeep?: string[];
@@ -132,6 +137,9 @@ export interface IProductResponse {
     categoryName: string;
     imageUrl: string;
   };
+
+  materialIds: string[];
+  fragranceIds: string[];
 
   supplier: string;
   

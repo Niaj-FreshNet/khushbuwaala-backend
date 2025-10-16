@@ -57,7 +57,7 @@ model User {
   email                   String    @unique
   password                String?
   imageUrl                String?
-  contact                 String?
+  phone                   String?
   address                 String?
   role                    Role      @default(USER)
   isVerified              Boolean   @default(false)
@@ -84,6 +84,7 @@ model Category {
   categoryName String    @unique
   imageUrl     String?
   sizes        String[]  @default([])
+  unit         String?
   published    Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -261,7 +262,7 @@ model Order {
   orderTime   DateTime    @default(now())
   amount      Float
   isPaid      Boolean
-  cartItems   Json
+  cartItems   Json?
   status      OrderStatus @default(PROCESSING)
   orderSource OrderSource @default(WEBSITE)
 
@@ -279,10 +280,11 @@ model Order {
   // Optional walk-in customer info
   name    String?
   phone   String?
+  email   String?
   address String?
 
   // Relation to CartItem
-  orderItems CartItem[] @relation("Order_CartItems")
+  orderItems     CartItem[] @relation("Order_CartItems")
 
   payments       Payment[]
   orderDiscounts OrderDiscount[]

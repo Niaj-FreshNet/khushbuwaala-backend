@@ -5,10 +5,10 @@ import sendResponse from '../../utils/sendResponse';
 import { OrderServices } from './order.service';
 import { ORDER_ERROR_MESSAGES } from './order.constant';
 
-// Create Order (Customer flow) with CartItem references
+// Create Order (Customer OR Guest)
 const createOrder = catchAsync(async (req, res) => {
-  const userId = req.user?.id;
-  const { cartItemIds, amount, isPaid, orderSource } = req.body;
+  const userId = req.user?.id || null; // Optional Auth user
+  const { cartItemIds, amount, isPaid, orderSource, customerInfo } = req.body;
 
   // Validation
   if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
@@ -18,15 +18,17 @@ const createOrder = catchAsync(async (req, res) => {
     throw new AppError(httpStatus.BAD_REQUEST, ORDER_ERROR_MESSAGES.TOTAL_AMOUNT_INVALID);
   }
 
+  // ✅ Build payload
   const payload = {
-    customerId: userId,
+    customerId: userId, // can be null for guests
     amount,
     isPaid: isPaid || false,
     orderSource: orderSource || 'WEBSITE',
-    cartItemIds, // pass cart item IDs to service
-    ...req.body, // optional walk-in info for manual orders
+    cartItemIds,
+    customerInfo: customerInfo || null, // for guest user data (name, phone, etc.)
   };
 
+  // ✅ Create order through service
   const result = await OrderServices.createOrderWithCartItems(payload);
 
   sendResponse(res, {

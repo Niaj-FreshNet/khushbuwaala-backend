@@ -7,13 +7,20 @@ import config from '../config';
 import { prisma } from '../../prisma/client';
 import httpStatus from 'http-status';
 
-const auth = (...requiredRoles: TuserRole[]) => {
+const auth = (...requiredRoles: (TuserRole | 'OPTIONAL')[]) => {
   return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    // 👇 detect if route should allow visitors
+    const allowVisitor = requiredRoles.includes('OPTIONAL');
     let token =
       req.headers.authorization?.split(' ')[1] ||
       req.cookies?.accessToken;
 
+    // No token → if visitor allowed, continue without throwing error
     if (!token) {
+      if (allowVisitor) {
+        (req as any).user = null;
+        return next();
+      }
       throw new AppError(httpStatus.UNAUTHORIZED, 'Unauthorized: Token missing');
     }
 
@@ -44,10 +51,18 @@ const auth = (...requiredRoles: TuserRole[]) => {
       });
 
       if (!user) {
+        if (allowVisitor) {
+          (req as any).user = null;
+          return next();
+        }
         throw new AppError(httpStatus.NOT_FOUND, 'User not found');
       }
 
-      if (requiredRoles.length && !requiredRoles.includes(user.role)) {
+      if (
+        requiredRoles.length &&
+        !requiredRoles.includes('OPTIONAL') &&
+        !requiredRoles.includes(user.role)
+      ) {
         throw new AppError(httpStatus.FORBIDDEN, 'You are not authorized');
       }
 
@@ -55,10 +70,13 @@ const auth = (...requiredRoles: TuserRole[]) => {
       next();
     } catch (error: any) {
       console.error('❌ Token verification failed:', error.message);
+      if (allowVisitor) {
+        (req as any).user = null;
+        return next();
+      }
       throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid or expired token');
     }
   });
 };
-
 
 export default auth;

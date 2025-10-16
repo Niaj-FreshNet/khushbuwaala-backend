@@ -58,7 +58,7 @@ export const orderInclude: Prisma.OrderInclude = {
             id: true,
             name: true,
             email: true,
-            contact: true
+            phone: true
         }
     },
     salesman: {

@@ -31,10 +31,10 @@ export const productArraySearchFields: string[] = [
 
 // Nested filters for related fields
 export const productNestedFilters: NestedFilter[] = [
-  { 
-    key: 'category', 
-    searchOption: 'exact', 
-    queryFields: ['categoryName'] 
+  {
+    key: 'category',
+    searchOption: 'exact',
+    queryFields: ['categoryName']
   },
   {
     key: 'variants',
@@ -63,13 +63,14 @@ export const productRangeFilter: rangeFilteringParams[] = [
 
 // Prisma include config for basic product queries
 export const productInclude: Prisma.ProductInclude = {
-  category: { 
-    select: { 
+  category: {
+    select: {
       id: true,
-      categoryName: true, 
-      imageUrl: true 
-    } 
+      categoryName: true,
+      imageUrl: true
+    }
   },
+
   variants: {
     select: {
       id: true,
@@ -82,12 +83,39 @@ export const productInclude: Prisma.ProductInclude = {
       updatedAt: true,
     },
   },
+
+  // ✅ Include related materials
+  ProductMaterial: {
+    include: {
+      material: {
+        select: {
+          id: true,
+          materialName: true,
+        },
+      },
+    },
+  },
+
+  // ✅ Include related fragrances
+  ProductFragrance: {
+    include: {
+      fragrance: {
+        select: {
+          id: true,
+          fragranceName: true,
+        },
+      },
+    },
+  },
 };
+
 
 // Detailed include for single product view
 export const productDetailInclude: Prisma.ProductInclude = {
   category: true,
   variants: true,
+  ProductMaterial: { include: { material: true } },
+  ProductFragrance: { include: { fragrance: true } },
   Review: {
     where: {
       isPublished: true

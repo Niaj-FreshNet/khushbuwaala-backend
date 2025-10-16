@@ -7,7 +7,7 @@ const router = Router();
 // Create a manual sale (done by SALESMAN or ADMIN)
 router.post(
   '/create-sale',
-  auth('SALESMAN', 'ADMIN'),
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   SalesController.createSale
 );
 

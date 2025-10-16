@@ -7,6 +7,8 @@ import {
   Prisma,
   SaleType,
 } from '@prisma/client';
+import httpStatus from 'http-status';
+import AppError from '../../errors/AppError';
 
 // Treat “sales” as orders with a non-WEBSITE orderSource
 const MANUAL_SOURCES: OrderSource[] = [
@@ -18,68 +20,138 @@ const MANUAL_SOURCES: OrderSource[] = [
 // -------------------------------
 // Create a manual sale (Order)
 // -------------------------------
-const createSale = async (
-  payload: {
-    cartItems: Array<{
-      productId: string;
-      variantId?: string | null;
-      quantity: number;
-      price: number;
-    }>;
-    amount: number;
-    isPaid: boolean;
+
+const createSale = async (payload: {
+  customerId?: string | null;
+  salesmanId?: string | null;        // ✅ new optional field for manual sales
+  saleType?: SaleType;               // ✅ optional sale type
+  cartItemIds: string[];
+  amount: number;
+  isPaid?: boolean;
+  orderSource?: OrderSource;
+  customerInfo?: {
     name?: string;
     phone?: string;
+    email?: string;
     address?: string;
-    status?: OrderStatus; // default PROCESSING
-    orderSource?: OrderSource; // default MANUAL
-    saleType?: SaleType; // default SINGLE
-  },
-  salesmanId: string
-) => {
-  const {
-    cartItems,
-    amount,
-    isPaid,
-    name,
-    phone,
-    address,
-    status = OrderStatus.PROCESSING,
-    orderSource = OrderSource.MANUAL,
-    saleType = SaleType.SINGLE,
-  } = payload;
+  } | null;
+}) => {
+  const { customerId, salesmanId, saleType, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
 
-  if (!Array.isArray(cartItems) || cartItems.length === 0) {
-    throw new Error('Cart items are required');
-  }
-  if (amount <= 0) {
-    throw new Error('Amount must be greater than 0');
+  // 1️⃣ Fetch valid cart items
+  const cartItems = await prisma.cartItem.findMany({
+    where: { id: { in: cartItemIds }, status: 'IN_CART' },
+    include: { product: true, variant: true },
+  });
+
+  if (cartItems.length === 0) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
   }
 
-  // Persist productIds for quick lookups/analytics
-  const productIds = cartItems.map((ci) => ci.productId);
+  // 2️⃣ Start transaction
+  const order = await prisma.$transaction(async (tx) => {
+    // Create Order
+    const newOrder = await tx.order.create({
+      data: {
+        customerId: customerId || null,
+        salesmanId: salesmanId || null,       // ✅ assign salesman for manual sales
+        saleType: saleType || SaleType.SINGLE, // default SINGLE
+        amount,
+        isPaid: isPaid || false,
+        orderSource: orderSource || OrderSource.WEBSITE, // WEBSITE by default
+        name: customerInfo?.name || null,
+        phone: customerInfo?.phone || null,
+        email: customerInfo?.email || null,
+        address: customerInfo?.address || null,
+        cartItems: cartItems.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        productIds: cartItems.map((ci) => ci.productId), // ✅ persist product IDs
+      },
+    });
 
-  const created = await prisma.order.create({
-    data: {
-      amount,
-      isPaid,
-      cartItems: cartItems, // JSON
-      status,
-      orderSource,
-      saleType,
-      salesmanId,
-      name: name ?? null,
-      phone: phone ?? null,
-      address: address ?? null,
-      productIds,
-    },
+    // Update CartItems as ordered
+    await Promise.all(
+      cartItems.map((item) =>
+        tx.cartItem.update({
+          where: { id: item.id },
+          data: { orderId: newOrder.id, status: 'ORDERED' },
+        })
+      )
+    );
+
+    // Update stock, salesCount, stock logs
+    await Promise.all(
+      cartItems.map(async (item) => {
+        const variantId = item.variantId;
+        const productId = item.productId;
+        const qty = item.quantity;
+        const variantSize = item.variant?.size || 0;
+
+        // Product variant stock update if exists
+        if (variantId) {
+          await tx.productVariant.update({
+            where: { id: variantId },
+            data: {}, // optional: add variant stock management
+          });
+        }
+
+        // Product stock & sales count
+        await tx.product.update({
+          where: { id: productId },
+          data: {
+            salesCount: { increment: qty },
+            stock: { decrement: variantSize * qty },
+          },
+        });
+
+        // Stock log
+        await tx.stockLog.create({
+          data: {
+            productId,
+            variantId: variantId || '',
+            change: -(variantSize * qty),
+            reason: 'SALE',
+          },
+        });
+      })
+    );
+
+    return newOrder;
+  });
+
+  // 3️⃣ Fetch full order
+  const fullOrder = await prisma.order.findUnique({
+    where: { id: order.id },
     include: {
-      salesman: { select: { id: true, name: true, imageUrl: true, email: true } },
+      customer: { select: { id: true, name: true, imageUrl: true } },
+      salesman: { select: { id: true, name: true, imageUrl: true } },
+      orderItems: {
+        include: {
+          product: { select: { id: true, name: true, primaryImage: true } },
+          variant: true,
+        },
+      },
     },
   });
 
-  return created;
+  if (!fullOrder) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+
+  const customerData = fullOrder.customer || {
+    id: null,
+    name: fullOrder.name || null,
+    phone: fullOrder.phone || null,
+    email: fullOrder.email || null,
+    address: fullOrder.address || null,
+    imageUrl: null,
+  };
+
+  return { ...fullOrder, customer: customerData };
 };
+
 
 // -------------------------------
 // Admin: get all manual sales

@@ -19,6 +19,7 @@ const createCategory = async (payload: ICategory) => {
       categoryName: payload.categoryName.toUpperCase(),
       published: payload.published,
       sizes: payload.sizes,
+      unit: payload.unit,
       imageUrl: payload.imageUrl,
     },
   });

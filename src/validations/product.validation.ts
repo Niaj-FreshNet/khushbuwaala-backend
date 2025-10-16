@@ -72,7 +72,7 @@ const createProductZodSchema = z.object({
 
   categoryId: z.string().min(1, 'Category ID is required'),
   published: z.boolean().optional().default(false),
-  
+
   stock: z.number()
     .min(PRODUCT_VALIDATION.MIN_STOCK, `Stock cannot be negative`)
     .max(PRODUCT_VALIDATION.MAX_STOCK, `Stock cannot exceed ${PRODUCT_VALIDATION.MAX_STOCK}`),
@@ -84,49 +84,54 @@ const createProductZodSchema = z.object({
 
 // Update Product Schema
 const updateProductZodSchema = z.object({
-  body: z.object({
-    name: z.string()
-      .min(PRODUCT_VALIDATION.NAME_MIN_LENGTH, `Name must be at least ${PRODUCT_VALIDATION.NAME_MIN_LENGTH} characters`)
-      .max(PRODUCT_VALIDATION.NAME_MAX_LENGTH, `Name cannot exceed ${PRODUCT_VALIDATION.NAME_MAX_LENGTH} characters`)
-      .optional(),
+  name: z.string()
+    .min(PRODUCT_VALIDATION.NAME_MIN_LENGTH, `Name must be at least ${PRODUCT_VALIDATION.NAME_MIN_LENGTH} characters`)
+    .max(PRODUCT_VALIDATION.NAME_MAX_LENGTH, `Name cannot exceed ${PRODUCT_VALIDATION.NAME_MAX_LENGTH} characters`)
+    .optional(),
 
-    description: z.string()
-      .min(PRODUCT_VALIDATION.DESCRIPTION_MIN_LENGTH, `Description must be at least ${PRODUCT_VALIDATION.DESCRIPTION_MIN_LENGTH} characters`)
-      .max(PRODUCT_VALIDATION.DESCRIPTION_MAX_LENGTH, `Description cannot exceed ${PRODUCT_VALIDATION.DESCRIPTION_MAX_LENGTH} characters`)
-      .optional(),
+  description: z.string()
+    .min(PRODUCT_VALIDATION.DESCRIPTION_MIN_LENGTH, `Description must be at least ${PRODUCT_VALIDATION.DESCRIPTION_MIN_LENGTH} characters`)
+    .max(PRODUCT_VALIDATION.DESCRIPTION_MAX_LENGTH, `Description cannot exceed ${PRODUCT_VALIDATION.DESCRIPTION_MAX_LENGTH} characters`)
+    .optional(),
 
-    videoUrl: z.string().url().optional().or(z.literal('')),
+  videoUrl: z.string().url().optional().or(z.literal('')),
 
-    tags: z.array(z.string().min(1))
-      .max(PRODUCT_VALIDATION.MAX_TAGS, `Cannot have more than ${PRODUCT_VALIDATION.MAX_TAGS} tags`)
-      .optional(),
+  tags: z.array(z.string().min(1))
+    .max(PRODUCT_VALIDATION.MAX_TAGS, `Cannot have more than ${PRODUCT_VALIDATION.MAX_TAGS} tags`)
+    .optional(),
 
-    // Perfume specifications
-    origin: z.string().min(1).max(100).optional(),
-    brand: z.string().min(1).max(100).optional(),
-    gender: z.enum(PERFUME_GENDERS as any).optional(),
-    perfumeNotes: perfumeNotesSchema,
-    accords: z.array(z.string().min(1))
-      .max(PRODUCT_VALIDATION.MAX_ACCORDS, `Cannot have more than ${PRODUCT_VALIDATION.MAX_ACCORDS} accords`)
-      .optional(),
-    performance: z.enum(PERFORMANCE_LEVELS as any).optional(),
-    longevity: z.enum(LONGEVITY_LEVELS as any).optional(),
-    projection: z.enum(PROJECTION_LEVELS as any).optional(),
-    sillage: z.enum(SILLAGE_LEVELS as any).optional(),
-    bestFor: z.array(z.string().min(1))
-      .max(PRODUCT_VALIDATION.MAX_BEST_FOR, `Cannot have more than ${PRODUCT_VALIDATION.MAX_BEST_FOR} occasions`)
-      .optional(),
+  // Perfume specifications
+  origin: z.string().min(1).max(100).optional(),
+  brand: z.string().min(1).max(100).optional(),
+  gender: z.enum(PERFUME_GENDERS as any).optional(),
+  perfumeNotes: perfumeNotesSchema,
+  accords: z.array(z.string().min(1))
+    .max(PRODUCT_VALIDATION.MAX_ACCORDS, `Cannot have more than ${PRODUCT_VALIDATION.MAX_ACCORDS} accords`)
+    .optional(),
+  performance: z.enum(PERFORMANCE_LEVELS as any).optional(),
+  longevity: z.enum(LONGEVITY_LEVELS as any).optional(),
+  projection: z.enum(PROJECTION_LEVELS as any).optional(),
+  sillage: z.enum(SILLAGE_LEVELS as any).optional(),
+  bestFor: z.array(z.string().min(1))
+    .max(PRODUCT_VALIDATION.MAX_BEST_FOR, `Cannot have more than ${PRODUCT_VALIDATION.MAX_BEST_FOR} occasions`)
+    .optional(),
 
-    categoryId: z.string().min(1).optional(),
-    published: z.boolean().optional(),
+  categoryId: z.string().min(1).optional(),
+  // published: z.boolean().optional(),
+  published: z
+    .preprocess((val) => {
+      if (val === 'true') return true;
+      if (val === 'false') return false;
+      return val;
+    }, z.boolean())
+    .optional(),
 
-    imagesToKeep: z.array(z.string().url()).optional(),
+  imagesToKeep: z.array(z.string().url()).optional(),
 
-    variants: z.array(productVariantSchema)
-      .min(1, 'At least one variant is required')
-      .max(20, 'Cannot have more than 20 variants')
-      .optional(),
-  })
+  variants: z.array(productVariantSchema)
+    .min(1, 'At least one variant is required')
+    .max(20, 'Cannot have more than 20 variants')
+    .optional(),
 });
 
 // Query Validation Schema

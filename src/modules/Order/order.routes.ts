@@ -7,13 +7,13 @@ const router = Router();
 // Create an order (customer flow)
 router.post(
   '/create-order',
-  auth('USER'),
+  auth('OPTIONAL'),
   OrderController.createOrder
 );
 
 // Admin order management
 router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getAllOrders);
-router.get('/get-order-by-id/:id', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getOrderById);
+router.get('/get-order-by-id/:id', auth('OPTIONAL'), OrderController.getOrderById);
 router.patch(
   '/update-order-status/:id',
   auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
