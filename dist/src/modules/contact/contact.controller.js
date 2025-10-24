@@ -22,7 +22,7 @@ const createContact = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
         statusCode: 200,
         success: true,
         message: 'Contact email sent successfully',
-        Data: result,
+        data: result,
     });
 }));
 exports.ContactController = { createContact };

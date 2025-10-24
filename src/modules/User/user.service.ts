@@ -49,7 +49,7 @@ const getUser = async (id: string) => {
     select: {
       name: true,
       email: true,
-      contact: true,
+      // contact: true,
       imageUrl: true,
       address: true,
     },
@@ -92,7 +92,7 @@ const updateUser = async (id: string, data: any) => {
       name: true,
       email: true,
       role: true,
-      contact: true,
+      // contact: true,
       imageUrl: true,
       address: true,
     },

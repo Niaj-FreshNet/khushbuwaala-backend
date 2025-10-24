@@ -10,7 +10,7 @@ const createReview = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Review Created Successfully' : 'Review Creation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -21,7 +21,7 @@ const getAllReviews = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Reviews Fetched Successfully' : 'Reviews Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -32,7 +32,7 @@ const getAllReviewsAdmin = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Reviews Fetched Successfully' : 'Reviews Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -43,7 +43,7 @@ const updateReview = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Review Updated Successfully' : 'Review Updation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

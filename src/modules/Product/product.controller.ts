@@ -18,6 +18,11 @@ const createProduct = catchAsync(async (req, res) => {
   if (!categoryId) {
     throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
   }
+  
+  const { primaryImage, otherImages } = req.body;
+if (!primaryImage) {
+  throw new AppError(httpStatus.BAD_REQUEST, 'Primary image is required.');
+}
 
   // Image handling
   // if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {

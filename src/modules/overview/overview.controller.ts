@@ -11,7 +11,7 @@ const getOverview = catchAsync(async (req, res) => {
     message: isok
       ? 'Overview Fetched Successfully'
       : 'Overview Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -24,7 +24,7 @@ const getWeeklyOverview = catchAsync(async (req, res) => {
     message: isok
       ? 'Overview Fetched Successfully'
       : 'Overview Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -37,7 +37,7 @@ const getWeeklySales = catchAsync(async (req, res) => {
     message: isok
       ? 'Overview Fetched Successfully'
       : 'Overview Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

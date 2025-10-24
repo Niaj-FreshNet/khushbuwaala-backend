@@ -64,6 +64,6 @@ router.patch('/update-product-stock/:productId', auth('ADMIN', 'SUPER_ADMIN'), P
 // Product Analytics Routes
 router.get('/get-product-analytics', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getProductAnalytics);
 router.get('/get-low-stock-products', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getLowStockProducts);
-router.get('/get-bestsellers', ProductController.getBestsellers);
+router.get('/get-best-sellers', ProductController.getBestsellers);
 
 export const ProductRoutes = router;

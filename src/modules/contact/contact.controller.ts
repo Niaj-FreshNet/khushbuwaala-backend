@@ -9,7 +9,7 @@ const createContact = catchAsync(async (req, res) => {
     statusCode: 200,
     success: true,
     message: 'Contact email sent successfully',
-    Data: result,
+    data: result,
   });
 });
 

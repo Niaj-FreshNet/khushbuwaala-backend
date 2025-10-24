@@ -46,9 +46,9 @@ const handleCheckoutSessionCompleted = async (session: any) => {
       variantId: variant.id,
       productId: variant.product.id,
       productName: variant.product.name,
-      productImageUrls: variant.product.imageUrl,
+      productImageUrls: variant.product.primaryImage,
       size: variant.size,
-      color: variant.color,
+      // color: variant.color,
       quantity: item.quantity,
       price: variant.price,
     };
@@ -60,12 +60,12 @@ const handleCheckoutSessionCompleted = async (session: any) => {
   const order = await prisma.order.create({
     data: {
       customerId: userId,
-      method: 'Stripe',
+      // method: 'Stripe',
       email: session.customer_details.email,
       address: formattedAddress,
       phone,
-      zipcode,
-      note,
+      // zipcode,
+      // note,
       amount: totalAmount,
       isPaid: true,
       cartItems: detailedCartItems,
@@ -75,12 +75,12 @@ const handleCheckoutSessionCompleted = async (session: any) => {
   // Step 5: Reduce variant quantity and update product sales count
   for (const item of cartItems) {
     // Decrement variant quantity
-    await prisma.productVariant.update({
-      where: { id: item.variantId },
-      data: {
-        quantity: { decrement: item.quantity },
-      },
-    });
+    // await prisma.productVariant.update({
+    //   where: { id: item.variantId },
+    //   data: {
+    //     quantity: { decrement: item.quantity },
+    //   },
+    // });
 
     // Increment product salesCount separately
     const variant = variants.find((v) => v.id === item.variantId);

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import auth from '../../middlewares/auth';
 import { CategoryController } from './category.controller';
-import { upload } from '../../helpers/fileUploader';
+import { upload } from '../../utils/sendImageToCloudinary';
 
 const router = Router();
 

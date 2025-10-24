@@ -2,10 +2,10 @@ import AppError from '../../errors/AppError';
 import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import catchAsync from '../../utils/catchAsync';
-import {
-  deleteFromDigitalOceanAWS,
-  uploadToDigitalOceanAWS,
-} from '../../utils/sendImageToCloudinary';
+// import {
+//   deleteFromDigitalOceanAWS,
+//   uploadToDigitalOceanAWS,
+// } from '../../utils/sendImageToCloudinary';
 import sendResponse from '../../utils/sendResponse';
 import { IBlog } from './blog.interface';
 import { BlogServices } from './blog.service';
@@ -26,19 +26,19 @@ const createBlog = catchAsync(async (req, res) => {
     req.body.isPublish = req.body.isPublish === 'true' ? true : false;
   }
 
-  const blogData: IBlog = {
+  const blogdata: IBlog = {
     ...req.body,
     userId: user.id,
     imageUrl,
   };
 
-  const result = await BlogServices.createBlog(blogData);
+  const result = await BlogServices.createBlog(blogdata);
   const isok = result ? true : false;
   sendResponse(res, {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blog Created Successfully' : 'Blog Creation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -49,7 +49,7 @@ const getAllBlogs = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blogs Fetched Successfully' : 'Blogs Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -60,7 +60,7 @@ const getAllBlogsAdmin = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blogs Fetched Successfully' : 'Blogs Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -72,7 +72,7 @@ const getBlog = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blog Fetched Successfully' : 'Blog Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -91,24 +91,24 @@ const updateBlog = catchAsync(async (req, res) => {
     req.body.isPublish = req.body.isPublish === 'true' ? true : false;
   }
 
-  let updatedData = { ...req.body };
+  let updateddata = { ...req.body };
 
   // Handle image update
   if (req.file?.filename) {
     if (existingBlog?.imageUrl) {
       await deleteFile(existingBlog.imageUrl);
     }
-    updatedData.imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
+    updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
   }
 
-  const result = await BlogServices.updateBlog(blogId, updatedData);
+  const result = await BlogServices.updateBlog(blogId, updateddata);
   const isok = result ? true : false;
 
   sendResponse(res, {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -119,7 +119,7 @@ const deleteBlog = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blog Deleted Successfully' : 'Blog Deletion Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

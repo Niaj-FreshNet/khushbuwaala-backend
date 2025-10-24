@@ -33,18 +33,18 @@ const createCheckoutSession = catchAsync(async (req, res) => {
   }
 
   // Quantity check
-  for (const item of cartItems) {
-    const variant = variants.find((v) => v.id === item.variantId);
-    if (!variant) {
-      throw new AppError(404, `Variant not found for ID: ${item.variantId}`);
-    }
-    if (variant.quantity < item.quantity) {
-      throw new AppError(
-        400,
-        `Insufficient stock for variant (Size: ${variant.size}, Color: ${variant.color}) of product "${variant.product.name}". Available: ${variant.quantity}, Requested: ${item.quantity}`,
-      );
-    }
-  }
+  // for (const item of cartItems) {
+  //   const variant = variants.find((v) => v.id === item.variantId);
+  //   if (!variant) {
+  //     throw new AppError(404, `Variant not found for ID: ${item.variantId}`);
+  //   }
+  //   if (variant.quantity < item.quantity) {
+  //     throw new AppError(
+  //       400,
+  //       `Insufficient stock for variant (Size: ${variant.size}, Color: ${variant.color}) of product "${variant.product.name}". Available: ${variant.quantity}, Requested: ${item.quantity}`,
+  //     );
+  //   }
+  // }
 
   // Stripe line items
   const line_items = cartItems.map((item: any) => {
@@ -54,9 +54,10 @@ const createCheckoutSession = catchAsync(async (req, res) => {
         currency: 'usd',
         unit_amount: Math.round(variant.price * 100),
         product_data: {
-          name: `${variant.product.name} (${variant.size} / ${variant.color})`,
+          // name: `${variant.product.name} (${variant.size} / ${variant.color})`,
+          name: `${variant.product.name} (${variant.size})`,
           description: variant.product.description,
-          images: [encodeURI(variant.product.imageUrl?.[0] ?? '')],
+          images: [encodeURI(variant.product.primaryImage?.[0] ?? '')],
         },
       },
       quantity: item.quantity,
@@ -85,7 +86,7 @@ const createCheckoutSession = catchAsync(async (req, res) => {
     statusCode: 200,
     success: true,
     message: 'Checkout Session Created Successfully',
-    Data: { url: session.url },
+    data: { url: session.url },
   });
 });
 

@@ -10,7 +10,8 @@ exports.productFilterFields = [
     'performance',
     'longevity',
     'projection',
-    'sillage'
+    'sillage',
+    'stock'
 ];
 // Searchable fields
 exports.productSearchFields = [
@@ -71,9 +72,31 @@ exports.productInclude = {
             unit: true,
             size: true,
             price: true,
-            stock: true,
+            // stock: true,
             createdAt: true,
             updatedAt: true,
+        },
+    },
+    // ✅ Include related materials
+    ProductMaterial: {
+        include: {
+            material: {
+                select: {
+                    id: true,
+                    materialName: true,
+                },
+            },
+        },
+    },
+    // ✅ Include related fragrances
+    ProductFragrance: {
+        include: {
+            fragrance: {
+                select: {
+                    id: true,
+                    fragranceName: true,
+                },
+            },
         },
     },
 };
@@ -81,6 +104,8 @@ exports.productInclude = {
 exports.productDetailInclude = {
     category: true,
     variants: true,
+    ProductMaterial: { include: { material: true } },
+    ProductFragrance: { include: { fragrance: true } },
     Review: {
         where: {
             isPublished: true
@@ -122,6 +147,7 @@ exports.productAdminInclude = {
             },
         },
     },
+    // stock: true,
     discounts: true,
     // wishlist: true,
     comboVariants: true
@@ -250,6 +276,7 @@ exports.CACHE_KEYS = {
 // Error messages
 exports.PRODUCT_ERROR_MESSAGES = {
     NOT_FOUND: 'Product not found',
+    PRODUCT_NOT_FOUND: 'Product not found',
     VARIANT_NOT_FOUND: 'Product variant not found',
     INSUFFICIENT_STOCK: 'Insufficient stock available',
     INVALID_VARIANT_DATA: 'Invalid variant data provided',

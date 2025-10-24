@@ -25,7 +25,7 @@ const createMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         message: isok
             ? 'Material Created Successfully'
             : 'Material Creation Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 exports.getAllMaterials = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -37,7 +37,7 @@ exports.getAllMaterials = (0, catchAsync_1.default)((req, res) => __awaiter(void
         message: isok
             ? 'Materials Fetched Successfully'
             : 'Materials Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -49,7 +49,7 @@ const getMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
         message: isok
             ? 'Material Fetched Successfully'
             : 'Material Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const updateMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -61,7 +61,7 @@ const updateMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         message: isok
             ? 'Material Updated Successfully'
             : 'Material Updation Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const deleteMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -73,7 +73,7 @@ const deleteMaterial = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         message: isok
             ? 'Material Deleted Successfully'
             : 'Material Deletion Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 exports.MaterialController = {

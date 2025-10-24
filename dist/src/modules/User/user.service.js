@@ -33,6 +33,7 @@ const getAllUsers = (id, queryParams) => __awaiter(void 0, void 0, void 0, funct
             id: true,
             name: true,
             email: true,
+            role: true,
             contact: true,
             imageUrl: true,
             address: true,
@@ -53,7 +54,7 @@ const getUser = (id) => __awaiter(void 0, void 0, void 0, function* () {
         select: {
             name: true,
             email: true,
-            contact: true,
+            // contact: true,
             imageUrl: true,
             address: true,
         },
@@ -89,7 +90,8 @@ const updateUser = (id, data) => __awaiter(void 0, void 0, void 0, function* () 
         select: {
             name: true,
             email: true,
-            contact: true,
+            role: true,
+            // contact: true,
             imageUrl: true,
             address: true,
         },

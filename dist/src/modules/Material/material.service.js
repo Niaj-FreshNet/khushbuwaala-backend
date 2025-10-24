@@ -28,6 +28,7 @@ const createMaterial = (payload) => __awaiter(void 0, void 0, void 0, function* 
     const result = yield client_1.prisma.material.create({
         data: {
             materialName: payload.materialName,
+            imageUrl: payload.imageUrl,
         },
     });
     return result;

@@ -676,7 +676,7 @@ const getProductsByCategory = async (categoryId: string, query: IProductQuery) =
   let results = await queryBuilder
     .filter(productFilterFields)
     .search(productSearchFields)
-    .arraySearch(productArraySearchFields)
+    // .arraySearch(productArraySearchFields)
     .nestedFilter(productNestedFilters)
     .sort()
     .paginate()

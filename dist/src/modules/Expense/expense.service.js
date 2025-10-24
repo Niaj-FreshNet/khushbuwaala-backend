@@ -103,7 +103,7 @@ const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* ()
         select: {
             id: true,
             name: true,
-            imageUrl: true,
+            primaryImage: true,
         },
     });
     // Step 4: Combine cartItems with product info
@@ -174,9 +174,9 @@ const getUserOrders = (id, queryParams) => __awaiter(void 0, void 0, void 0, fun
         const filteredOrders = allOrders.filter((order) => {
             // Check string fields
             const stringFieldsMatch = order.id.toLowerCase().includes(s.toLowerCase()) ||
-                order.method.toLowerCase().includes(s.toLowerCase()) ||
-                order.address.toLowerCase().includes(s.toLowerCase()) ||
-                order.email.toLowerCase().includes(s.toLowerCase()) ||
+                // order.method.toLowerCase().includes(s.toLowerCase()) ||
+                // order.address.toLowerCase().includes(s.toLowerCase()) ||
+                // order.email.toLowerCase().includes(s.toLowerCase()) ||
                 (matchingStatus && order.status === matchingStatus);
             // Check if search term matches any product name in cartItems
             const cartItemsMatch = Array.isArray(order.cartItems) &&
@@ -306,7 +306,7 @@ const getMyOrder = (userId, orderId) => __awaiter(void 0, void 0, void 0, functi
         select: {
             id: true,
             name: true,
-            imageUrl: true,
+            primaryImage: true,
         },
     });
     // Step 4: Combine cartItems with product info

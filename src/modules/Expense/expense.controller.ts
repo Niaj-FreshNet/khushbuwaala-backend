@@ -9,7 +9,7 @@ const getAllOrders = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Orders Fetched Successfully' : 'Orders Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -20,7 +20,7 @@ const getOrderById = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Order Fetched Successfully' : 'Order Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -31,7 +31,7 @@ const getUserOrders = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Orders Fetched Successfully' : 'Orders Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -44,7 +44,7 @@ const updateOrderStatus = catchAsync(async (req, res) => {
     message: isok
       ? 'Order Status Updated Successfully'
       : 'Order Status Updating Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -57,7 +57,7 @@ const getMyOrders = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Orders fatched successfully!' : 'Orders Fatching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -70,7 +70,7 @@ const getMyOrderByID = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Order Fetched Successfully' : 'Order Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 
@@ -83,7 +83,7 @@ const getAllCustomers = catchAsync(async (req, res) => {
     message: isok
       ? 'Customers Fetched Successfully'
       : 'Customers Fetching Failed',
-    Data: isok ? result : [],
+    data: isok ? result : [],
   });
 });
 

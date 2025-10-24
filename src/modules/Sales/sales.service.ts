@@ -35,7 +35,7 @@ const createSale = async (payload: {
     email?: string;
     address?: string;
   } | null;
-}) => {
+}, userId?: string | null) => {
   const { customerId, salesmanId, saleType, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
 
   // 1️⃣ Fetch valid cart items

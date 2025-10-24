@@ -31,6 +31,7 @@ const createCategory = (payload) => __awaiter(void 0, void 0, void 0, function* 
             categoryName: payload.categoryName.toUpperCase(),
             published: payload.published,
             sizes: payload.sizes,
+            unit: payload.unit,
             imageUrl: payload.imageUrl,
         },
     });
@@ -104,12 +105,14 @@ const updateCategory = (id, payload) => __awaiter(void 0, void 0, void 0, functi
 });
 const deleteCategory = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const isExist = yield client_1.prisma.category.findUnique({
-        where: {
-            id,
-        },
+        where: { id },
+        include: { Product: true },
     });
     if (!isExist) {
-        throw new AppError_1.default(400, 'Category not found');
+        throw new AppError_1.default(404, 'Category not found');
+    }
+    if (isExist.Product.length > 0) {
+        throw new AppError_1.default(400, 'Cannot delete category that has products linked to it. Please remove or reassign those products first.');
     }
     if (isExist.imageUrl) {
         yield (0, fileDelete_1.deleteFile)(isExist.imageUrl);

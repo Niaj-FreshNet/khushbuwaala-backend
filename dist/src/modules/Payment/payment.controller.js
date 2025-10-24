@@ -41,15 +41,18 @@ const createCheckoutSession = (0, catchAsync_1.default)((req, res) => __awaiter(
         throw new AppError_1.default(404, 'Some product variants not found');
     }
     // Quantity check
-    for (const item of cartItems) {
-        const variant = variants.find((v) => v.id === item.variantId);
-        if (!variant) {
-            throw new AppError_1.default(404, `Variant not found for ID: ${item.variantId}`);
-        }
-        if (variant.quantity < item.quantity) {
-            throw new AppError_1.default(400, `Insufficient stock for variant (Size: ${variant.size}, Color: ${variant.color}) of product "${variant.product.name}". Available: ${variant.quantity}, Requested: ${item.quantity}`);
-        }
-    }
+    // for (const item of cartItems) {
+    //   const variant = variants.find((v) => v.id === item.variantId);
+    //   if (!variant) {
+    //     throw new AppError(404, `Variant not found for ID: ${item.variantId}`);
+    //   }
+    //   if (variant.quantity < item.quantity) {
+    //     throw new AppError(
+    //       400,
+    //       `Insufficient stock for variant (Size: ${variant.size}, Color: ${variant.color}) of product "${variant.product.name}". Available: ${variant.quantity}, Requested: ${item.quantity}`,
+    //     );
+    //   }
+    // }
     // Stripe line items
     const line_items = cartItems.map((item) => {
         var _a, _b;
@@ -59,9 +62,10 @@ const createCheckoutSession = (0, catchAsync_1.default)((req, res) => __awaiter(
                 currency: 'usd',
                 unit_amount: Math.round(variant.price * 100),
                 product_data: {
-                    name: `${variant.product.name} (${variant.size} / ${variant.color})`,
+                    // name: `${variant.product.name} (${variant.size} / ${variant.color})`,
+                    name: `${variant.product.name} (${variant.size})`,
                     description: variant.product.description,
-                    images: [encodeURI((_b = (_a = variant.product.imageUrl) === null || _a === void 0 ? void 0 : _a[0]) !== null && _b !== void 0 ? _b : '')],
+                    images: [encodeURI((_b = (_a = variant.product.primaryImage) === null || _a === void 0 ? void 0 : _a[0]) !== null && _b !== void 0 ? _b : '')],
                 },
             },
             quantity: item.quantity,
@@ -88,7 +92,7 @@ const createCheckoutSession = (0, catchAsync_1.default)((req, res) => __awaiter(
         statusCode: 200,
         success: true,
         message: 'Checkout Session Created Successfully',
-        Data: { url: session.url },
+        data: { url: session.url },
     });
 }));
 // Webhook

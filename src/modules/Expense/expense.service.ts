@@ -103,7 +103,7 @@ const getOrderById = async (orderId: string) => {
     select: {
       id: true,
       name: true,
-      imageUrl: true,
+      primaryImage: true,
     },
   });
 
@@ -199,9 +199,9 @@ const getUserOrders = async (
       // Check string fields
       const stringFieldsMatch =
         order.id.toLowerCase().includes(s.toLowerCase()) ||
-        order.method.toLowerCase().includes(s.toLowerCase()) ||
-        order.address.toLowerCase().includes(s.toLowerCase()) ||
-        order.email.toLowerCase().includes(s.toLowerCase()) ||
+        // order.method.toLowerCase().includes(s.toLowerCase()) ||
+        // order.address.toLowerCase().includes(s.toLowerCase()) ||
+        // order.email.toLowerCase().includes(s.toLowerCase()) ||
         (matchingStatus && order.status === matchingStatus);
 
       // Check if search term matches any product name in cartItems
@@ -375,7 +375,7 @@ const getMyOrder = async (userId: string, orderId: string) => {
     select: {
       id: true,
       name: true,
-      imageUrl: true,
+      primaryImage: true,
     },
   });
 

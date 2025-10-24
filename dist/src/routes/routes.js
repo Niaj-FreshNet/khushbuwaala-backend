@@ -12,12 +12,14 @@ const material_routes_1 = require("../modules/Material/material.routes");
 const product_routes_1 = require("../modules/Product/product.routes");
 const user_routes_1 = require("../modules/User/user.routes");
 const payment_routes_1 = require("../modules/Payment/payment.routes");
-const order_route_1 = require("../modules/Order/order.route");
+const order_routes_1 = require("../modules/Order/order.routes");
 const review_routes_1 = require("../modules/Review/review.routes");
 const overview_routes_1 = require("../modules/overview/overview.routes");
 const wishlist_route_1 = require("../modules/Wishlist/wishlist.route");
-const sale_route_1 = require("../modules/Sale/sale.route");
+const sales_routes_1 = require("../modules/Sales/sales.routes");
 const expense_route_1 = require("../modules/Expense/expense.route");
+const cart_routes_1 = require("../modules/Cart/cart.routes");
+const fragrance_routes_1 = require("../modules/Fragrance/fragrance.routes");
 const router = express_1.default.Router();
 const moduleRoutes = [
     {
@@ -31,6 +33,10 @@ const moduleRoutes = [
     {
         path: '/materials',
         route: material_routes_1.MaterialRoutes,
+    },
+    {
+        path: '/fragrances',
+        route: fragrance_routes_1.FragranceRoutes,
     },
     {
         path: '/products',
@@ -53,8 +59,12 @@ const moduleRoutes = [
         route: payment_routes_1.PaymentRoutes,
     },
     {
+        path: '/cart',
+        route: cart_routes_1.CartItemRoutes,
+    },
+    {
         path: '/order',
-        route: order_route_1.OrderRoutes,
+        route: order_routes_1.OrderRoutes,
     },
     {
         path: '/review',
@@ -70,7 +80,7 @@ const moduleRoutes = [
     },
     {
         path: '/sales',
-        route: sale_route_1.SalesRoutes,
+        route: sales_routes_1.SalesRoutes,
     },
     {
         path: '/expense',

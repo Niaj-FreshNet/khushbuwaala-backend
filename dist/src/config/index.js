@@ -23,7 +23,7 @@ exports.default = {
     node_env: process.env.NODE_ENV || 'development',
     access_token_secret: process.env.JWT_ACCESS_TOKEN,
     access_token_expires: process.env.JWT_TOKEN_EXPIRES,
-    refressh_token_secret: process.env.JWT_REFRESH_TOKEN,
+    refresh_token_secret: process.env.JWT_REFRESH_TOKEN,
     refresh_token_expires: process.env.JWT_REFRESH_TOKEN_EXPIRES,
     cloud_name: process.env.CLOUD_NAME,
     cloud_api_key: process.env.CLOUD_API_KEY,

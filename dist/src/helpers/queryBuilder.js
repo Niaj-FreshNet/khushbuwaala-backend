@@ -9,6 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.parseProductQuery = void 0;
 class QueryBuilder {
     buildNestedCondition(path, value, index = 0, condition = {}) {
         const key = path[index];
@@ -52,6 +53,24 @@ class QueryBuilder {
                 })) });
         }
         return this;
+    }
+    /**
+   * Filter for array fields in MongoDB (Prisma)
+   * @param arrayFields - list of fields to search in arrays
+   * Example usage:
+   *   queryBuilder.arraySearch(['tags', 'bestFor'])
+   */
+    arraySearch(arrayFields) {
+        arrayFields.forEach((field) => {
+            const value = this.query[field];
+            if (value) {
+                // If value is a comma-separated string, convert to array
+                const valuesArray = typeof value === 'string' ? value.split(',') : [value];
+                // Add a "hasSome" filter for MongoDB arrays
+                this.prismaQuery.where = Object.assign(Object.assign({}, this.prismaQuery.where), { [field]: { hasSome: valuesArray } });
+            }
+        });
+        return this; // enable chaining
     }
     // Filter
     filter(includeFeilds = []) {
@@ -246,6 +265,39 @@ class QueryBuilder {
     }
 }
 exports.default = QueryBuilder;
+const parseProductQuery = (query) => {
+    return {
+        categories: query.categories
+            ? Array.isArray(query.categories)
+                ? query.categories.map(String)
+                : [String(query.categories)]
+            : [],
+        brands: query.brands
+            ? Array.isArray(query.brands)
+                ? query.brands.map(String)
+                : [String(query.brands)]
+            : [],
+        priceRange: {
+            min: query.minPrice ? Number(query.minPrice) : 0,
+            max: query.maxPrice ? Number(query.maxPrice) : 0,
+        },
+        origins: query.origins
+            ? Array.isArray(query.origins)
+                ? query.origins.map(String)
+                : [String(query.origins)]
+            : [],
+        accords: query.accords
+            ? Array.isArray(query.accords)
+                ? query.accords.map(String)
+                : [String(query.accords)]
+            : [],
+        page: query.page ? Number(query.page) : 1,
+        limit: query.limit ? Number(query.limit) : 10,
+        sort: query.sort ? String(query.sort) : '-createdAt',
+        searchTerm: query.searchTerm ? String(query.searchTerm) : '',
+    };
+};
+exports.parseProductQuery = parseProductQuery;
 function parseSelect(input) {
     const select = {};
     // Handle root fields (fields directly on the model)

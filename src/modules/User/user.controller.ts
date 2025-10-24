@@ -2,10 +2,10 @@ import AppError from '../../errors/AppError';
 import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import catchAsync from '../../utils/catchAsync';
-import {
-  deleteFromDigitalOceanAWS,
-  uploadToDigitalOceanAWS,
-} from '../../utils/sendImageToCloudinary';
+// import {
+//   deleteFromDigitalOceanAWS,
+//   uploadToDigitalOceanAWS,
+// } from '../../utils/sendImageToCloudinary';
 import { UserServices } from './user.service';
 
 const getAllUsers = catchAsync(async (req, res) => {

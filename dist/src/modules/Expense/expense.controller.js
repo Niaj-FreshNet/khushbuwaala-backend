@@ -23,7 +23,7 @@ const getAllOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Orders Fetched Successfully' : 'Orders Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getOrderById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -33,7 +33,7 @@ const getOrderById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Order Fetched Successfully' : 'Order Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getUserOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -43,7 +43,7 @@ const getUserOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Orders Fetched Successfully' : 'Orders Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const updateOrderStatus = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -55,7 +55,7 @@ const updateOrderStatus = (0, catchAsync_1.default)((req, res) => __awaiter(void
         message: isok
             ? 'Order Status Updated Successfully'
             : 'Order Status Updating Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getMyOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -66,7 +66,7 @@ const getMyOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Orders fatched successfully!' : 'Orders Fatching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getMyOrderByID = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -78,7 +78,7 @@ const getMyOrderByID = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Order Fetched Successfully' : 'Order Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getAllCustomers = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -90,7 +90,7 @@ const getAllCustomers = (0, catchAsync_1.default)((req, res) => __awaiter(void 0
         message: isok
             ? 'Customers Fetched Successfully'
             : 'Customers Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 exports.OrderController = {

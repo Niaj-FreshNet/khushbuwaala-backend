@@ -25,7 +25,7 @@ const getOverview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
         message: isok
             ? 'Overview Fetched Successfully'
             : 'Overview Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getWeeklyOverview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -37,7 +37,7 @@ const getWeeklyOverview = (0, catchAsync_1.default)((req, res) => __awaiter(void
         message: isok
             ? 'Overview Fetched Successfully'
             : 'Overview Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getWeeklySales = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -49,7 +49,7 @@ const getWeeklySales = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         message: isok
             ? 'Overview Fetched Successfully'
             : 'Overview Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 exports.OverviewController = {

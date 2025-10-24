@@ -24,7 +24,7 @@ const createReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Review Created Successfully' : 'Review Creation Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getAllReviews = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -34,7 +34,7 @@ const getAllReviews = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Reviews Fetched Successfully' : 'Reviews Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const getAllReviewsAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -44,7 +44,7 @@ const getAllReviewsAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(voi
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Reviews Fetched Successfully' : 'Reviews Fetching Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 const updateReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -54,7 +54,7 @@ const updateReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Review Updated Successfully' : 'Review Updation Failed',
-        Data: isok ? result : [],
+        data: isok ? result : [],
     });
 }));
 exports.reviewController = {

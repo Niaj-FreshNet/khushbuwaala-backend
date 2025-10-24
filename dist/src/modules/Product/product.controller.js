@@ -19,21 +19,35 @@ const catchAsync_1 = __importDefault(require("../../utils/catchAsync"));
 const sendResponse_1 = __importDefault(require("../../utils/sendResponse"));
 const product_service_1 = require("./product.service");
 const product_constant_1 = require("./product.constant");
+const queryBuilder_1 = require("../../helpers/queryBuilder");
+// import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 // Create Product
 const createProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    // console.log("hello")
+    // console.log('req bodyyyy',req.body)
     const { categoryId, variants } = req.body;
     // Validation
     if (!categoryId) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, product_constant_1.PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
     }
-    // Image handling
-    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, product_constant_1.PRODUCT_ERROR_MESSAGES.IMAGE_REQUIRED);
+    const { primaryImage, otherImages } = req.body;
+    if (!primaryImage) {
+        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'Primary image is required.');
     }
-    const uploadedFiles = req.files;
-    const imageUrls = uploadedFiles.map((file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`);
+    // Image handling
+    // if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+    //   throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.IMAGE_REQUIRED);
+    // }
+    // const uploadedFiles = req.files as Express.Multer.File[];
+    // const imageUrls = uploadedFiles.map(
+    //   (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
+    // );
     // Parse data
-    const parsedData = Object.assign(Object.assign({}, req.body), { primaryImage: imageUrls[0], otherImages: imageUrls.slice(1), published: req.body.published === 'true', tags: typeof req.body.tags === 'string' ? req.body.tags.split(',') : req.body.tags || [], accords: typeof req.body.accords === 'string' ? req.body.accords.split(',') : req.body.accords || [], bestFor: typeof req.body.bestFor === 'string' ? req.body.bestFor.split(',') : req.body.bestFor || [], perfumeNotes: req.body.perfumeNotes ? JSON.parse(req.body.perfumeNotes) : undefined, variants: typeof variants === 'string' ? JSON.parse(variants) : variants });
+    const parsedData = Object.assign(Object.assign({}, req.body), { 
+        // primaryImage: imageUrls[0],
+        // otherImages: imageUrls.slice(1),
+        published: req.body.published === true || req.body.published === 'true', tags: req.body.tags || [], accords: req.body.accords || [], bestFor: req.body.bestFor || [], perfumeNotes: req.body.perfumeNotes, stock: req.body.stock, variants: variants });
+    // console.log("parsed data:", parsedData)
     const result = yield product_service_1.ProductServices.createProduct(parsedData);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.CREATED,
@@ -44,7 +58,8 @@ const createProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
 }));
 // Get All Products (Public)
 const getAllProducts = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield product_service_1.ProductServices.getAllProducts(req.query);
+    const query = (0, queryBuilder_1.parseProductQuery)(req.query);
+    const result = yield product_service_1.ProductServices.getAllProducts(query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -55,7 +70,8 @@ const getAllProducts = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
 }));
 // Get All Products (Admin)
 const getAllProductsAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield product_service_1.ProductServices.getAllProductsAdmin(req.query);
+    const query = (0, queryBuilder_1.parseProductQuery)(req.query);
+    const result = yield product_service_1.ProductServices.getAllProductsAdmin(query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -78,6 +94,19 @@ const getProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
         data: result,
     });
 }));
+const getProductBySlug = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { slug } = req.params;
+    const result = yield product_service_1.ProductServices.getProductBySlug(slug);
+    if (!result) {
+        throw new AppError_1.default(http_status_1.default.NOT_FOUND, product_constant_1.PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+    }
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Product retrieved successfully',
+        data: result,
+    });
+}));
 // Update Product
 const updateProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
@@ -88,8 +117,8 @@ const updateProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
         newImageUrls = uploadedFiles.map((file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`);
     }
     // Parse data
-    const parsedData = Object.assign(Object.assign({}, req.body), { published: req.body.published === 'true' ? true : req.body.published === 'false' ? false : undefined, tags: typeof req.body.tags === 'string' ? req.body.tags.split(',') : req.body.tags, accords: typeof req.body.accords === 'string' ? req.body.accords.split(',') : req.body.accords, bestFor: typeof req.body.bestFor === 'string' ? req.body.bestFor.split(',') : req.body.bestFor, perfumeNotes: req.body.perfumeNotes ? JSON.parse(req.body.perfumeNotes) : undefined, variants: typeof req.body.variants === 'string' ? JSON.parse(req.body.variants) : req.body.variants, imagesToKeep: req.body.imagesToKeep ?
-            typeof req.body.imagesToKeep === 'string' ? JSON.parse(req.body.imagesToKeep) : req.body.imagesToKeep : [], newImages: newImageUrls });
+    const parsedData = Object.assign(Object.assign({}, req.body), { published: req.body.published, tags: req.body.tags, accords: req.body.accords, bestFor: req.body.bestFor, perfumeNotes: req.body.perfumeNotes, stock: req.body.stock, variants: req.body.variants, imagesToKeep: req.body.imagesToKeep ?
+            req.body.imagesToKeep : [], newImages: newImageUrls });
     const result = yield product_service_1.ProductServices.updateProduct(id, parsedData);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
@@ -152,7 +181,8 @@ const getNewArrivals = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
 // Get Products by Category
 const getProductsByCategory = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { categoryId } = req.params;
-    const result = yield product_service_1.ProductServices.getProductsByCategory(categoryId, req.query);
+    const query = (0, queryBuilder_1.parseProductQuery)(req.query);
+    const result = yield product_service_1.ProductServices.getProductsByCategory(categoryId, query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -174,7 +204,8 @@ const getRelatedProducts = (0, catchAsync_1.default)((req, res) => __awaiter(voi
 }));
 // Search Products
 const searchProducts = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield product_service_1.ProductServices.searchProducts(req.query);
+    const query = (0, queryBuilder_1.parseProductQuery)(req.query);
+    const result = yield product_service_1.ProductServices.searchProducts(query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -196,14 +227,26 @@ const getProductVariants = (0, catchAsync_1.default)((req, res) => __awaiter(voi
     });
 }));
 // Update Variant Stock
-const updateVariantStock = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { variantId } = req.params;
-    const { newStock, reason } = req.body;
-    const result = yield product_service_1.ProductServices.updateVariantStock(variantId, newStock, reason);
+// const updateVariantStock = catchAsync(async (req, res) => {
+//   const { variantId } = req.params;
+//   const { newStock, reason } = req.body;
+//   const result = await ProductServices.updateVariantStock(variantId, newStock, reason);
+//   sendResponse(res, {
+//     statusCode: httpStatus.OK,
+//     success: true,
+//     message: 'Variant stock updated successfully',
+//     data: result,
+//   });
+// });
+// Update product Stock
+const updateProductStock = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { productId } = req.params;
+    const { addedStock, reason } = req.body;
+    const result = yield product_service_1.ProductServices.updateProductStock(productId, Number(addedStock), reason);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
-        message: 'Variant stock updated successfully',
+        message: 'Product stock updated successfully',
         data: result,
     });
 }));
@@ -243,6 +286,7 @@ exports.ProductController = {
     getAllProducts,
     getAllProductsAdmin,
     getProduct,
+    getProductBySlug,
     updateProduct,
     deleteProduct,
     getTrendingProducts,
@@ -253,7 +297,8 @@ exports.ProductController = {
     getRelatedProducts,
     searchProducts,
     getProductVariants,
-    updateVariantStock,
+    // updateVariantStock,
+    updateProductStock,
     getProductAnalytics,
     getLowStockProducts,
     getBestsellers,

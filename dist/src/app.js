@@ -19,7 +19,7 @@ const globalErrorHandler_1 = __importDefault(require("./middlewares/globalErrorH
 const cors_1 = __importDefault(require("cors"));
 const NotFound_1 = __importDefault(require("./middlewares/NotFound"));
 const path_1 = __importDefault(require("path"));
-const payment_controller_1 = require("./modules/Payment/payment.controller");
+const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const app = (0, express_1.default)();
 exports.corsOptions = {
     origin: [
@@ -34,10 +34,15 @@ exports.corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
 };
-app.post('/api/payment/webhook', express_1.default.raw({ type: 'application/json' }), payment_controller_1.PaymentController.webhook);
+// app.post(
+//   '/api/payment/webhook',
+//   express.raw({ type: 'application/json' }),
+//   PaymentController.webhook,
+// );
 //middleware
 app.use((0, cors_1.default)(exports.corsOptions));
 app.use(express_1.default.json());
+app.use((0, cookie_parser_1.default)());
 app.use('/api', routes_1.default);
 app.use(express_1.default.static('public'));
 app.use(express_1.default.urlencoded({ extended: true }));

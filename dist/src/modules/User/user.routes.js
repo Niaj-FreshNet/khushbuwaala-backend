@@ -12,5 +12,5 @@ const router = (0, express_1.Router)();
 router.get('/get-all-users', (0, auth_1.default)('ADMIN'), user_controller_1.UserController.getAllUsers);
 router.get('/profile', (0, auth_1.default)('ADMIN', 'USER'), user_controller_1.UserController.getUser);
 router.patch('/change-password', (0, auth_1.default)('ADMIN', 'USER'), user_controller_1.UserController.changePassword);
-router.patch('/update-profile', (0, auth_1.default)('ADMIN', 'USER'), fileUploader_1.upload.single('image'), user_controller_1.UserController.updateUser);
+router.patch('/update-profile/:id', (0, auth_1.default)('ADMIN', 'USER'), fileUploader_1.upload.single('image'), user_controller_1.UserController.updateUser);
 exports.UserRoutes = router;
