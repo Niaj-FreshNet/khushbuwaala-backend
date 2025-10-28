@@ -346,6 +346,17 @@ const getBestsellers = catchAsync(async (req, res) => {
   });
 });
 
+const getStockLogs = catchAsync(async (req, res) => {
+  const { productId } = req.params;
+  const result = await ProductServices.getStockLogs(productId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: result ? 'Stock logs fetched successfully' : 'Failed to fetch stock logs',
+    data: result ?? [],
+  });
+});
+
 
 export const ProductController = {
   createProduct,
@@ -368,4 +379,5 @@ export const ProductController = {
   getProductAnalytics,
   getLowStockProducts,
   getBestsellers,
+  getStockLogs,
 };

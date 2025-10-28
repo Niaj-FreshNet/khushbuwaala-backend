@@ -19,6 +19,7 @@ const globalErrorHandler_1 = __importDefault(require("./middlewares/globalErrorH
 const cors_1 = __importDefault(require("cors"));
 const NotFound_1 = __importDefault(require("./middlewares/NotFound"));
 const path_1 = __importDefault(require("path"));
+// import { PaymentController } from './modules/Payment/payment.controller';
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const app = (0, express_1.default)();
 exports.corsOptions = {
@@ -51,7 +52,7 @@ app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 
 app.use(globalErrorHandler_1.default);
 //test route
 const test = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const sayHi = 'Welcome to Judy Seide Server';
+    const sayHi = 'Welcome to Khushbuwaala Server';
     res.send(sayHi);
 });
 app.get('/', test);

@@ -1,22 +1,42 @@
 import { Router } from 'express';
-import { OrderController } from './expense.controller';
+import { ExpenseController } from './expense.controller';
 import auth from '../../middlewares/auth';
+
 const router = Router();
 
-router.get('/get-all-orders', auth('ADMIN'), OrderController.getAllOrders);
-router.get('/get-order-by-id/:id', auth('ADMIN'), OrderController.getOrderById);
-router.patch(
-  '/update-order-status/:id',
-  auth('ADMIN'),
-  OrderController.updateOrderStatus,
+// Create an expense
+router.post(
+  '/create-expense',
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.createExpense
 );
+
+// Get all expenses (admin overview)
 router.get(
-  '/get-all-customers',
-  auth('ADMIN'),
-  OrderController.getAllCustomers,
+  '/get-all-expenses',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.getAllExpenses
 );
-router.get('/get-user-orders/:id', OrderController.getUserOrders);
-router.get('/my-orders', auth('USER'), OrderController.getMyOrders);
-router.get('/my-orders/:id', auth('USER'), OrderController.getMyOrderByID);
+
+// Get expense by ID
+router.get(
+  '/get-expense-by-id/:id',
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.getExpenseById
+);
+
+// Update expense status
+router.patch(
+  '/update-expense-status/:id',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.updateExpenseStatus
+);
+
+// Analytics for expenses
+router.get(
+  '/get-expense-analytics',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.getExpenseAnalytics
+);
 
 export const ExpenseRoutes = router;

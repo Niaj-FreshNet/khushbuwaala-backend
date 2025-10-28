@@ -3,49 +3,41 @@ import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
 import { IReview } from './review.interface';
 
-const createReview = async (id: string, payload: IReview) => {
-  if (!id) throw new AppError(404, 'User not found');
+const createReview = async (userId: string, payload: IReview) => {
+  if (!userId) throw new AppError(404, 'User not found');
 
-  // 1. Check if product exists
-  const isProductExist = await prisma.product.findUnique({
+  const product = await prisma.product.findUnique({
     where: { id: payload.productId },
   });
-  if (!isProductExist) throw new AppError(404, 'Product not found');
+  if (!product) throw new AppError(404, 'Product not found');
 
-  // 2. Validate rating
-  if (payload.rating > 5 || payload.rating < 0)
+  if (payload.rating < 0 || payload.rating > 5)
     throw new AppError(400, 'Rating must be between 0 and 5');
 
-  // 3. Check if user already reviewed this product
-  const existingReview = await prisma.review.findFirst({
-    where: {
-      productId: payload.productId,
-      userId: id,
-    },
+  const existing = await prisma.review.findFirst({
+    where: { userId, productId: payload.productId },
   });
+  if (existing) throw new AppError(400, 'You already reviewed this product');
 
-  if (existingReview) {
-    throw new AppError(400, 'You have already reviewed this product');
-  }
-
-  const result = await prisma.review.create({
+  const review = await prisma.review.create({
     data: {
       rating: payload.rating,
       title: payload.title,
       comment: payload.comment,
       productId: payload.productId,
-      userId: id,
+      userId,
+      isPublished: true,
+    },
+    include: {
+      user: { select: { name: true, imageUrl: true } },
     },
   });
-  return result;
+
+  return review;
 };
 
 const getAllReviews = async (queryParams: Record<string, unknown>) => {
-  const queryBuilder = new PrismaQueryBuilder(queryParams, [
-    'title',
-    'comment',
-  ]);
-
+  const queryBuilder = new PrismaQueryBuilder(queryParams, ['title', 'comment']);
   const prismaQuery = queryBuilder
     .buildWhere()
     .buildSort()
@@ -53,13 +45,8 @@ const getAllReviews = async (queryParams: Record<string, unknown>) => {
     .buildSelect()
     .getQuery();
 
-  // Merge additional filter (isPublish: true) without overriding existing filters
-  prismaQuery.where = {
-    ...prismaQuery.where,
-    isPublished: true,
-  };
+  prismaQuery.where = { ...prismaQuery.where, isPublished: true };
 
-  // Perform query with merged filters and includes
   const reviews = await prisma.review.findMany({
     ...prismaQuery,
     include: {
@@ -69,24 +56,16 @@ const getAllReviews = async (queryParams: Record<string, unknown>) => {
           imageUrl: true,
         },
       },
+      product: { select: { name: true, slug: true, thumbnail: true } },
     },
   });
 
-  // Meta calculation
   const meta = await queryBuilder.getPaginationMeta(prisma.review);
-
-  return {
-    meta,
-    data: reviews,
-  };
+  return { meta, data: reviews };
 };
 
 const getAllReviewsAdmin = async (queryParams: Record<string, unknown>) => {
-  const queryBuilder = new PrismaQueryBuilder(queryParams, [
-    'title',
-    'comment',
-  ]);
-
+  const queryBuilder = new PrismaQueryBuilder(queryParams, ['title', 'comment']);
   const prismaQuery = queryBuilder
     .buildWhere()
     .buildSort()
@@ -94,14 +73,47 @@ const getAllReviewsAdmin = async (queryParams: Record<string, unknown>) => {
     .buildSelect()
     .getQuery();
 
-  // Merge additional filter (isPublish: true) without overriding existing filters
-  prismaQuery.where = {
-    ...prismaQuery.where,
-  };
-
-  // Perform query with merged filters and includes
   const reviews = await prisma.review.findMany({
     ...prismaQuery,
+    include: {
+      user: { select: { name: true, email: true, imageUrl: true } },
+      product: { select: { name: true, slug: true } },
+    },
+  });
+
+  const meta = await queryBuilder.getPaginationMeta(prisma.review);
+  return { meta, data: reviews };
+};
+
+const getReviewById = async (id: string) => {
+  const review = await prisma.review.findUnique({
+    where: { id },
+    include: {
+      user: { select: { name: true, imageUrl: true } },
+      product: { select: { name: true, slug: true } },
+    },
+  });
+  if (!review) throw new AppError(404, 'Review not found');
+  return review;
+};
+
+const getUserReviews = async (userId: string) => {
+  const reviews = await prisma.review.findMany({
+    where: { userId },
+    include: {
+      product: { select: { name: true, slug: true, primaryImage: true } },
+    },
+  });
+
+  return reviews.map((r) => ({
+    ...r,
+    reviewerName: r.userId ? undefined : 'Anonymous',
+  }));
+};
+
+const getProductReviews = async (productId: string) => {
+  const reviews = await prisma.review.findMany({
+    where: { productId, isPublished: true },
     include: {
       user: {
         select: {
@@ -110,28 +122,57 @@ const getAllReviewsAdmin = async (queryParams: Record<string, unknown>) => {
         },
       },
     },
+    orderBy: { createdAt: 'desc' },
   });
 
-  // Meta calculation
-  const meta = await queryBuilder.getPaginationMeta(prisma.review);
-
-  return {
-    meta,
-    data: reviews,
-  };
+  // Replace null user with anonymous label
+  return reviews.map((r) => ({
+    ...r,
+    user: r.user || { name: 'Anonymous', imageUrl: '/default-avatar.png' },
+  }));
 };
 
-const updateReview = async (id: string, payload: IReview) => {
-  const result = await prisma.review.update({
+const updateReview = async (id: string, payload: Partial<IReview>) => {
+  const review = await prisma.review.update({
     where: { id },
     data: payload,
+    include: {
+      user: { select: { name: true, imageUrl: true } },
+    },
   });
-  return result;
+  return review;
+};
+
+const publishReview = async (id: string) => {
+  // ✅ First fetch current status
+  const existingReview = await prisma.review.findUnique({
+    where: { id },
+  });
+
+  if (!existingReview) {
+    throw new Error("Review not found");
+  }
+
+  // ✅ Toggle publish status
+  const updatedReview = await prisma.review.update({
+    where: { id },
+    data: { isPublished: !existingReview.isPublished },
+    include: {
+      user: { select: { name: true, imageUrl: true } },
+      product: { select: { name: true } },
+    },
+  });
+
+  return updatedReview;
 };
 
 export const ReviewServices = {
   createReview,
   getAllReviews,
   getAllReviewsAdmin,
+  getReviewById,
+  getUserReviews,
+  getProductReviews,
   updateReview,
+  publishReview,
 };

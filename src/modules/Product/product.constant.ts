@@ -107,6 +107,24 @@ export const productInclude: Prisma.ProductInclude = {
       },
     },
   },
+
+  Review: {
+    where: {
+      isPublished: true
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          imageUrl: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc'
+    }
+  },
 };
 
 
@@ -140,7 +158,7 @@ export const productDetailInclude: Prisma.ProductInclude = {
         { endDate: { gte: new Date() } }
       ]
     }
-  }
+  },
 };
 
 // Admin include for management
@@ -154,6 +172,7 @@ export const productAdminInclude: Prisma.ProductInclude = {
           id: true,
           name: true,
           email: true,
+          imageUrl: true
         },
       },
     },

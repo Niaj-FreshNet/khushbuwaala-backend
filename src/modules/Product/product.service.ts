@@ -840,36 +840,36 @@ const getProductVariants = async (productId: string) => {
 // };
 
 // Update Product Stock
-const updateProductStock = async (productId: string, addedStock: number, reason?: string) => {
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-  });
+// const updateProductStock = async (productId: string, addedStock: number, reason?: string) => {
+//   const product = await prisma.product.findUnique({
+//     where: { id: productId },
+//   });
 
-  if (!product) {
-    throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
-  }
+//   if (!product) {
+//     throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+//   }
 
-  const newTotalStock = (product.stock ?? 0) + addedStock;
+//   const newTotalStock = (product.stock ?? 0) + addedStock;
 
-  const updatedProduct = await prisma.product.update({
-    where: { id: productId },
-    data: {
-      stock: newTotalStock,
-    },
-  });
+//   const updatedProduct = await prisma.product.update({
+//     where: { id: productId },
+//     data: {
+//       stock: newTotalStock,
+//     },
+//   });
 
-  // 🔥 Optional: create a StockLog entry for auditing
-  // await prisma.stockLog.create({
-  //   data: {
-  //     productId,
-  //     change: addedStock,
-  //     newStock: newTotalStock,
-  //     reason: reason || "Stock updated",
-  //   },
-  // });
+// 🔥 Optional: create a StockLog entry for auditing
+// await prisma.stockLog.create({
+//   data: {
+//     productId,
+//     change: addedStock,
+//     newStock: newTotalStock,
+//     reason: reason || "Stock updated",
+//   },
+// });
 
-  return updatedProduct;
-};
+//   return updatedProduct;
+// };
 
 // Get Product Analytics
 const getProductAnalytics = async (): Promise<IProductAnalytics> => {
@@ -1031,11 +1031,91 @@ const getBestsellers = async (): Promise<ITrendingProduct[]> => {
   }));
 };
 
+// Update Product Stock
+const updateProductStock = async (productId: string, addedStock: number, reason?: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+  });
+
+  if (!product) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+  }
+
+  const newTotalStock = (product.stock ?? 0) + addedStock;
+
+  // const updatedProduct = await prisma.$transaction(async (tx) => {
+  //   // Update product stock
+  //   const updated = await tx.product.update({
+  //     where: { id: productId },
+  //     data: {
+  //       stock: newTotalStock,
+  //     },
+  //     include: productAdminInclude,
+  //   });
+
+  // 1️⃣ Update stock and create log inside transaction
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id: productId },
+      data: { stock: newTotalStock },
+    });
+
+    await tx.stockLog.create({
+      data: { productId, change: addedStock, reason: reason || 'Stock updated', createdAt: new Date() },
+    });
+  });
+
+  // 2️⃣ Fetch full product after transaction
+  const updatedProduct = await prisma.product.findUnique({
+    where: { id: productId },
+    include: productAdminInclude,
+  });
+
+  return formatProductResponse(updatedProduct);
+};
+
+// Get Stock Logs
+const getStockLogs = async (productId: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+  });
+
+  if (!product) {
+    throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+  }
+
+  const logs = await prisma.stockLog.findMany({
+    where: { productId },
+    include: {
+      product: { select: { name: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return logs.map((log) => ({
+    id: log.id,
+    productId: log.productId,
+    change: log.change,
+    reason: log.reason,
+    createdAt: log.createdAt.toISOString(),
+    product: { name: log.product.name },
+  }));
+};
+
+
+
 // Helper Functions
 const formatProductResponse = (product: any): IProductResponse => {
   const variants = product.variants || [];
   const prices = variants.map((v: any) => v.price);
-  // const stocks = variants.map((v: any) => v.stock);
+  const reviews = product.Review || [];
+
+  // Calculate average rating and review count
+  const reviewCount = reviews.length;
+  const averageRating =
+    reviewCount > 0
+      ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviewCount
+      : 0;
 
   return {
     id: product.id,
@@ -1064,7 +1144,7 @@ const formatProductResponse = (product: any): IProductResponse => {
     categoryId: product.categoryId,
     category: product.category,
 
-    // New: map material/fragrance IDs
+    // Map material/fragrance IDs
     materialIds: product.ProductMaterial?.map((pm: any) => pm.material.id) || [],
     fragranceIds: product.ProductFragrance?.map((pf: any) => pf.fragrance.id) || [],
 
@@ -1077,6 +1157,24 @@ const formatProductResponse = (product: any): IProductResponse => {
     maxPrice: prices.length > 0 ? Math.max(...prices) : 0,
     totalStock: product.stock,
     inStock: product.stock > 0,
+
+    // Review fields
+    reviews: reviews.map((r: any) => ({
+      id: r.id,
+      rating: r.rating,
+      title: r.title,
+      comment: r.comment,
+      isPublished: r.isPublished,
+      productId: r.productId,
+      userId: r.userId,
+      user: r.user
+        ? { name: r.user.name, imageUrl: r.user.imageUrl || '/default-avatar.png' }
+        : { name: 'Anonymous', imageUrl: '/default-avatar.png' },
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+    averageRating: parseFloat(averageRating.toFixed(2)),
+    reviewCount,
 
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -1095,6 +1193,30 @@ const applySorting = (results: any[], sortBy?: string) => {
       const minA = Math.min(...a.variants.map((v: any) => v.price));
       const minB = Math.min(...b.variants.map((v: any) => v.price));
       return minB - minA;
+    });
+  } else if (sortBy === 'rating_asc') {
+    return results.sort((a, b) => {
+      const avgA =
+        a.Reviews && a.Reviews.length > 0
+          ? a.Reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / a.Reviews.length
+          : 0;
+      const avgB =
+        b.Reviews && b.Reviews.length > 0
+          ? b.Reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / b.Reviews.length
+          : 0;
+      return avgA - avgB;
+    });
+  } else if (sortBy === 'rating_desc') {
+    return results.sort((a, b) => {
+      const avgA =
+        a.Reviews && a.Reviews.length > 0
+          ? a.Reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / a.Reviews.length
+          : 0;
+      const avgB =
+        b.Reviews && b.Reviews.length > 0
+          ? b.Reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / b.Reviews.length
+          : 0;
+      return avgB - avgA;
     });
   }
 
@@ -1118,8 +1240,9 @@ export const ProductServices = {
   searchProducts,
   getProductVariants,
   // updateVariantStock,
-  updateProductStock,
   getProductAnalytics,
   getLowStockProducts,
   getBestsellers,
+  updateProductStock,
+  getStockLogs,
 };

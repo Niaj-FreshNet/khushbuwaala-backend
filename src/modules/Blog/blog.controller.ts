@@ -19,17 +19,20 @@ const createBlog = catchAsync(async (req, res) => {
   }
 
   if (req.file.filename) {
-    imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
+    imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
   }
 
   if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-    req.body.isPublish = req.body.isPublish === 'true' ? true : false;
+    req.body.isPublish = req.body.isPublish === 'true';
   }
 
   const blogdata: IBlog = {
     ...req.body,
     userId: user.id,
     imageUrl,
+    metaTitle: req.body.metaTitle,
+    metaDescription: req.body.metaDescription,
+    keywords: req.body.keywords,
   };
 
   const result = await BlogServices.createBlog(blogdata);
@@ -38,6 +41,41 @@ const createBlog = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blog Created Successfully' : 'Blog Creation Failed',
+    data: isok ? result : [],
+  });
+});
+
+const updateBlog = catchAsync(async (req, res) => {
+  const blogId = req.params.id;
+
+  const existingBlog = await prisma.blog.findUnique({
+    where: { id: blogId },
+  });
+
+  if (!existingBlog) {
+    throw new AppError(404, 'Blog not found');
+  }
+
+  if (req.body.isPublish && typeof req.body.isPublish === 'string') {
+    req.body.isPublish = req.body.isPublish === 'true';
+  }
+
+  let updateddata = { ...req.body };
+
+  if (req.file?.filename) {
+    if (existingBlog?.imageUrl) {
+      await deleteFile(existingBlog.imageUrl);
+    }
+    updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
+  }
+
+  const result = await BlogServices.updateBlog(blogId, updateddata);
+  const isok = result ? true : false;
+
+  sendResponse(res, {
+    statusCode: isok ? 200 : 400,
+    success: isok ? true : false,
+    message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
     data: isok ? result : [],
   });
 });
@@ -72,42 +110,6 @@ const getBlog = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok ? true : false,
     message: isok ? 'Blog Fetched Successfully' : 'Blog Fetching Failed',
-    data: isok ? result : [],
-  });
-});
-
-const updateBlog = catchAsync(async (req, res) => {
-  const blogId = req.params.id;
-
-  const existingBlog = await prisma.blog.findUnique({
-    where: { id: blogId },
-  });
-
-  if (!existingBlog) {
-    throw new AppError(404, 'Blog not found');
-  }
-
-  if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-    req.body.isPublish = req.body.isPublish === 'true' ? true : false;
-  }
-
-  let updateddata = { ...req.body };
-
-  // Handle image update
-  if (req.file?.filename) {
-    if (existingBlog?.imageUrl) {
-      await deleteFile(existingBlog.imageUrl);
-    }
-    updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
-  }
-
-  const result = await BlogServices.updateBlog(blogId, updateddata);
-  const isok = result ? true : false;
-
-  sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
     data: isok ? result : [],
   });
 });

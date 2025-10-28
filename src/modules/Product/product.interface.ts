@@ -17,7 +17,7 @@ export interface IProduct {
   otherImages?: string[];
   videoUrl?: string;
   tags: string[];
-  
+
   // Perfume specifications
   origin?: string;
   brand?: string;
@@ -33,12 +33,16 @@ export interface IProduct {
   projection?: string;
   sillage?: string;
   bestFor: string[];
-  
+
   categoryId: string;
   published: boolean;
 
   materialIds: string[];
   fragranceIds: string[];
+
+  reviews: IReview[];
+  averageRating: number;
+  reviewCount: number;
 
   supplier: string;
   stock: number;
@@ -53,7 +57,7 @@ export interface IUpdateProduct {
   otherImages?: string[];
   videoUrl?: string;
   tags?: string[];
-  
+
   // Perfume specifications
   origin?: string;
   brand?: string;
@@ -69,17 +73,17 @@ export interface IUpdateProduct {
   projection?: string;
   sillage?: string;
   bestFor?: string[];
-  
+
   categoryId?: string;
   published?: boolean;
 
   materialIds: string[];
   fragranceIds: string[];
-  
+
   // Image handling
   imagesToKeep?: string[];
   newImages?: string[];
-  
+
   stock?: number;
   variants?: IProductVariant[];
 }
@@ -103,6 +107,22 @@ export interface IProductQuery {
   [key: string]: unknown;
 }
 
+export interface IReview {
+  id: string;
+  rating: number;
+  title: string;
+  comment: string;
+  isPublished: boolean;
+  productId: string;
+  userId?: string;
+  user?: {
+    name: string;
+    imageUrl: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Response Interfaces
 export interface IProductResponse {
   id: string;
@@ -115,7 +135,7 @@ export interface IProductResponse {
   tags: string[];
   salesCount: number;
   published: boolean;
-  
+
   // Perfume specifications
   origin?: string;
   brand?: string;
@@ -131,7 +151,7 @@ export interface IProductResponse {
   projection?: string;
   sillage?: string;
   bestFor: string[];
-  
+
   categoryId: string;
   category?: {
     categoryName: string;
@@ -141,16 +161,20 @@ export interface IProductResponse {
   materialIds: string[];
   fragranceIds: string[];
 
+  reviews: IReview[];
+  averageRating: number;
+  reviewCount: number;
+
   supplier: string;
-  
+
   variants: IProductVariantResponse[];
-  
+
   // Computed fields
   minPrice: number;
   maxPrice: number;
   totalStock: number;
   inStock: boolean;
-  
+
   createdAt: Date;
   updatedAt: Date;
 }

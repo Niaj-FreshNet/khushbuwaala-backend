@@ -174,6 +174,13 @@ const stockUpdateSchema = z.object({
   })
 });
 
+// const updateProductStockZodSchema = z.object({
+//   body: z.object({
+//     addedStock: z.number().min(1, 'Stock change must be positive'),
+//     reason: z.string().min(1, 'Reason is required'),
+//   }),
+// });
+
 // ID Parameter Schema
 const mongoIdSchema = z.object({
   params: z.object({

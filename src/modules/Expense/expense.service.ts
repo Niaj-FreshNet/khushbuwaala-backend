@@ -1,448 +1,163 @@
+import { Prisma, PrismaClient, ExpenseStatus } from '@prisma/client';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { prisma } from '../../../prisma/client';
+import httpStatus from 'http-status';
+import AppError from '../../errors/AppError';
 
-const getAllOrders = async (queryParams: Record<string, unknown>) => {
-  const { searchTerm, status, ...rest } = queryParams;
+const createExpense = async (
+  payload: {
+    expenseTime: string;
+    title: string;
+    description?: string;
+    amount: number;
+    method: string;
+    isPaid?: boolean;
+    status?: ExpenseStatus;
+    reference?: string;
+  },
+  userId: string
+) => {
+  const { expenseTime, title, description, amount, method, isPaid, status, reference } = payload;
 
-  const queryBuilder = new PrismaQueryBuilder(rest, ['title', 'content']);
+  const expense = await prisma.expense.create({
+    data: {
+      expenseTime: new Date(expenseTime),
+      title,
+      description,
+      amount: Number(amount),
+      method,
+      isPaid: isPaid || false,
+      status: status || 'PENDING',
+      reference,
+      expenseById: userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    include: {
+      expenseBy: { select: { id: true, name: true } },
+    },
+  });
 
+  return expense;
+};
+
+const getAllExpenses = async (queryParams: Record<string, unknown>) => {
+  const { searchTerm, status, ...rest } = queryParams as {
+    searchTerm?: string;
+    status?: ExpenseStatus | string;
+  };
+
+  const queryBuilder = new PrismaQueryBuilder(rest);
   const prismaQuery = queryBuilder
     .buildWhere()
     .buildSort()
     .buildPagination()
-    .buildSelect()
     .getQuery();
 
-  // Build the complete where clause with all conditions
-  const where: any = prismaQuery.where || {};
+  const where: Prisma.ExpenseWhereInput = {
+    ...prismaQuery.where,
+  };
 
-  // Add searchTerm filter for customer name
-  if (searchTerm) {
+  if (status) where.status = status as ExpenseStatus;
+
+  if (searchTerm && searchTerm.trim()) {
+    const s = searchTerm.trim();
     where.OR = [
-      ...(where.OR || []),
+      { title: { contains: s, mode: 'insensitive' } },
+      { description: { contains: s, mode: 'insensitive' } },
+      { reference: { contains: s, mode: 'insensitive' } },
       {
-        customer: {
-          name: {
-            contains: String(searchTerm),
-            mode: 'insensitive',
-          },
+        expenseBy: {
+          name: { contains: s, mode: 'insensitive' },
         },
       },
     ];
   }
 
-  // Add status filter
-  if (status) {
-    where.status = status;
-  }
-
-  // Execute the main query
-  const result = await prisma.order.findMany({
+  const data = await prisma.expense.findMany({
     ...prismaQuery,
     where,
     include: {
-      customer: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-        },
-      },
+      expenseBy: { select: { id: true, name: true } },
     },
   });
 
-  // Get pagination metadata with the same where clause
   const meta = await queryBuilder.getPaginationMeta({
     count: (args: any) =>
-      prisma.order.count({
-        where: {
-          ...args.where,
-          ...where, // Apply the same filters to the count query
-        },
-      }),
+      prisma.expense.count({ where: { ...where, ...(args?.where ?? {}) } }),
   });
 
-  return {
-    meta,
-    data: result,
-  };
+  return { meta, data };
 };
 
-// Get Order details
-const getOrderById = async (orderId: string) => {
-  // Step 1: Get the order (with cartItems as JSON)
-  const order = await prisma.order.findUnique({
-    where: {
-      id: orderId,
-    },
+const getExpenseById = async (id: string) => {
+  const expense = await prisma.expense.findUnique({
+    where: { id },
     include: {
-      customer: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-        },
-      },
+      expenseBy: { select: { id: true, name: true } },
     },
   });
 
-  if (!order) return null;
+  if (!expense) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
 
-  // Step 2: Extract productIds from cartItems
-  const cartItems = order.cartItems as {
-    productId: string;
-    quantity: number;
-  }[];
-  const productIds = cartItems.map((item) => item.productId);
-
-  // Step 3: Fetch product details
-  const products = await prisma.product.findMany({
-    where: {
-      id: { in: productIds },
-    },
-    select: {
-      id: true,
-      name: true,
-      primaryImage: true,
-    },
-  });
-
-  // Step 4: Combine cartItems with product info
-  const detailedCartItems = cartItems.map((item) => {
-    const product = products.find((p) => p.id === item.productId);
-    return {
-      ...item,
-      product,
-    };
-  });
-
-  // Step 5: Return enriched order
-  return {
-    ...order,
-    cartItems: detailedCartItems,
-  };
+  return expense;
 };
 
-// Get user's orders BY ID
-const getUserOrders = async (
+const updateExpenseStatus = async (
   id: string,
-  queryParams: Record<string, unknown>,
+  payload: Partial<Pick<Prisma.ExpenseUpdateInput, 'status' | 'isPaid'>>
 ) => {
-  // Extract searchTerm and rest params
-  const { searchTerm, ...rest } = queryParams;
+  const data: Prisma.ExpenseUpdateInput = {};
+  if (payload.status) data.status = payload.status as ExpenseStatus;
+  if (typeof payload.isPaid === 'boolean') data.isPaid = payload.isPaid;
 
-  // Build base query without searchTerm filters
-  const queryBuilder = new PrismaQueryBuilder(rest);
-  const prismaQuery = queryBuilder
-    .buildSort()
-    .buildPagination()
-    .buildSelect()
-    .getQuery();
+  const updated = await prisma.expense.update({
+    where: { id },
+    data,
+    include: {
+      expenseBy: { select: { id: true, name: true } },
+    },
+  });
 
-  // Base where filter by customer
-  const where: any = {
-    customerId: id,
+  return updated;
+};
+
+const getExpenseAnalytics = async (queryParams: Record<string, unknown>) => {
+  const { startDate, endDate } = queryParams as {
+    startDate?: string;
+    endDate?: string;
   };
 
-  // If there's a search term, we need to handle it specially for JSON fields
-  if (
-    searchTerm &&
-    typeof searchTerm === 'string' &&
-    searchTerm.trim() !== ''
-  ) {
-    const s = searchTerm.trim();
+  const where: Prisma.ExpenseWhereInput = {};
 
-    // Define valid OrderStatus enum values
-    const validOrderStatuses = [
-      'PENDING',
-      'PROCESSING',
-      'SHIPPED',
-      'DELIVERED',
-      'CANCELLED',
-    ];
-
-    // Build OR conditions for searchable string fields
-    const orConditions: any[] = [
-      { id: { contains: s, mode: 'insensitive' } },
-      { method: { contains: s, mode: 'insensitive' } },
-      { address: { contains: s, mode: 'insensitive' } },
-      { email: { contains: s, mode: 'insensitive' } },
-    ];
-
-    // Add status search if the search term matches a valid enum value
-    const matchingStatus = validOrderStatuses.find(
-      (status) => status.toLowerCase() === s.toLowerCase(),
-    );
-
-    if (matchingStatus) {
-      orConditions.push({ status: { equals: matchingStatus } });
-    }
-
-    // For searching in cartItems, we'll need to do it post-query
-    // First, get all orders for this customer
-    const allOrders = await prisma.order.findMany({
-      where: { customerId: id },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            imageUrl: true,
-          },
-        },
-      },
-      orderBy: prismaQuery.orderBy,
-    });
-
-    // Filter orders that match the search term
-    const filteredOrders = allOrders.filter((order) => {
-      // Check string fields
-      const stringFieldsMatch =
-        order.id.toLowerCase().includes(s.toLowerCase()) ||
-        // order.method.toLowerCase().includes(s.toLowerCase()) ||
-        // order.address.toLowerCase().includes(s.toLowerCase()) ||
-        // order.email.toLowerCase().includes(s.toLowerCase()) ||
-        (matchingStatus && order.status === matchingStatus);
-
-      // Check if search term matches any product name in cartItems
-      const cartItemsMatch =
-        Array.isArray(order.cartItems) &&
-        order.cartItems.some(
-          (item: any) =>
-            item.productName &&
-            item.productName.toLowerCase().includes(s.toLowerCase()),
-        );
-
-      return stringFieldsMatch || cartItemsMatch;
-    });
-
-    // Apply pagination manually
-    const skip = prismaQuery.skip || 0;
-    const take = prismaQuery.take || 10;
-    const paginatedOrders = filteredOrders.slice(skip, skip + take);
-
-    // Calculate totals for filtered results
-    const totalOrders = filteredOrders.length;
-    const totalAmount = filteredOrders.reduce(
-      (sum, order) => sum + order.amount,
-      0,
-    );
-
-    // Calculate pagination meta
-    const totalPages = Math.ceil(totalOrders / take);
-    const currentPage = Math.floor(skip / take) + 1;
-
-    return {
-      meta: {
-        total: totalOrders,
-        totalPage: totalPages,
-        page: currentPage,
-        limit: take,
-      },
-      totalOrders,
-      totalAmount,
-      data: paginatedOrders,
-    };
+  if (startDate || endDate) {
+    where.expenseTime = {};
+    if (startDate) (where.expenseTime as any).gte = new Date(startDate);
+    if (endDate) (where.expenseTime as any).lte = new Date(endDate);
   }
 
-  // If no search term, use the regular database query
-  const orders = await prisma.order.findMany({
-    ...prismaQuery,
-    where,
-    include: {
-      customer: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-        },
-      },
-    },
-  });
-
-  // Get total count and total amount matching filters
-  const [totalOrders, totalAmount] = await Promise.all([
-    prisma.order.count({ where }),
-    prisma.order.aggregate({
+  const [count, sum, byStatus] = await Promise.all([
+    prisma.expense.count({ where }),
+    prisma.expense.aggregate({ where, _sum: { amount: true } }),
+    prisma.expense.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      _sum: { amount: true },
       where,
-      _sum: {
-        amount: true,
-      },
     }),
   ]);
 
-  // Get pagination meta using PrismaQueryBuilder helper
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) => prisma.order.count({ ...args, where }),
-  });
-
   return {
-    meta,
-    totalOrders,
-    totalAmount: totalAmount._sum.amount ?? 0,
-    data: orders,
+    totalExpenses: count,
+    totalAmount: sum._sum.amount ?? 0,
+    byStatus,
   };
 };
 
-const updateOrderStatus = async (
-  orderId: string,
-  payload: Record<string, unknown>,
-) => {
-  await prisma.order.update({
-    where: {
-      id: orderId,
-    },
-    data: payload,
-  });
-  return true;
-};
-
-const getMyOrders = async (
-  userId: string,
-  queryParams: Record<string, unknown>,
-) => {
-  // Extend query builder with searchable order ID
-  const queryBuilder = new PrismaQueryBuilder(queryParams, ['id']);
-
-  // Build full query (where + sort + pagination)
-  const prismaQuery = queryBuilder
-    .buildWhere()
-    .buildSort()
-    .buildPagination()
-    .getQuery();
-
-  // Inject user-based filter (customerId)
-  prismaQuery.where = {
-    ...prismaQuery.where,
-    customerId: userId,
-  };
-
-  // Include customer details
-  prismaQuery.include = {
-    customer: {
-      select: {
-        id: true,
-        name: true,
-        imageUrl: true,
-      },
-    },
-  };
-
-  // Execute main query
-  const orders = await prisma.order.findMany(prismaQuery);
-
-  // Get pagination meta
-  const meta = await queryBuilder.getPaginationMeta(prisma.order);
-
-  return {
-    meta,
-    data: orders,
-  };
-};
-
-const getMyOrder = async (userId: string, orderId: string) => {
-  // Step 1: Get the order (with cartItems as JSON)
-  const order = await prisma.order.findUnique({
-    where: {
-      id: orderId,
-      customerId: userId,
-    },
-    include: {
-      customer: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-        },
-      },
-    },
-  });
-
-  if (!order) return null;
-
-  // Step 2: Extract productIds from cartItems
-  const cartItems = order.cartItems as {
-    productId: string;
-    quantity: number;
-  }[];
-  const productIds = cartItems.map((item) => item.productId);
-
-  // Step 3: Fetch product details
-  const products = await prisma.product.findMany({
-    where: {
-      id: { in: productIds },
-    },
-    select: {
-      id: true,
-      name: true,
-      primaryImage: true,
-    },
-  });
-
-  // Step 4: Combine cartItems with product info
-  const detailedCartItems = cartItems.map((item) => {
-    const product = products.find((p) => p.id === item.productId);
-    return {
-      ...item,
-      product,
-    };
-  });
-
-  // Step 5: Return enriched order
-  return {
-    ...order,
-    cartItems: detailedCartItems,
-  };
-};
-
-const getAllCustomers = async (queryParams: Record<string, unknown>) => {
-  const searchableFields = ['name'];
-
-  const queryBuilder = new PrismaQueryBuilder(queryParams, searchableFields)
-    .buildWhere()
-    .buildSort()
-    .buildPagination()
-    .buildSelect();
-
-  const prismaQuery = queryBuilder.getQuery();
-
-  // Inject fixed condition: users who placed at least one order
-  prismaQuery.where = {
-    ...prismaQuery.where,
-    role: 'USER',
-    Order: {
-      some: {},
-    },
-  };
-
-  // Add default selection if not provided
-  if (!prismaQuery.select) {
-    prismaQuery.select = {
-      id: true,
-      name: true,
-      email: true,
-      contact: true,
-      address: true,
-      imageUrl: true,
-      createdAt: true,
-    };
-  }
-
-  const customers = await prisma.user.findMany(prismaQuery);
-  const meta = await queryBuilder.getPaginationMeta(prisma.user);
-
-  return {
-    meta,
-    data: customers,
-  };
-};
-
-export const OrderServices = {
-  getAllOrders,
-  getOrderById,
-  getUserOrders,
-  updateOrderStatus,
-  getMyOrders,
-  getMyOrder,
-  getAllCustomers,
+export const ExpenseServices = {
+  createExpense,
+  getAllExpenses,
+  getExpenseById,
+  updateExpenseStatus,
+  getExpenseAnalytics,
 };

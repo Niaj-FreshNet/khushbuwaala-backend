@@ -19,6 +19,7 @@ const createSale = catchAsync(async (req: Request, res: Response) => {
 
 // Get all sales (admin)
 const getAllSales = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id;
   const result = await SaleServices.getAllSales(req.query);
   sendResponse(res, {
     statusCode: result ? 200 : 400,
@@ -38,6 +39,18 @@ const getMySales = catchAsync(async (req: Request, res: Response) => {
     success: !!result,
     message: result ? 'Sales fetched successfully' : 'Failed to fetch sales',
     data: result ?? [],
+  });
+});
+
+// Get Order By ID (Admin)
+const getSaleById = catchAsync(async (req, res) => {
+  const result = await SaleServices.getSaleById(req.params.id);
+
+  sendResponse(res, {
+    statusCode: result ? 200 : 400,
+    success: true,
+    message: 'Sale fetched successfully',
+    data: result,
   });
 });
 
@@ -84,6 +97,7 @@ export const SalesController = {
   createSale,
   getAllSales,
   getMySales,
+  getSaleById,
   getSalesByCustomer,
   updateSaleStatus,
   getSalesAnalytics,

@@ -6,7 +6,7 @@ const router = Router();
 
 router.post(
   '/create-blog',
-  auth('ADMIN'),
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   upload.single('image'),
   BlogController.createBlog,
 );
@@ -15,16 +15,18 @@ router.post(
 router.get('/get-all-blogs', BlogController.getAllBlogs);
 router.get(
   '/get-all-blogs/admin',
-  auth('ADMIN'),
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   BlogController.getAllBlogsAdmin,
 );
-router.get('/get-blog/:id', BlogController.getBlog);
+
+router.get('/get-blog/:slug', BlogController.getBlog);
+
 router.put(
   '/update-blog/:id',
-  auth('ADMIN'),
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   upload.single('image'),
   BlogController.updateBlog,
 );
-router.delete('/delete-blog/:id', auth('ADMIN'), BlogController.deleteBlog);
+router.delete('/delete-blog/:id', auth('ADMIN', 'SUPER_ADMIN'), BlogController.deleteBlog);
 
 export const BlogRoutes = router;

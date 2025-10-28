@@ -3,4 +3,5 @@ export interface IReview {
   title: string;
   comment: string;
   productId: string;
+  isPublished?: boolean;
 }

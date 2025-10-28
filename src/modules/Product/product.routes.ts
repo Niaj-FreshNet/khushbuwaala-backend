@@ -61,6 +61,13 @@ router.get('/get-product-variants/:productId', ProductController.getProductVaria
 // Add Product New Stock
 router.patch('/update-product-stock/:productId', auth('ADMIN', 'SUPER_ADMIN'), ProductController.updateProductStock);
 
+// New Stock Logs Route
+router.get(
+  '/get-stock-logs/:productId',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ProductController.getStockLogs
+);
+
 // Product Analytics Routes
 router.get('/get-product-analytics', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getProductAnalytics);
 router.get('/get-low-stock-products', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getLowStockProducts);
