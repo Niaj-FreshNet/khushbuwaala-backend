@@ -8,11 +8,14 @@ const express_1 = require("express");
 const expense_controller_1 = require("./expense.controller");
 const auth_1 = __importDefault(require("../../middlewares/auth"));
 const router = (0, express_1.Router)();
-router.get('/get-all-orders', (0, auth_1.default)('ADMIN'), expense_controller_1.OrderController.getAllOrders);
-router.get('/get-order-by-id/:id', (0, auth_1.default)('ADMIN'), expense_controller_1.OrderController.getOrderById);
-router.patch('/update-order-status/:id', (0, auth_1.default)('ADMIN'), expense_controller_1.OrderController.updateOrderStatus);
-router.get('/get-all-customers', (0, auth_1.default)('ADMIN'), expense_controller_1.OrderController.getAllCustomers);
-router.get('/get-user-orders/:id', expense_controller_1.OrderController.getUserOrders);
-router.get('/my-orders', (0, auth_1.default)('USER'), expense_controller_1.OrderController.getMyOrders);
-router.get('/my-orders/:id', (0, auth_1.default)('USER'), expense_controller_1.OrderController.getMyOrderByID);
+// Create an expense
+router.post('/create-expense', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), expense_controller_1.ExpenseController.createExpense);
+// Get all expenses (admin overview)
+router.get('/get-all-expenses', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), expense_controller_1.ExpenseController.getAllExpenses);
+// Get expense by ID
+router.get('/get-expense-by-id/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), expense_controller_1.ExpenseController.getExpenseById);
+// Update expense status
+router.patch('/update-expense-status/:id', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), expense_controller_1.ExpenseController.updateExpenseStatus);
+// Analytics for expenses
+router.get('/get-expense-analytics', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), expense_controller_1.ExpenseController.getExpenseAnalytics);
 exports.ExpenseRoutes = router;

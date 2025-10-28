@@ -19,47 +19,84 @@ const review_service_1 = require("./review.service");
 const createReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const userId = req.user.id;
     const result = yield review_service_1.ReviewServices.createReview(userId, req.body);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Review Created Successfully' : 'Review Creation Failed',
-        data: isok ? result : [],
+        statusCode: 201,
+        success: true,
+        message: 'Review created successfully',
+        data: result,
     });
 }));
 const getAllReviews = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield review_service_1.ReviewServices.getAllReviews(req.query);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Reviews Fetched Successfully' : 'Reviews Fetching Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Reviews fetched successfully',
+        data: result,
     });
 }));
 const getAllReviewsAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield review_service_1.ReviewServices.getAllReviewsAdmin(req.query);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Reviews Fetched Successfully' : 'Reviews Fetching Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'All reviews fetched successfully (admin)',
+        data: result,
+    });
+}));
+const getReviewById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield review_service_1.ReviewServices.getReviewById(req.params.id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: 'Review fetched successfully',
+        data: result,
+    });
+}));
+const getUserReviews = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield review_service_1.ReviewServices.getUserReviews(req.params.userId);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: 'User reviews fetched successfully',
+        data: result,
+    });
+}));
+const getProductReviews = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield review_service_1.ReviewServices.getProductReviews(req.params.productId);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: 'Product reviews fetched successfully',
+        data: result,
     });
 }));
 const updateReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield review_service_1.ReviewServices.updateReview(req.params.id, req.body);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Review Updated Successfully' : 'Review Updation Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Review updated successfully',
+        data: result,
+    });
+}));
+const publishReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const result = yield review_service_1.ReviewServices.publishReview(id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: `Review has been ${result.isPublished ? "published" : "unpublished"} successfully.`,
+        data: result,
     });
 }));
 exports.reviewController = {
     createReview,
     getAllReviews,
     getAllReviewsAdmin,
+    getReviewById,
+    getUserReviews,
+    getProductReviews,
     updateReview,
+    publishReview,
 };

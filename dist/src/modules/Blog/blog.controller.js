@@ -31,18 +31,46 @@ const createBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
         throw new AppError_1.default(400, 'At least one image is required');
     }
     if (req.file.filename) {
-        imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
+        imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
     }
     if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-        req.body.isPublish = req.body.isPublish === 'true' ? true : false;
+        req.body.isPublish = req.body.isPublish === 'true';
     }
-    const blogdata = Object.assign(Object.assign({}, req.body), { userId: user.id, imageUrl });
+    const blogdata = Object.assign(Object.assign({}, req.body), { userId: user.id, imageUrl, metaTitle: req.body.metaTitle, metaDescription: req.body.metaDescription, keywords: req.body.keywords });
     const result = yield blog_service_1.BlogServices.createBlog(blogdata);
     const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Blog Created Successfully' : 'Blog Creation Failed',
+        data: isok ? result : [],
+    });
+}));
+const updateBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const blogId = req.params.id;
+    const existingBlog = yield client_1.prisma.blog.findUnique({
+        where: { id: blogId },
+    });
+    if (!existingBlog) {
+        throw new AppError_1.default(404, 'Blog not found');
+    }
+    if (req.body.isPublish && typeof req.body.isPublish === 'string') {
+        req.body.isPublish = req.body.isPublish === 'true';
+    }
+    let updateddata = Object.assign({}, req.body);
+    if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename) {
+        if (existingBlog === null || existingBlog === void 0 ? void 0 : existingBlog.imageUrl) {
+            yield (0, fileDelete_1.deleteFile)(existingBlog.imageUrl);
+        }
+        updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
+    }
+    const result = yield blog_service_1.BlogServices.updateBlog(blogId, updateddata);
+    const isok = result ? true : false;
+    (0, sendResponse_1.default)(res, {
+        statusCode: isok ? 200 : 400,
+        success: isok ? true : false,
+        message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
         data: isok ? result : [],
     });
 }));
@@ -74,35 +102,6 @@ const getBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0
         statusCode: isok ? 200 : 400,
         success: isok ? true : false,
         message: isok ? 'Blog Fetched Successfully' : 'Blog Fetching Failed',
-        data: isok ? result : [],
-    });
-}));
-const updateBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    const blogId = req.params.id;
-    const existingBlog = yield client_1.prisma.blog.findUnique({
-        where: { id: blogId },
-    });
-    if (!existingBlog) {
-        throw new AppError_1.default(404, 'Blog not found');
-    }
-    if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-        req.body.isPublish = req.body.isPublish === 'true' ? true : false;
-    }
-    let updateddata = Object.assign({}, req.body);
-    // Handle image update
-    if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename) {
-        if (existingBlog === null || existingBlog === void 0 ? void 0 : existingBlog.imageUrl) {
-            yield (0, fileDelete_1.deleteFile)(existingBlog.imageUrl);
-        }
-        updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/uploads/${req.file.filename}`;
-    }
-    const result = yield blog_service_1.BlogServices.updateBlog(blogId, updateddata);
-    const isok = result ? true : false;
-    (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
         data: isok ? result : [],
     });
 }));

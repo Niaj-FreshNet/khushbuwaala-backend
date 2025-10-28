@@ -8,11 +8,21 @@ const express_1 = require("express");
 const review_controller_1 = require("./review.controller");
 const auth_1 = __importDefault(require("../../middlewares/auth"));
 const router = (0, express_1.Router)();
-router.post('/create-review', (0, auth_1.default)('USER'), review_controller_1.reviewController.createReview);
+// ✏️ Create a review (only logged-in users)
+router.post('/create-review', (0, auth_1.default)('OPTIONAL'), review_controller_1.reviewController.createReview);
+// 🌍 Publicly visible reviews (published only)
 router.get('/get-all-reviews', review_controller_1.reviewController.getAllReviews);
-router.get('/get-all-reviews/admin', (0, auth_1.default)('ADMIN'), review_controller_1.reviewController.getAllReviewsAdmin);
-router.patch('/update-review/:id', (0, auth_1.default)('ADMIN'), review_controller_1.reviewController.updateReview);
-router.get('/get-review/:id', () => { });
-router.get('/get-user-reviews/:id', () => { });
-router.get('/get-product-reviews/:id', () => { });
+// 🧠 Admin panel — all reviews, published/unpublished
+router.get('/get-all-reviews/admin', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), review_controller_1.reviewController.getAllReviewsAdmin);
+// ✅ Publish / Unpublish Review (Admin only)
+router.patch("/publish-review/:id", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), // Adjust roles as needed
+review_controller_1.reviewController.publishReview);
+// ✏️ Update review (admin can publish/unpublish, edit)
+router.patch('/update-review/:id', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), review_controller_1.reviewController.updateReview);
+// 👁️ Get single review by ID (public)
+router.get('/get-review/:id', review_controller_1.reviewController.getReviewById);
+// 🧍 Get all reviews by a specific user
+router.get('/get-user-reviews/:userId', review_controller_1.reviewController.getUserReviews);
+// 📦 Get all reviews for a specific product
+router.get('/get-product-reviews/:productId', review_controller_1.reviewController.getProductReviews);
 exports.ReviewRoutes = router;

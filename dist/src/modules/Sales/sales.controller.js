@@ -30,6 +30,7 @@ const createSale = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
 }));
 // Get all sales (admin)
 const getAllSales = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const userId = req.user.id;
     const result = yield sales_service_1.SaleServices.getAllSales(req.query);
     (0, sendResponse_1.default)(res, {
         statusCode: result ? 200 : 400,
@@ -47,6 +48,16 @@ const getMySales = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
         success: !!result,
         message: result ? 'Sales fetched successfully' : 'Failed to fetch sales',
         data: result !== null && result !== void 0 ? result : [],
+    });
+}));
+// Get Order By ID (Admin)
+const getSaleById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield sales_service_1.SaleServices.getSaleById(req.params.id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: result ? 200 : 400,
+        success: true,
+        message: 'Sale fetched successfully',
+        data: result,
     });
 }));
 // Get sales by customer phone or name
@@ -86,6 +97,7 @@ exports.SalesController = {
     createSale,
     getAllSales,
     getMySales,
+    getSaleById,
     getSalesByCustomer,
     updateSaleStatus,
     getSalesAnalytics,

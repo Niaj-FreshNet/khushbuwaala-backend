@@ -36,6 +36,8 @@ router.get('/get-product-variants/:productId', product_controller_1.ProductContr
 // router.patch( '/update-variant-stock/:variantId', auth('ADMIN', 'SUPER_ADMIN'), ProductController.updateVariantStock );
 // Add Product New Stock
 router.patch('/update-product-stock/:productId', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), product_controller_1.ProductController.updateProductStock);
+// New Stock Logs Route
+router.get('/get-stock-logs/:productId', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), product_controller_1.ProductController.getStockLogs);
 // Product Analytics Routes
 router.get('/get-product-analytics', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), product_controller_1.ProductController.getProductAnalytics);
 router.get('/get-low-stock-products', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), product_controller_1.ProductController.getLowStockProducts);

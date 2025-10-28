@@ -281,6 +281,16 @@ const getBestsellers = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         data: result,
     });
 }));
+const getStockLogs = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { productId } = req.params;
+    const result = yield product_service_1.ProductServices.getStockLogs(productId);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: result ? 'Stock logs fetched successfully' : 'Failed to fetch stock logs',
+        data: result !== null && result !== void 0 ? result : [],
+    });
+}));
 exports.ProductController = {
     createProduct,
     getAllProducts,
@@ -302,4 +312,5 @@ exports.ProductController = {
     getProductAnalytics,
     getLowStockProducts,
     getBestsellers,
+    getStockLogs,
 };

@@ -13,11 +13,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BlogServices = void 0;
+const slugify_1 = __importDefault(require("slugify"));
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const fileDelete_1 = require("../../helpers/fileDelete");
 const client_1 = require("../../../prisma/client");
 const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
+    const slug = (0, slugify_1.default)(payload.title, { lower: true, strict: true });
+    const existingSlug = yield client_1.prisma.blog.findUnique({ where: { slug } });
+    if (existingSlug) {
+        throw new AppError_1.default(400, 'Blog title must be unique for slug generation');
+    }
     const result = yield client_1.prisma.blog.create({
         data: {
             userId: payload.userId,
@@ -26,6 +32,35 @@ const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
             imageUrl: payload.imageUrl,
             others: payload.others,
             isPublish: payload.isPublish,
+            metaTitle: payload.metaTitle,
+            metaDescription: payload.metaDescription,
+            keywords: payload.keywords,
+            slug,
+        },
+    });
+    return result;
+});
+const updateBlog = (id, payload) => __awaiter(void 0, void 0, void 0, function* () {
+    let slug = payload.slug;
+    if (payload.title && (!slug || (0, slugify_1.default)(payload.title, { lower: true, strict: true }) !== slug)) {
+        slug = (0, slugify_1.default)(payload.title, { lower: true, strict: true });
+        const existingSlug = yield client_1.prisma.blog.findUnique({ where: { slug } });
+        if (existingSlug && existingSlug.id !== id) {
+            throw new AppError_1.default(400, 'Blog title must be unique for slug generation');
+        }
+    }
+    const result = yield client_1.prisma.blog.update({
+        where: { id },
+        data: {
+            title: payload.title,
+            content: payload.content,
+            imageUrl: payload.imageUrl,
+            others: payload.others,
+            isPublish: payload.isPublish,
+            metaTitle: payload.metaTitle,
+            metaDescription: payload.metaDescription,
+            keywords: payload.keywords,
+            slug,
         },
     });
     return result;
@@ -86,9 +121,9 @@ const getAllBlogsAdmin = (queryParams) => __awaiter(void 0, void 0, void 0, func
         data: blogs,
     };
 });
-const getBlog = (id) => __awaiter(void 0, void 0, void 0, function* () {
+const getBlog = (slug) => __awaiter(void 0, void 0, void 0, function* () {
     const blog = yield client_1.prisma.blog.findUnique({
-        where: { id, isPublish: true },
+        where: { slug, isPublish: true },
         include: {
             user: { select: { id: true, name: true, imageUrl: true, email: true } },
         },
@@ -98,13 +133,18 @@ const getBlog = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const relatedBlogs = yield client_1.prisma.blog.findMany({
         where: {
             userId: blog.userId,
-            NOT: { id },
+            NOT: { slug },
+            isPublish: true,
         },
         select: {
             id: true,
             title: true,
             content: true,
             imageUrl: true,
+            slug: true,
+            metaTitle: true,
+            metaDescription: true,
+            keywords: true,
         },
         take: 8,
         orderBy: {
@@ -115,21 +155,6 @@ const getBlog = (id) => __awaiter(void 0, void 0, void 0, function* () {
         blog,
         relatedBlogs,
     };
-});
-const updateBlog = (id, payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield client_1.prisma.blog.update({
-        where: {
-            id,
-        },
-        data: {
-            title: payload.title,
-            content: payload.content,
-            imageUrl: payload.imageUrl,
-            others: payload.others,
-            isPublish: payload.isPublish,
-        },
-    });
-    return result;
 });
 const deleteBlog = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const blog = yield client_1.prisma.blog.findUnique({

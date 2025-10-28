@@ -48,7 +48,7 @@ const getAllProducts = async (queryParams: Record<string, unknown>) => {
     meta,
     data: data.map((product) => ({
       ...product,
-      unit: product.category.unit || Unit.ML,
+      unit: (product as any).category.unit || Unit.ML,
     })),
   };
 };
@@ -99,7 +99,7 @@ const getLowStockProducts = async (queryParams: Record<string, unknown>) => {
     meta,
     data: data.map((product) => ({
       ...product,
-      unit: product.category.unit || Unit.ML,
+      unit: (product as any).category.unit || Unit.ML,
     })),
   };
 };

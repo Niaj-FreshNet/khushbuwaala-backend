@@ -99,6 +99,23 @@ exports.productInclude = {
             },
         },
     },
+    Review: {
+        where: {
+            isPublished: true
+        },
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    imageUrl: true,
+                },
+            },
+        },
+        orderBy: {
+            createdAt: 'desc'
+        }
+    },
 };
 // Detailed include for single product view
 exports.productDetailInclude = {
@@ -130,7 +147,7 @@ exports.productDetailInclude = {
                 { endDate: { gte: new Date() } }
             ]
         }
-    }
+    },
 };
 // Admin include for management
 exports.productAdminInclude = {
@@ -143,6 +160,7 @@ exports.productAdminInclude = {
                     id: true,
                     name: true,
                     email: true,
+                    imageUrl: true
                 },
             },
         },

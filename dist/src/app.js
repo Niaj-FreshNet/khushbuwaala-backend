@@ -28,25 +28,30 @@ exports.corsOptions = {
         'http://localhost:5000',
         'http://localhost:5173',
         'http://localhost:5174',
-        'https://judy-seide-dashboard.vercel.app',
-        'https://judyseide-client.vercel.app',
+        'https://khushbuwaala.vercel.app',
+        'https://khushbuwaala.com',
+        'https://www.khushbuwaala.com',
+        'http://khushbuwaala.com',
+        'http://www.khushbuwaala.com',
     ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
 };
-// app.post(
-//   '/api/payment/webhook',
-//   express.raw({ type: 'application/json' }),
-//   PaymentController.webhook,
-// );
-//middleware
+// **Handle preflight requests for all routes**
+// app.options('*', cors(corsOptions));
+// Apply CORS middleware globally
 app.use((0, cors_1.default)(exports.corsOptions));
 app.use(express_1.default.json());
 app.use((0, cookie_parser_1.default)());
 app.use('/api', routes_1.default);
 app.use(express_1.default.static('public'));
 app.use(express_1.default.urlencoded({ extended: true }));
+// app.post(
+//   '/api/payment/webhook',
+//   express.raw({ type: 'application/json' }),
+//   PaymentController.webhook,
+// );
 // app.use("/uploads", express.static(path.join("/var/www/uploads")));
 app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
 app.use(globalErrorHandler_1.default);

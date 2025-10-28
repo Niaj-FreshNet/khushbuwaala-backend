@@ -83,7 +83,7 @@ const moduleRoutes = [
         route: sales_routes_1.SalesRoutes,
     },
     {
-        path: '/expense',
+        path: '/expenses',
         route: expense_route_1.ExpenseRoutes,
     },
 ];
