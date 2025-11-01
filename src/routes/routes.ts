@@ -15,6 +15,7 @@ import { SalesRoutes } from '../modules/Sales/sales.routes';
 import { ExpenseRoutes } from '../modules/Expense/expense.route';
 import { CartItemRoutes } from '../modules/Cart/cart.routes';
 import { FragranceRoutes } from '../modules/Fragrance/fragrance.routes';
+import { DiscountRoutes } from '../modules/Discount/discount.routes';
 
 const router = express.Router();
 
@@ -83,6 +84,10 @@ const moduleRoutes = [
   {
     path: '/expenses',
     route: ExpenseRoutes,
+  },
+  {
+    path: '/discount',
+    route: DiscountRoutes,
   },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

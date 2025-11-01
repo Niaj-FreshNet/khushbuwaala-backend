@@ -328,6 +328,8 @@ model StockLog {
   change    Float // +10 (restock), -2 (sold), etc.
   reason    String // e.g. SALE, RETURN, ADJUSTMENT
   createdAt DateTime        @default(now())
+
+  @@map("stock_logs")
 }
 
 model Payment {
@@ -338,13 +340,15 @@ model Payment {
   status    String
   createdAt DateTime @default(now())
   order     Order    @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
 }
 
 model Discount {
   id        String    @id @default(auto()) @map("_id") @db.ObjectId
   productId String    @db.ObjectId
   variantId String?   @db.ObjectId // null means discount is for the whole product
-  code      String? // optional promo code
+  code      String?   @unique // optional promo code
   type      String // "percentage" | "fixed"
   value     Float
   maxUsage  Int? // optional
@@ -358,6 +362,8 @@ model Discount {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("discounts")
 }
 
 model OrderDiscount {
@@ -423,6 +429,8 @@ model Review {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("reviews")
 }
 
 model Wishlist {
@@ -433,4 +441,6 @@ model Wishlist {
   product   Product  @relation(fields: [productId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("wishlist_items")
 }

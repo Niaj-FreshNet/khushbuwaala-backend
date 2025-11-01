@@ -251,10 +251,38 @@ const getProduct = async (id: string): Promise<IProductResponse | null> => {
 
 // Get Product By Slug
 const getProductBySlug = async (slug: string): Promise<IProductResponse | null> => {
-  const product = await prisma.product.findUnique({
-    where: { slug },
-    include: productDetailInclude,
-  });
+    const product = await prisma.product.findUnique({
+      where: { slug },
+      include: productDetailInclude,
+    });
+  //   const test = await prisma.productVariant.findUnique({
+  //   where: { id: "6904bfb77a035c41185d2730" },
+  //   select: {
+  //     discounts: {
+  //       where: {
+  //         AND: [
+  //           { OR: [{ startDate: null }, { startDate: { lte: new Date() } }] },
+  //           { OR: [{ endDate: null }, { endDate: { gte: new Date() } }] },
+  //         ]
+  //       }
+  //     }
+  //   }
+  // });
+  // console.log("DIRECT VARIANT TEST:", test);
+  // const product = await prisma.product.findUnique({
+  //   where: { slug },
+  //   include: {
+  //     discounts: true,
+  //     variants: {
+  //       include: {
+  //         discounts: true,
+  //       },
+  //     },
+  //     category: true,
+  //   },
+  // });
+  // console.log('product', product)
+
 
   if (!product) return null;
 

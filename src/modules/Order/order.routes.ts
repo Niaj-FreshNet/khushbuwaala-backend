@@ -25,7 +25,7 @@ router.get('/get-all-customers', auth('SUPER_ADMIN', 'ADMIN'), OrderController.g
 
 // User orders (customer)
 router.get('/get-user-orders/:id', OrderController.getUserOrders);
-router.get('/my-orders', auth('USER'), OrderController.getMyOrders);
+router.get('/my-orders', auth('USER', 'SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getMyOrders);
 router.get('/my-orders/:id', auth('USER'), OrderController.getMyOrderByID);
 
 export const OrderRoutes = router;
