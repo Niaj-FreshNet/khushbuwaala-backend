@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
+import { generateInvoice } from '../../helpers/generateInvoice';
 
 // Treat “sales” as orders with a non-WEBSITE orderSource
 const MANUAL_SOURCES: OrderSource[] = [
@@ -21,22 +22,38 @@ const MANUAL_SOURCES: OrderSource[] = [
 // Create a manual sale (Order)
 // -------------------------------
 
-const createSale = async (payload: {
-  customerId?: string | null;
-  salesmanId?: string | null;        // ✅ new optional field for manual sales
-  saleType?: SaleType;               // ✅ optional sale type
-  cartItemIds: string[];
-  amount: number;
-  isPaid?: boolean;
-  orderSource?: OrderSource;
-  customerInfo?: {
-    name?: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-  } | null;
-}, userId?: string | null) => {
-  const { customerId, salesmanId, saleType, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
+const createSale = async (
+  payload: {
+    customerId?: string | null;
+    salesmanId?: string | null;
+    saleType?: SaleType;
+    cartItemIds: string[];
+    amount: number;
+    isPaid?: boolean;
+    method?: string;
+    orderSource?: OrderSource;
+    customerInfo?: {
+      name?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+    } | null;
+  },
+  userId?: string | null
+) => {
+  const {
+    customerId,
+    salesmanId,
+    saleType,
+    cartItemIds,
+    amount,
+    isPaid,
+    method,
+    orderSource,
+    customerInfo,
+  } = payload;
+
+  console.log(payload, userId);
 
   // 1️⃣ Fetch valid cart items
   const cartItems = await prisma.cartItem.findMany({
@@ -48,59 +65,68 @@ const createSale = async (payload: {
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
   }
 
-  // 2️⃣ Start transaction
-  const order = await prisma.$transaction(async (tx) => {
-    // Create Order
-    const newOrder = await tx.order.create({
-      data: {
-        customerId: customerId || null,
-        salesmanId: salesmanId || null,       // ✅ assign salesman for manual sales
-        saleType: saleType || SaleType.SINGLE, // default SINGLE
-        amount,
-        isPaid: isPaid || false,
-        orderSource: orderSource || OrderSource.WEBSITE, // WEBSITE by default
-        name: customerInfo?.name || null,
-        phone: customerInfo?.phone || null,
-        email: customerInfo?.email || null,
-        address: customerInfo?.address || null,
-        cartItems: cartItems.map((item) => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        productIds: cartItems.map((ci) => ci.productId), // ✅ persist product IDs
-      },
-    });
+  // 2️⃣ Generate invoice
+  const invoice = await generateInvoice();
 
-    // Update CartItems as ordered
-    await Promise.all(
-      cartItems.map((item) =>
-        tx.cartItem.update({
-          where: { id: item.id },
-          data: { orderId: newOrder.id, status: 'ORDERED' },
-        })
-      )
-    );
+  // 3️⃣ Transaction: create order + link cart items only
+  const newOrder = await prisma.$transaction(
+    async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          invoice,
+          customerId: customerId || null,
+          salesmanId: userId || null,
+          saleType: saleType || SaleType.SINGLE,
+          amount: Number(amount),
+          isPaid: isPaid || false,
+          method: method || null,
+          orderSource: orderSource || OrderSource.WEBSITE,
+          name: customerInfo?.name || null,
+          phone: customerInfo?.phone || null,
+          email: customerInfo?.email || null,
+          address: customerInfo?.address || null,
+          productIds: cartItems.map((ci) => ci.productId),
+          cartItems: cartItems.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            size: item.size || null,
+            unit: item.unit || null,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+        },
+      });
 
-    // Update stock, salesCount, stock logs
-    await Promise.all(
-      cartItems.map(async (item) => {
-        const variantId = item.variantId;
-        const productId = item.productId;
-        const qty = item.quantity;
-        const variantSize = item.variant?.size || 0;
+      // Update cart items status → ORDERED
+      await tx.cartItem.updateMany({
+        where: { id: { in: cartItemIds } },
+        data: { orderId: created.id, status: 'ORDERED' },
+      });
 
-        // Product variant stock update if exists
+      return created;
+    },
+    { timeout: 15000 } // ⏳ Allow up to 15 seconds to avoid premature timeout
+  );
+
+  // 4️⃣ Outside transaction: stock updates + stock logs
+  await Promise.all(
+    cartItems.map(async (item) => {
+      const variantId = item.variantId;
+      const productId = item.productId;
+      const qty = item.quantity;
+      const variantSize = item.variant?.size || 0;
+
+      try {
+        // Optional: update product variant stock
         if (variantId) {
-          await tx.productVariant.update({
+          await prisma.productVariant.update({
             where: { id: variantId },
-            data: {}, // optional: add variant stock management
+            data: {}, // optional if no stock tracking in variants
           });
         }
 
-        // Product stock & sales count
-        await tx.product.update({
+        // Update product stock and salesCount
+        await prisma.product.update({
           where: { id: productId },
           data: {
             salesCount: { increment: qty },
@@ -108,8 +134,8 @@ const createSale = async (payload: {
           },
         });
 
-        // Stock log
-        await tx.stockLog.create({
+        // Log stock movement
+        await prisma.stockLog.create({
           data: {
             productId,
             variantId: variantId || '',
@@ -117,28 +143,23 @@ const createSale = async (payload: {
             reason: 'SALE',
           },
         });
-      })
-    );
+      } catch (err) {
+        console.error('⚠️ Stock update failed for product:', productId, err);
+      }
+    })
+  );
 
-    return newOrder;
-  });
-
-  // 3️⃣ Fetch full order
+  // 5️⃣ Fetch full order with relations
   const fullOrder = await prisma.order.findUnique({
-    where: { id: order.id },
+    where: { id: newOrder.id },
     include: {
       customer: { select: { id: true, name: true, imageUrl: true } },
       salesman: { select: { id: true, name: true, imageUrl: true } },
-      orderItems: {
-        include: {
-          product: { select: { id: true, name: true, primaryImage: true } },
-          variant: true,
-        },
-      },
     },
   });
 
-  if (!fullOrder) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+  if (!fullOrder)
+    throw new AppError(httpStatus.NOT_FOUND, 'Order not found after creation.');
 
   const customerData = fullOrder.customer || {
     id: null,
@@ -151,6 +172,7 @@ const createSale = async (payload: {
 
   return { ...fullOrder, customer: customerData };
 };
+
 
 
 // -------------------------------

@@ -23,7 +23,7 @@ const order_constant_1 = require("./order.constant");
 const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || null; // Optional Auth user
-    const { cartItemIds, amount, isPaid, orderSource, customerInfo } = req.body;
+    const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo } = req.body;
     // Validation
     if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, order_constant_1.ORDER_ERROR_MESSAGES.EMPTY_ORDER);
@@ -36,9 +36,15 @@ const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
         customerId: userId, // can be null for guests
         amount,
         isPaid: isPaid || false,
+        method,
         orderSource: orderSource || 'WEBSITE',
         cartItemIds,
         customerInfo: customerInfo || null, // for guest user data (name, phone, etc.)
+        saleType,
+        shippingCost,
+        additionalNotes,
+        shippingAddress,
+        billingAddress,
     };
     // ✅ Create order through service
     const result = yield order_service_1.OrderServices.createOrderWithCartItems(payload);

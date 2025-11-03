@@ -2,7 +2,8 @@ import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
-import { OrderSource } from '@prisma/client';// ✅ Get All Orders (with customer + salesman info)
+import { OrderSource, SaleType } from '@prisma/client';// ✅ Get All Orders (with customer + salesman info)
+import { generateInvoice } from '../../helpers/generateInvoice';
 
 const getAllOrders = async (queryParams: Record<string, unknown>) => {
   const { searchTerm, status, ...rest } = queryParams;
@@ -106,15 +107,50 @@ const createOrderWithCartItems = async (payload: {
   cartItemIds: string[];
   amount: number;
   isPaid?: boolean;
+  method: string;
   orderSource?: OrderSource;
+  saleType?: SaleType;
+  shippingCost?: number;
+  additionalNotes?: string;
   customerInfo?: {
     name?: string;
     phone?: string;
     email?: string;
     address?: string;
+    district?: string;
+    thana?: string;
   } | null;
+  shippingAddress?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    district?: string;
+    thana?: string;
+  };
+  billingAddress?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    district?: string;
+    thana?: string;
+  };
 }) => {
-  const { customerId, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
+  const {
+    customerId,
+    cartItemIds,
+    amount,
+    isPaid,
+    method,
+    orderSource,
+    saleType,
+    shippingCost,
+    additionalNotes,
+    customerInfo,
+    shippingAddress,
+    billingAddress,
+  } = payload;
 
   // 1️⃣ Fetch valid cart items
   const cartItems = await prisma.cartItem.findMany({
@@ -129,20 +165,56 @@ const createOrderWithCartItems = async (payload: {
   // 2️⃣ Start transaction with extended timeout
   const order = await prisma.$transaction(
     async (tx) => {
+
+      const invoice = await generateInvoice();
+
       // Create Order
       const newOrder = await tx.order.create({
         data: {
-          customerId: customerId || null,
+          invoice,
+          // customerId: customerId || "",
           amount: Number(amount),
           isPaid: isPaid || false,
+          method: method || "",
           orderSource: orderSource || 'WEBSITE',
-          name: customerInfo?.name || null,
-          phone: customerInfo?.phone || null,
-          email: customerInfo?.email || null,
-          address: customerInfo?.address || null,
+          saleType: saleType || 'SINGLE',
+          shippingCost: shippingCost || 0,
+          additionalNotes: additionalNotes || "",
+
+          // ✅ Correct customer relation handling
+          customer: customerId
+            ? { connect: { id: customerId } }
+            : {
+              create: {
+                name: customerInfo?.name ?? "",
+                phone: customerInfo?.phone ?? "",
+                email: customerInfo?.email ?? "",
+                address: customerInfo?.address ?? "",
+              },
+            },
+
+          shipping: {
+            name: shippingAddress?.name || customerInfo?.name || null,
+            phone: shippingAddress?.phone || customerInfo?.phone || null,
+            email: shippingAddress?.email || customerInfo?.email || null,
+            address: shippingAddress?.address || customerInfo?.address || null,
+            district: shippingAddress?.district || customerInfo?.district || null,
+            thana: shippingAddress?.thana || customerInfo?.thana || null,
+          },
+          billing: {
+            name: billingAddress?.name || shippingAddress?.name || customerInfo?.name || null,
+            phone: billingAddress?.phone || shippingAddress?.phone || customerInfo?.phone || null,
+            email: billingAddress?.email || shippingAddress?.email || customerInfo?.email || null,
+            address: billingAddress?.address || shippingAddress?.address || customerInfo?.address || null,
+            district: billingAddress?.district || shippingAddress?.district || customerInfo?.district || null,
+            thana: billingAddress?.thana || shippingAddress?.thana || customerInfo?.thana || null,
+          },
+          productIds: cartItems.map((ci) => ci.productId),
           cartItems: cartItems.map((item) => ({
             productId: item.productId,
             variantId: item.variantId,
+            size: item.size || null,
+            unit: item.unit || null,
             quantity: item.quantity,
             price: Number(item.price),
           })),

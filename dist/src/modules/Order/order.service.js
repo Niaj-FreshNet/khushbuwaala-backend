@@ -28,6 +28,7 @@ const client_1 = require("../../../prisma/client");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const http_status_1 = __importDefault(require("http-status"));
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
+const generateInvoice_1 = require("../../helpers/generateInvoice");
 const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     const { searchTerm, status } = queryParams, rest = __rest(queryParams, ["searchTerm", "status"]);
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(rest, ['id', 'customer.name']);
@@ -113,7 +114,7 @@ const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* ()
 });
 // ✅ Create Order with existing CartItems
 const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const { customerId, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
+    const { customerId, cartItemIds, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, } = payload;
     // 1️⃣ Fetch valid cart items
     const cartItems = yield client_1.prisma.cartItem.findMany({
         where: { id: { in: cartItemIds }, status: 'IN_CART' },
@@ -124,21 +125,53 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
     }
     // 2️⃣ Start transaction with extended timeout
     const order = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        var _a;
+        var _a, _b, _c, _d, _e;
+        const invoice = yield (0, generateInvoice_1.generateInvoice)();
         // Create Order
         const newOrder = yield tx.order.create({
             data: {
-                customerId: customerId || null,
+                invoice,
+                // customerId: customerId || "",
                 amount: Number(amount),
                 isPaid: isPaid || false,
+                method: method || "",
                 orderSource: orderSource || 'WEBSITE',
-                name: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) || null,
-                phone: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) || null,
-                email: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) || null,
-                address: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) || null,
+                saleType: saleType || 'SINGLE',
+                shippingCost: shippingCost || 0,
+                additionalNotes: additionalNotes || "",
+                // ✅ Correct customer relation handling
+                customer: customerId
+                    ? { connect: { id: customerId } }
+                    : {
+                        create: {
+                            name: (_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _a !== void 0 ? _a : "",
+                            phone: (_b = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _b !== void 0 ? _b : "",
+                            email: (_c = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) !== null && _c !== void 0 ? _c : "",
+                            address: (_d = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _d !== void 0 ? _d : "",
+                        },
+                    },
+                shipping: {
+                    name: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.name) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) || null,
+                    phone: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.phone) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) || null,
+                    email: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.email) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) || null,
+                    address: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.address) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) || null,
+                    district: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.district) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.district) || null,
+                    thana: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.thana) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.thana) || null,
+                },
+                billing: {
+                    name: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.name) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.name) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) || null,
+                    phone: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.phone) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.phone) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) || null,
+                    email: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.email) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.email) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) || null,
+                    address: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.address) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.address) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) || null,
+                    district: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.district) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.district) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.district) || null,
+                    thana: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.thana) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.thana) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.thana) || null,
+                },
+                productIds: cartItems.map((ci) => ci.productId),
                 cartItems: cartItems.map((item) => ({
                     productId: item.productId,
                     variantId: item.variantId,
+                    size: item.size || null,
+                    unit: item.unit || null,
                     quantity: item.quantity,
                     price: Number(item.price),
                 })),
@@ -154,7 +187,7 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
             const variantId = item.variantId;
             const productId = item.productId;
             const qty = item.quantity;
-            const variantSize = ((_a = item.variant) === null || _a === void 0 ? void 0 : _a.size) || 0;
+            const variantSize = ((_e = item.variant) === null || _e === void 0 ? void 0 : _e.size) || 0;
             // Update Product stock & salesCount
             yield tx.product.update({
                 where: { id: productId },

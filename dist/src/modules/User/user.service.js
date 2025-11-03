@@ -54,6 +54,23 @@ const getUser = (id) => __awaiter(void 0, void 0, void 0, function* () {
         select: {
             name: true,
             email: true,
+            role: true,
+            // contact: true,
+            imageUrl: true,
+            address: true,
+        },
+    });
+    return result;
+});
+const getUserByID = (id) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield client_1.prisma.user.findUnique({
+        where: {
+            id,
+        },
+        select: {
+            name: true,
+            email: true,
+            role: true,
             // contact: true,
             imageUrl: true,
             address: true,
@@ -100,6 +117,7 @@ const updateUser = (id, data) => __awaiter(void 0, void 0, void 0, function* () 
 });
 exports.UserServices = {
     getUser,
+    getUserByID,
     changePassword,
     updateUser,
     getAllUsers,

@@ -6,6 +6,7 @@ import { upload } from '../../helpers/fileUploader';
 const router = Router();
 
 router.get('/get-all-users', auth('ADMIN'), UserController.getAllUsers);
+router.get('/get-user-by-id/:id', auth('ADMIN', 'SUPER_ADMIN'), UserController.getUserByID)
 router.get('/profile', auth('ADMIN', 'USER'), UserController.getUser);
 router.patch(
   '/change-password',

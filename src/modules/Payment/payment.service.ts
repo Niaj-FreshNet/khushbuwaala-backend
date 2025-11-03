@@ -3,6 +3,7 @@ import {
   sendOrderNotificationToAdmin,
 } from '../../helpers/emailSender/emails';
 import { prisma } from '../../../prisma/client';
+import { generateInvoice } from '../../helpers/generateInvoice';
 
 const handleCheckoutSessionCompleted = async (session: any) => {
   console.log('Inside handleCheckoutSessionCompleted');
@@ -59,13 +60,16 @@ const handleCheckoutSessionCompleted = async (session: any) => {
   // Step 4: Save the order
   const order = await prisma.order.create({
     data: {
+      invoice: await generateInvoice(),       // ✅ required field
+      orderSource: "WEBSITE",                 // ✅ or another valid enum value
+      saleType: "SINGLE",                     // ✅ if your model requires it
       customerId: userId,
-      // method: 'Stripe',
+      name: session.customer_details.name,
+      method: "Stripe",
       email: session.customer_details.email,
       address: formattedAddress,
       phone,
-      // zipcode,
-      // note,
+      additionalNotes: note,
       amount: totalAmount,
       isPaid: true,
       cartItems: detailedCartItems,

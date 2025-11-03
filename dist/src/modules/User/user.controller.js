@@ -41,6 +41,16 @@ const getUser = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0
         data: isok ? result : [],
     });
 }));
+const getUserByID = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield user_service_1.UserServices.getUserByID(req.user.id);
+    const isok = result ? true : false;
+    res.status(isok ? 200 : 400).json({
+        statusCode: isok ? 200 : 400,
+        success: isok ? true : false,
+        message: isok ? 'User Fetched Successfully' : 'User Fetching Failed',
+        data: isok ? result : [],
+    });
+}));
 const changePassword = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const userId = req.user.id;
     const { newPassword } = req.body;
@@ -80,6 +90,7 @@ const updateUser = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
 exports.UserController = {
     getAllUsers,
     getUser,
+    getUserByID,
     changePassword,
     updateUser,
 };

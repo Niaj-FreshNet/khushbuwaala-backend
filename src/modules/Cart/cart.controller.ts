@@ -8,12 +8,14 @@ export const CartItemController = {
   // ✅ Add to Cart (visitor or user)
   addToCart: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any)?.user?.id || null; // null for visitors
-    const { productId, variantId, quantity, price } = req.body;
+    const { productId, variantId, size, unit, quantity, price } = req.body;
 
     const item = await CartItemServices.addToCart({
       userId,
       productId,
       variantId,
+      size,
+      unit,
       quantity,
       price,
     });

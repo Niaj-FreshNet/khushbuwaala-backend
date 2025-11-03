@@ -49,6 +49,24 @@ const getUser = async (id: string) => {
     select: {
       name: true,
       email: true,
+      role: true,
+      // contact: true,
+      imageUrl: true,
+      address: true,
+    },
+  });
+  return result;
+};
+
+const getUserByID = async (id: string) => {
+  const result = await prisma.user.findUnique({
+    where: {
+      id,
+    },
+    select: {
+      name: true,
+      email: true,
+      role: true,
       // contact: true,
       imageUrl: true,
       address: true,
@@ -102,6 +120,7 @@ const updateUser = async (id: string, data: any) => {
 
 export const UserServices = {
   getUser,
+  getUserByID,
   changePassword,
   updateUser,
   getAllUsers,

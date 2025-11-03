@@ -30,6 +30,7 @@ const client_1 = require("../../../prisma/client");
 const client_2 = require("@prisma/client");
 const http_status_1 = __importDefault(require("http-status"));
 const AppError_1 = __importDefault(require("../../errors/AppError"));
+const generateInvoice_1 = require("../../helpers/generateInvoice");
 // Treat “sales” as orders with a non-WEBSITE orderSource
 const MANUAL_SOURCES = [
     client_2.OrderSource.SHOWROOM,
@@ -40,7 +41,8 @@ const MANUAL_SOURCES = [
 // Create a manual sale (Order)
 // -------------------------------
 const createSale = (payload, userId) => __awaiter(void 0, void 0, void 0, function* () {
-    const { customerId, salesmanId, saleType, cartItemIds, amount, isPaid, orderSource, customerInfo } = payload;
+    const { customerId, salesmanId, saleType, cartItemIds, amount, isPaid, method, orderSource, customerInfo, } = payload;
+    console.log(payload, userId);
     // 1️⃣ Fetch valid cart items
     const cartItems = yield client_1.prisma.cartItem.findMany({
         where: { id: { in: cartItemIds }, status: 'IN_CART' },
@@ -49,59 +51,68 @@ const createSale = (payload, userId) => __awaiter(void 0, void 0, void 0, functi
     if (cartItems.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'No valid cart items found.');
     }
-    // 2️⃣ Start transaction
-    const order = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        // Create Order
-        const newOrder = yield tx.order.create({
+    // 2️⃣ Generate invoice
+    const invoice = yield (0, generateInvoice_1.generateInvoice)();
+    // 3️⃣ Transaction: create order + link cart items only
+    const newOrder = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        const created = yield tx.order.create({
             data: {
+                invoice,
                 customerId: customerId || null,
-                salesmanId: salesmanId || null, // ✅ assign salesman for manual sales
-                saleType: saleType || client_2.SaleType.SINGLE, // default SINGLE
-                amount,
+                salesmanId: userId || null,
+                saleType: saleType || client_2.SaleType.SINGLE,
+                amount: Number(amount),
                 isPaid: isPaid || false,
-                orderSource: orderSource || client_2.OrderSource.WEBSITE, // WEBSITE by default
+                method: method || null,
+                orderSource: orderSource || client_2.OrderSource.WEBSITE,
                 name: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) || null,
                 phone: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) || null,
                 email: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) || null,
                 address: (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) || null,
+                productIds: cartItems.map((ci) => ci.productId),
                 cartItems: cartItems.map((item) => ({
                     productId: item.productId,
                     variantId: item.variantId,
+                    size: item.size || null,
+                    unit: item.unit || null,
                     quantity: item.quantity,
                     price: item.price,
                 })),
-                productIds: cartItems.map((ci) => ci.productId), // ✅ persist product IDs
             },
         });
-        // Update CartItems as ordered
-        yield Promise.all(cartItems.map((item) => tx.cartItem.update({
-            where: { id: item.id },
-            data: { orderId: newOrder.id, status: 'ORDERED' },
-        })));
-        // Update stock, salesCount, stock logs
-        yield Promise.all(cartItems.map((item) => __awaiter(void 0, void 0, void 0, function* () {
-            var _a;
-            const variantId = item.variantId;
-            const productId = item.productId;
-            const qty = item.quantity;
-            const variantSize = ((_a = item.variant) === null || _a === void 0 ? void 0 : _a.size) || 0;
-            // Product variant stock update if exists
+        // Update cart items status → ORDERED
+        yield tx.cartItem.updateMany({
+            where: { id: { in: cartItemIds } },
+            data: { orderId: created.id, status: 'ORDERED' },
+        });
+        return created;
+    }), { timeout: 15000 } // ⏳ Allow up to 15 seconds to avoid premature timeout
+    );
+    // 4️⃣ Outside transaction: stock updates + stock logs
+    yield Promise.all(cartItems.map((item) => __awaiter(void 0, void 0, void 0, function* () {
+        var _a;
+        const variantId = item.variantId;
+        const productId = item.productId;
+        const qty = item.quantity;
+        const variantSize = ((_a = item.variant) === null || _a === void 0 ? void 0 : _a.size) || 0;
+        try {
+            // Optional: update product variant stock
             if (variantId) {
-                yield tx.productVariant.update({
+                yield client_1.prisma.productVariant.update({
                     where: { id: variantId },
-                    data: {}, // optional: add variant stock management
+                    data: {}, // optional if no stock tracking in variants
                 });
             }
-            // Product stock & sales count
-            yield tx.product.update({
+            // Update product stock and salesCount
+            yield client_1.prisma.product.update({
                 where: { id: productId },
                 data: {
                     salesCount: { increment: qty },
                     stock: { decrement: variantSize * qty },
                 },
             });
-            // Stock log
-            yield tx.stockLog.create({
+            // Log stock movement
+            yield client_1.prisma.stockLog.create({
                 data: {
                     productId,
                     variantId: variantId || '',
@@ -109,25 +120,21 @@ const createSale = (payload, userId) => __awaiter(void 0, void 0, void 0, functi
                     reason: 'SALE',
                 },
             });
-        })));
-        return newOrder;
-    }));
-    // 3️⃣ Fetch full order
+        }
+        catch (err) {
+            console.error('⚠️ Stock update failed for product:', productId, err);
+        }
+    })));
+    // 5️⃣ Fetch full order with relations
     const fullOrder = yield client_1.prisma.order.findUnique({
-        where: { id: order.id },
+        where: { id: newOrder.id },
         include: {
             customer: { select: { id: true, name: true, imageUrl: true } },
             salesman: { select: { id: true, name: true, imageUrl: true } },
-            orderItems: {
-                include: {
-                    product: { select: { id: true, name: true, primaryImage: true } },
-                    variant: true,
-                },
-            },
         },
     });
     if (!fullOrder)
-        throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
+        throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found after creation.');
     const customerData = fullOrder.customer || {
         id: null,
         name: fullOrder.name || null,

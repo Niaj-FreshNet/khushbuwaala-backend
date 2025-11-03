@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentServices = void 0;
 const emails_1 = require("../../helpers/emailSender/emails");
 const client_1 = require("../../../prisma/client");
+const generateInvoice_1 = require("../../helpers/generateInvoice");
 const handleCheckoutSessionCompleted = (session) => __awaiter(void 0, void 0, void 0, function* () {
     console.log('Inside handleCheckoutSessionCompleted');
     const userId = session.metadata.userId;
@@ -60,13 +61,16 @@ const handleCheckoutSessionCompleted = (session) => __awaiter(void 0, void 0, vo
     // Step 4: Save the order
     const order = yield client_1.prisma.order.create({
         data: {
+            invoice: yield (0, generateInvoice_1.generateInvoice)(), // ✅ required field
+            orderSource: "WEBSITE", // ✅ or another valid enum value
+            saleType: "SINGLE", // ✅ if your model requires it
             customerId: userId,
-            // method: 'Stripe',
+            name: session.customer_details.name,
+            method: "Stripe",
             email: session.customer_details.email,
             address: formattedAddress,
             phone,
-            // zipcode,
-            // note,
+            additionalNotes: note,
             amount: totalAmount,
             isPaid: true,
             cartItems: detailedCartItems,

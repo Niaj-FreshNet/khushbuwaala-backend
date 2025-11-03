@@ -65,18 +65,6 @@ exports.productInclude = {
             imageUrl: true
         }
     },
-    variants: {
-        select: {
-            id: true,
-            sku: true,
-            unit: true,
-            size: true,
-            price: true,
-            // stock: true,
-            createdAt: true,
-            updatedAt: true,
-        },
-    },
     // ✅ Include related materials
     ProductMaterial: {
         include: {
@@ -116,57 +104,55 @@ exports.productInclude = {
             createdAt: 'desc'
         }
     },
+    variants: {
+        include: {
+            discounts: true, // variant-level
+        },
+    },
+    discounts: true, // product-level
 };
 // Detailed include for single product view
 exports.productDetailInclude = {
     category: true,
-    variants: true,
     ProductMaterial: { include: { material: true } },
     ProductFragrance: { include: { fragrance: true } },
     Review: {
-        where: {
-            isPublished: true
-        },
+        where: { isPublished: true },
         include: {
-            user: {
-                select: {
-                    id: true,
-                    name: true,
-                    imageUrl: true,
-                },
-            },
+            user: { select: { id: true, name: true, imageUrl: true } },
         },
-        orderBy: {
-            createdAt: 'desc'
-        }
+        orderBy: { createdAt: 'desc' },
     },
-    discounts: {
-        where: {
-            OR: [
-                { endDate: null },
-                { endDate: { gte: new Date() } }
-            ]
-        }
+    discounts: true, // product-level
+    variants: {
+        include: {
+            discounts: true, // variant-level
+        },
     },
 };
 // Admin include for management
 exports.productAdminInclude = {
     category: true,
-    variants: true,
-    Review: {
+    // Review: {
+    //   include: {
+    //     user: {
+    //       select: {
+    //         id: true,
+    //         name: true,
+    //         email: true,
+    //         imageUrl: true
+    //       },
+    //     },
+    //   },
+    // },
+    Review: true,
+    // stock: true,
+    discounts: true, // product-level
+    variants: {
         include: {
-            user: {
-                select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    imageUrl: true
-                },
-            },
+            discounts: true, // variant-level
         },
     },
-    // stock: true,
-    discounts: true,
     // wishlist: true,
     comboVariants: true
 };

@@ -66,6 +66,8 @@ exports.CartItemServices = {
                     userId: (_c = payload.userId) !== null && _c !== void 0 ? _c : null,
                     productId: payload.productId,
                     variantId: (_d = payload.variantId) !== null && _d !== void 0 ? _d : null,
+                    size: payload.size,
+                    unit: payload.unit,
                     quantity: payload.quantity,
                     price,
                     status: 'IN_CART',

@@ -8,7 +8,7 @@ import { ORDER_ERROR_MESSAGES } from './order.constant';
 // Create Order (Customer OR Guest)
 const createOrder = catchAsync(async (req, res) => {
   const userId = req.user?.id || null; // Optional Auth user
-  const { cartItemIds, amount, isPaid, orderSource, customerInfo } = req.body;
+  const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo } = req.body;
 
   // Validation
   if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
@@ -23,9 +23,15 @@ const createOrder = catchAsync(async (req, res) => {
     customerId: userId, // can be null for guests
     amount,
     isPaid: isPaid || false,
+    method,
     orderSource: orderSource || 'WEBSITE',
     cartItemIds,
     customerInfo: customerInfo || null, // for guest user data (name, phone, etc.)
+    saleType,
+    shippingCost,
+    additionalNotes,
+    shippingAddress,
+    billingAddress,
   };
 
   // ✅ Create order through service

@@ -20,6 +20,7 @@ const sales_routes_1 = require("../modules/Sales/sales.routes");
 const expense_route_1 = require("../modules/Expense/expense.route");
 const cart_routes_1 = require("../modules/Cart/cart.routes");
 const fragrance_routes_1 = require("../modules/Fragrance/fragrance.routes");
+const discount_routes_1 = require("../modules/Discount/discount.routes");
 const router = express_1.default.Router();
 const moduleRoutes = [
     {
@@ -85,6 +86,10 @@ const moduleRoutes = [
     {
         path: '/expenses',
         route: expense_route_1.ExpenseRoutes,
+    },
+    {
+        path: '/discount',
+        route: discount_routes_1.DiscountRoutes,
     },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

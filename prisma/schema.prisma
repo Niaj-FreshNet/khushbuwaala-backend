@@ -27,9 +27,11 @@ enum SaleType {
 }
 
 enum OrderStatus {
-  CANCEL
+  PENDING
   PROCESSING
   DELIVERED
+  COMPLETED
+  CANCEL
 }
 
 enum ExpenseStatus {
@@ -259,23 +261,29 @@ model ComboVariant {
 
 model Order {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  invoice     String      @unique
   orderTime   DateTime    @default(now())
   amount      Float
   isPaid      Boolean
+  method      String?
   cartItems   Json?
-  status      OrderStatus @default(PROCESSING)
-  orderSource OrderSource @default(WEBSITE)
+  status      OrderStatus @default(PENDING)
+  orderSource OrderSource
+  productIds String[]
 
   // Website orders
   customerId String? @db.ObjectId
   customer   User?   @relation("CustomerOrders", fields: [customerId], references: [id])
 
-  productIds String[]
+  shippingCost    Float   @default(0)
+  additionalNotes String?
+  shipping        Json?
+  billing         Json?
 
   // Manual sales
   salesmanId String?   @db.ObjectId
   salesman   User?     @relation("SalesmanOrders", fields: [salesmanId], references: [id])
-  saleType   SaleType? @default(SINGLE)
+  saleType   SaleType?
 
   // Optional walk-in customer info
   name    String?
@@ -300,7 +308,9 @@ model CartItem {
   userId    String? @db.ObjectId // optional, for guest carts
   productId String  @db.ObjectId
   variantId String? @db.ObjectId
-  quantity  Int     @default(1)
+  size      Int?
+  unit      String?
+  quantity  Int
   price     Float
 
   status CartItemStatus @default(IN_CART) // IN_CART, ORDERED, SOLD

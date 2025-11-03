@@ -8,6 +8,8 @@ export const CartItemServices = {
     userId?: string | null;
     productId: string;
     variantId?: string;
+    size?: number;
+    unit?: string;
     quantity: number;
     price?: number;
   }) {
@@ -57,6 +59,8 @@ export const CartItemServices = {
         userId: payload.userId ?? null,
         productId: payload.productId,
         variantId: payload.variantId ?? null,
+        size: payload.size,
+        unit: payload.unit,
         quantity: payload.quantity,
         price,
         status: 'IN_CART',

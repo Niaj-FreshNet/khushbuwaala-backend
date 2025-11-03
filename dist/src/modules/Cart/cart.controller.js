@@ -22,11 +22,13 @@ exports.CartItemController = {
     addToCart: (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
         var _a;
         const userId = ((_a = req === null || req === void 0 ? void 0 : req.user) === null || _a === void 0 ? void 0 : _a.id) || null; // null for visitors
-        const { productId, variantId, quantity, price } = req.body;
+        const { productId, variantId, size, unit, quantity, price } = req.body;
         const item = yield cart_services_1.CartItemServices.addToCart({
             userId,
             productId,
             variantId,
+            size,
+            unit,
             quantity,
             price,
         });
