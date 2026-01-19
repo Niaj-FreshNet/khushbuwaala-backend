@@ -104,6 +104,7 @@ const getOrderById = async (orderId: string) => {
 // ✅ Create Order with existing CartItems
 const createOrderWithCartItems = async (payload: {
   customerId?: string | null;
+  payToken?: string, // ✅ add
   cartItemIds: string[];
   amount: number;
   isPaid?: boolean;
@@ -139,6 +140,7 @@ const createOrderWithCartItems = async (payload: {
 }) => {
   const {
     customerId,
+    payToken,
     cartItemIds,
     amount,
     isPaid,
@@ -173,6 +175,7 @@ const createOrderWithCartItems = async (payload: {
         data: {
           invoice,
           // customerId: customerId || "",
+          payToken: payToken || null, // ✅ ADD THIS LINE
           amount: Number(amount),
           isPaid: isPaid || false,
           method: method || "",

@@ -53,6 +53,24 @@ enum CartItemStatus {
   SOLD
 }
 
+enum PaymentProvider {
+  BKASH
+  NAGAD
+  ROCKET
+  SSLCOMMERZ
+  STRIPE
+  CASH
+  OTHER
+}
+
+enum PaymentState {
+  INITIATED
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 model User {
   id                      String    @id @default(auto()) @map("_id") @db.ObjectId
   name                    String
@@ -263,13 +281,14 @@ model Order {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
   invoice     String      @unique
   orderTime   DateTime    @default(now())
+  payToken    String?     @unique
   amount      Float
   isPaid      Boolean
   method      String?
   cartItems   Json?
   status      OrderStatus @default(PENDING)
   orderSource OrderSource
-  productIds String[]
+  productIds  String[]
 
   // Website orders
   customerId String? @db.ObjectId
@@ -342,14 +361,44 @@ model StockLog {
   @@map("stock_logs")
 }
 
+// model Payment {
+//   id        String   @id @default(auto()) @map("_id") @db.ObjectId
+//   orderId   String   @db.ObjectId
+//   amount    Float
+//   method    String
+//   status    String
+//   createdAt DateTime @default(now())
+//   order     Order    @relation(fields: [orderId], references: [id])
+
+//   @@map("payments")
+// }
+
 model Payment {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  orderId   String   @db.ObjectId
-  amount    Float
-  method    String
-  status    String
+  id      String @id @default(auto()) @map("_id") @db.ObjectId
+  orderId String @db.ObjectId
+
+  amount   Float
+  provider PaymentProvider
+  status   PaymentState    @default(INITIATED)
+
+  // Generic gateway identifiers (works for bKash / Nagad / Rocket)
+  gatewayPaymentId String? @unique
+  gatewayTrxId     String?
+  gatewayInvoice   String?
+  gatewayStatus    String? // raw gateway status text if needed
+
+  // Refund tracking (optional, gateway-agnostic)
+  refundedAmount Float?  @default(0)
+  refundTrxId    String?
+  refundStatus   String?
+
+  // Store full gateway payloads safely
+  gatewayResponse Json?
+
   createdAt DateTime @default(now())
-  order     Order    @relation(fields: [orderId], references: [id])
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
 
   @@map("payments")
 }

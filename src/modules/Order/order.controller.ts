@@ -1,4 +1,5 @@
 import httpStatus from 'http-status';
+import crypto from "crypto";
 import AppError from '../../errors/AppError';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
@@ -7,6 +8,7 @@ import { ORDER_ERROR_MESSAGES } from './order.constant';
 
 // Create Order (Customer OR Guest)
 const createOrder = catchAsync(async (req, res) => {
+  const payToken = crypto.randomBytes(24).toString("hex");
   const userId = req.user?.id || null; // Optional Auth user
   const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo } = req.body;
 
@@ -21,6 +23,7 @@ const createOrder = catchAsync(async (req, res) => {
   // ✅ Build payload
   const payload = {
     customerId: userId, // can be null for guests
+    payToken, // ✅ add
     amount,
     isPaid: isPaid || false,
     method,
