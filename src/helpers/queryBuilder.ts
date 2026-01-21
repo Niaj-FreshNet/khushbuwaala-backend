@@ -1,4 +1,4 @@
-import { IProductQuery } from "../modules/Product/product.interface";
+import { IProductQuery, ProductSortBy } from "../modules/Product/product.interface";
 
 // Query Builder in Prisma
 export type TSearchOption = 'exact' | 'partial' | 'enum' | 'search' | undefined;
@@ -376,39 +376,56 @@ class QueryBuilder<T> {
 
 export default QueryBuilder;
 
-export const parseProductQuery = (query: any): IProductQuery => {
-  return {
-    categories: query.categories
-      ? Array.isArray(query.categories)
-        ? query.categories.map(String)
-        : [String(query.categories)]
-      : [],
-    brands: query.brands
-      ? Array.isArray(query.brands)
-        ? query.brands.map(String)
-        : [String(query.brands)]
-      : [],
-    priceRange: {
-      min: query.minPrice ? Number(query.minPrice) : 0,
-      max: query.maxPrice ? Number(query.maxPrice) : 0,
-    },
-    origins: query.origins
-      ? Array.isArray(query.origins)
-        ? query.origins.map(String)
-        : [String(query.origins)]
-      : [],
-    accords: query.accords
-      ? Array.isArray(query.accords)
-        ? query.accords.map(String)
-        : [String(query.accords)]
-      : [],
-    page: query.page ? Number(query.page) : 1,
-    limit: query.limit ? Number(query.limit) : 10,
-    sort: query.sort ? String(query.sort) : '-createdAt',
-    searchTerm: query.searchTerm ? String(query.searchTerm) : '',
-  };
+const SORT_VALUES = ["name", "price_asc", "price_desc", "newest", "oldest", "popularity"] as const;
+type SortBy = typeof SORT_VALUES[number];
+
+const isSortBy = (v: any): v is SortBy => SORT_VALUES.includes(v);
+
+const toStringArray = (v: any): string[] => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(String).map(s => s.trim()).filter(Boolean);
+  return String(v).split(",").map(s => s.trim()).filter(Boolean);
 };
 
+export const parseProductQuery = (query: any): IProductQuery => {
+  const categoryValues = query.category ?? query.categories;
+
+  const rawSortBy = query.sortBy;
+  const sortBy: SortBy | undefined = isSortBy(rawSortBy) ? rawSortBy : undefined;
+
+  const sort =
+    sortBy === "newest" ? "-createdAt"
+    : sortBy === "oldest" ? "createdAt"
+    : sortBy === "name" ? "name"
+    : sortBy === "popularity" ? "-salesCount"
+    : "-createdAt";
+
+  const rawGender = query.gender ? String(query.gender).toUpperCase() : undefined;
+  const gender =
+    rawGender === "MALE" || rawGender === "FEMALE" || rawGender === "UNISEX"
+      ? (rawGender as IProductQuery["gender"])
+      : undefined;
+
+  return {
+    category: toStringArray(categoryValues),
+    gender,
+
+    minPrice: query.minPrice != null ? Number(query.minPrice) : undefined,
+    maxPrice: query.maxPrice != null ? Number(query.maxPrice) : undefined,
+
+    accords: toStringArray(query.accords),
+    bestFor: toStringArray(query.bestFor),
+    tags: toStringArray(query.tags),
+
+    sortBy,
+    sort,
+
+    page: query.page ? Number(query.page) : 1,
+    limit: query.limit ? Number(query.limit) : 20,
+
+    searchTerm: query.searchTerm ? String(query.searchTerm) : "",
+  };
+};
 
 function parseSelect(input: {
   own?: string[];

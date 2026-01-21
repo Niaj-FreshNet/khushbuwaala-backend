@@ -89,21 +89,42 @@ export interface IUpdateProduct {
 }
 
 // Query Interfaces
+export type ProductSortBy =
+  | "name"
+  | "price_asc"
+  | "price_desc"
+  | "newest"
+  | "oldest"
+  | "popularity";
+
 export interface IProductQuery {
-  search?: string;
-  categories: { id: string; name: string }[]; // update here
+  searchTerm?: string;
+
+  // category names coming from query string (comma separated)
+  category?: string[];     // ✅ was categories / object array (not right for query parsing)
+
   brand?: string;
-  gender?: string;
+  gender?: string; // normalize in parser
   origin?: string;
+
   minPrice?: number;
   maxPrice?: number;
-  tags?: string;
-  accords?: string;
-  bestFor?: string;
-  stock?: 'in' | 'out';
-  sortBy?: 'name' | 'price_asc' | 'price_desc' | 'newest' | 'oldest' | 'popularity';
+
+  accords?: string[];      // ✅ was string
+  perfumeNotes?: string[]; // ✅ add
+  performance?: string[];  // ✅ add (or string if DB uses scalar)
+
+  bestFor?: string[];       // Product.bestFor (String[])
+  tags?: string[];          // Product.tags (String[])
+
+  stock?: "in" | "out";
+
+  sortBy?: ProductSortBy;  // ✅ keep literal union
+  sort?: string;           // ✅ used by QueryBuilder.sort(), like "-createdAt"
+
   page?: number;
   limit?: number;
+
   [key: string]: unknown;
 }
 

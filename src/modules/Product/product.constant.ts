@@ -31,11 +31,11 @@ export const productArraySearchFields: string[] = [
 
 // Nested filters for related fields
 export const productNestedFilters: NestedFilter[] = [
-  {
-    key: 'category',
-    searchOption: 'exact',
-    queryFields: ['categoryName']
-  },
+  // {
+  //   key: 'category',
+  //   searchOption: 'exact',
+  //   queryFields: ['categoryName']
+  // },
   {
     key: 'variants',
     // searchOption: 'range',

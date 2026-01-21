@@ -62,8 +62,10 @@ if (!primaryImage) {
 // Get All Products (Public)
 const getAllProducts = catchAsync(async (req, res) => {
   const query = parseProductQuery(req.query);
+  console.log("RAW query:", req.query);
 
   const result = await ProductServices.getAllProducts(query);
+  console.log("PARSED query:", query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

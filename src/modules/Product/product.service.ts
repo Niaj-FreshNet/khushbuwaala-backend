@@ -143,39 +143,62 @@ export const createProduct = async (payload: IProduct): Promise<IProductResponse
 const getAllProducts = async (query: IProductQuery) => {
   const queryBuilder = new QueryBuilder(query, prisma.product);
 
+  // ✅ Category names -> categoryIds -> where categoryId IN ...
+  if (query.category?.length) {
+    const cats = await prisma.category.findMany({
+      where: { categoryName: { in: query.category } },
+      select: { id: true },
+    });
+
+    const categoryIds = cats.map(c => c.id);
+
+    if (!categoryIds.length) {
+      return { data: [], meta: { page: query.page ?? 1, limit: query.limit ?? 20, total: 0, totalPage: 0 } };
+    }
+
+    queryBuilder.rawFilter({ categoryId: { in: categoryIds } });
+  }
+
+  // ✅ Gender (Product.gender is string)
+  if (query.gender) {
+    queryBuilder.rawFilter({ gender: query.gender });
+  }
+
+  // ✅ Arrays (tags/accords/bestFor) - use hasSome
+  if (query.accords?.length) queryBuilder.rawFilter({ accords: { hasSome: query.accords } });
+  if (query.bestFor?.length) queryBuilder.rawFilter({ bestFor: { hasSome: query.bestFor } });
+  if (query.tags?.length) queryBuilder.rawFilter({ tags: { hasSome: query.tags } });
+
+  // ✅ Price range: ProductVariant.price
+  if (query.minPrice != null || query.maxPrice != null) {
+    queryBuilder.rawFilter({
+      variants: {
+        some: {
+          price: {
+            ...(query.minPrice != null ? { gte: query.minPrice } : {}),
+            ...(query.maxPrice != null ? { lte: query.maxPrice } : {}),
+          },
+        },
+      },
+    });
+  }
+
+  // ✅ Published always
+  queryBuilder.rawFilter({ published: true });
+
   let results = await queryBuilder
-    .filter(productFilterFields)
     .search(productSearchFields)
-    // .arraySearch(productArraySearchFields)
-    .nestedFilter(productNestedFilters)
     .sort()
     .paginate()
     .include(productInclude)
-    .fields()
-    .filterByRange(productRangeFilter)
-    .rawFilter({ published: true })
     .execute();
 
   const meta = await queryBuilder.countTotal();
 
-  // Apply stock filtering
-  if (query.stock === 'in') {
-    results = results.filter((product: any) =>
-      product.variants.some((v: any) => v.stock > 0)
-    );
-  } else if (query.stock === 'out') {
-    results = results.filter((product: any) =>
-      product.variants.every((v: any) => v.stock === 0)
-    );
-  }
-
-  // Apply custom sorting
+  // ✅ sortBy price requires JS sorting (since variant min-price)
   results = applySorting(results, query.sortBy);
 
-  return {
-    data: results.map(formatProductResponse),
-    meta,
-  };
+  return { data: results.map(formatProductResponse), meta };
 };
 
 // Get All Products (Admin)
@@ -251,10 +274,10 @@ const getProduct = async (id: string): Promise<IProductResponse | null> => {
 
 // Get Product By Slug
 const getProductBySlug = async (slug: string): Promise<IProductResponse | null> => {
-    const product = await prisma.product.findUnique({
-      where: { slug },
-      include: productDetailInclude,
-    });
+  const product = await prisma.product.findUnique({
+    where: { slug },
+    include: productDetailInclude,
+  });
   //   const test = await prisma.productVariant.findUnique({
   //   where: { id: "6904bfb77a035c41185d2730" },
   //   select: {
