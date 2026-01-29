@@ -223,12 +223,28 @@ const getNewArrivals = catchAsync(async (req, res) => {
   });
 });
 
-// Get Products by Category
-const getProductsByCategory = catchAsync(async (req, res) => {
+// Get Products by Category Id
+const getProductsByCategoryId = catchAsync(async (req, res) => {
   const { categoryId } = req.params;
   const query = parseProductQuery(req.query);
 
-  const result = await ProductServices.getProductsByCategory(categoryId, query);
+  const result = await ProductServices.getProductsByCategoryId(categoryId, query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Category products retrieved successfully',
+    meta: result.meta,
+    data: result.data,
+  });
+});
+
+// Get Products by Category Name (NOT WORKING)
+const getProductsByCategoryName = catchAsync(async (req, res) => {
+  const { categoryName } = req.params;
+  const query = parseProductQuery(req.query);
+
+  const result = await ProductServices.getProductsByCategoryName(categoryName, query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -372,7 +388,8 @@ export const ProductController = {
   getNavbarProducts,
   getFeaturedProducts,
   getNewArrivals,
-  getProductsByCategory,
+  getProductsByCategoryId,
+  getProductsByCategoryName,
   getRelatedProducts,
   searchProducts,
   getProductVariants,

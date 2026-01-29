@@ -50,7 +50,8 @@ router.get('/get-trending-products', ProductController.getTrendingProducts);
 router.get('/get-navbar-products', ProductController.getNavbarProducts);
 router.get('/get-featured-products', ProductController.getFeaturedProducts);
 router.get('/get-new-arrivals', ProductController.getNewArrivals);
-router.get('/get-products-by-category/:categoryId', ProductController.getProductsByCategory);
+router.get('/get-products-by-category-id/:categoryId', ProductController.getProductsByCategoryId);
+router.get('/get-products-by-category-name/:categoryName', ProductController.getProductsByCategoryName); /* NOT WORKING */
 router.get('/get-related-products/:productId', ProductController.getRelatedProducts);
 router.get('/search-products', ProductController.searchProducts);
 

@@ -720,7 +720,7 @@ const getNewArrivals = async (): Promise<IProductResponse[]> => {
 };
 
 // Get Products by Category
-const getProductsByCategory = async (categoryId: string, query: IProductQuery) => {
+const getProductsByCategoryId = async (categoryId: string, query: IProductQuery) => {
   const categoryQuery = { ...query, category: categoryId };
   const queryBuilder = new QueryBuilder(categoryQuery, prisma.product);
 
@@ -735,6 +735,35 @@ const getProductsByCategory = async (categoryId: string, query: IProductQuery) =
     .fields()
     .filterByRange(productRangeFilter)
     .rawFilter({ published: true, categoryId })
+    .execute();
+
+  const meta = await queryBuilder.countTotal();
+
+  // Apply custom sorting
+  results = applySorting(results, query.sortBy);
+
+  return {
+    data: results.map(formatProductResponse),
+    meta,
+  };
+};
+
+// Get Products by Category Name ------------------(NOT WORKING)
+const getProductsByCategoryName = async (categoryName: string, query: IProductQuery) => {
+  const categoryQuery = { ...query, category: categoryName };
+  const queryBuilder = new QueryBuilder(categoryQuery, prisma.product);
+
+  let results = await queryBuilder
+    .filter(productFilterFields)
+    .search(productSearchFields)
+    // .arraySearch(productArraySearchFields)
+    .nestedFilter(productNestedFilters)
+    .sort()
+    .paginate()
+    .include(productInclude)
+    .fields()
+    .filterByRange(productRangeFilter)
+    .rawFilter({ published: true, categoryName })
     .execute();
 
   const meta = await queryBuilder.countTotal();
@@ -1286,7 +1315,8 @@ export const ProductServices = {
   getNavbarProducts,
   getFeaturedProducts,
   getNewArrivals,
-  getProductsByCategory,
+  getProductsByCategoryId,
+  getProductsByCategoryName,
   getRelatedProducts,
   searchProducts,
   getProductVariants,
