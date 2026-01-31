@@ -105,7 +105,18 @@ const updateProductZodSchema = zod_1.z.object({
         return val;
     }, zod_1.z.boolean())
         .optional(),
-    imagesToKeep: zod_1.z.array(zod_1.z.string().url()).optional(),
+    // imagesToKeep: z.array(z.string().url()).optional(),
+    imagesToKeep: zod_1.z.preprocess((val) => {
+        if (typeof val === "string") {
+            try {
+                return JSON.parse(val);
+            }
+            catch (_a) {
+                return val;
+            }
+        }
+        return val;
+    }, zod_1.z.array(zod_1.z.string().url()).optional()),
     variants: zod_1.z.array(productVariantSchema)
         .min(1, 'At least one variant is required')
         .max(20, 'Cannot have more than 20 variants')

@@ -1,10 +1,10 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { ProductController } from './product.controller';
 import auth from '../../middlewares/auth';
-import { upload } from '../../helpers/fileUploader';
 import validateRequest from '../../middlewares/validateRequest';
 import { ProductValidation } from '../../validations/product.validation';
 import { parseJsonFields } from '../../middlewares/parseJson';
+import { upload } from '../../utils/sendImageToCloudinary';
 
 const router = Router();
 

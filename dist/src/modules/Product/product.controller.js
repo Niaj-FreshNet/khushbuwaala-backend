@@ -20,6 +20,7 @@ const sendResponse_1 = __importDefault(require("../../utils/sendResponse"));
 const product_service_1 = require("./product.service");
 const product_constant_1 = require("./product.constant");
 const queryBuilder_1 = require("../../helpers/queryBuilder");
+const sendImageToCloudinary_1 = require("../../utils/sendImageToCloudinary");
 // import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 // Create Product
 const createProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -59,7 +60,9 @@ const createProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
 // Get All Products (Public)
 const getAllProducts = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const query = (0, queryBuilder_1.parseProductQuery)(req.query);
+    console.log("RAW query:", req.query);
     const result = yield product_service_1.ProductServices.getAllProducts(query);
+    console.log("PARSED query:", query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -111,10 +114,18 @@ const getProductBySlug = (0, catchAsync_1.default)((req, res) => __awaiter(void 
 const updateProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     // Handle new images
+    // let newImageUrls: string[] = [];
+    // if (req.files && Array.isArray(req.files)) {
+    //   const uploadedFiles = req.files as Express.Multer.File[];
+    //   newImageUrls = uploadedFiles.map(
+    //     (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
+    //   );
+    // }
     let newImageUrls = [];
     if (req.files && Array.isArray(req.files)) {
         const uploadedFiles = req.files;
-        newImageUrls = uploadedFiles.map((file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`);
+        const uploaded = yield Promise.all(uploadedFiles.map((file) => (0, sendImageToCloudinary_1.uploadToCloudinary)(file, "khushbuwaala_images/products", "product")));
+        newImageUrls = uploaded.map((u) => u.location);
     }
     // Parse data
     const parsedData = Object.assign(Object.assign({}, req.body), { published: req.body.published, tags: req.body.tags, accords: req.body.accords, bestFor: req.body.bestFor, perfumeNotes: req.body.perfumeNotes, stock: req.body.stock, variants: req.body.variants, imagesToKeep: req.body.imagesToKeep ?
@@ -178,11 +189,24 @@ const getNewArrivals = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         data: result,
     });
 }));
-// Get Products by Category
-const getProductsByCategory = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+// Get Products by Category Id
+const getProductsByCategoryId = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { categoryId } = req.params;
     const query = (0, queryBuilder_1.parseProductQuery)(req.query);
-    const result = yield product_service_1.ProductServices.getProductsByCategory(categoryId, query);
+    const result = yield product_service_1.ProductServices.getProductsByCategoryId(categoryId, query);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Category products retrieved successfully',
+        meta: result.meta,
+        data: result.data,
+    });
+}));
+// Get Products by Category Name (NOT WORKING)
+const getProductsByCategoryName = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { categoryName } = req.params;
+    const query = (0, queryBuilder_1.parseProductQuery)(req.query);
+    const result = yield product_service_1.ProductServices.getProductsByCategoryName(categoryName, query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -303,7 +327,8 @@ exports.ProductController = {
     getNavbarProducts,
     getFeaturedProducts,
     getNewArrivals,
-    getProductsByCategory,
+    getProductsByCategoryId,
+    getProductsByCategoryName,
     getRelatedProducts,
     searchProducts,
     getProductVariants,

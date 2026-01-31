@@ -114,7 +114,7 @@ const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* ()
 });
 // ✅ Create Order with existing CartItems
 const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const { customerId, cartItemIds, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, } = payload;
+    const { customerId, payToken, cartItemIds, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, } = payload;
     // 1️⃣ Fetch valid cart items
     const cartItems = yield client_1.prisma.cartItem.findMany({
         where: { id: { in: cartItemIds }, status: 'IN_CART' },
@@ -132,6 +132,7 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
             data: {
                 invoice,
                 // customerId: customerId || "",
+                payToken: payToken || null, // ✅ ADD THIS LINE
                 amount: Number(amount),
                 isPaid: isPaid || false,
                 method: method || "",

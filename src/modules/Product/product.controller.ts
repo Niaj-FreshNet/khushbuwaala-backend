@@ -6,6 +6,7 @@ import { ProductServices } from './product.service';
 import { IProduct, IUpdateProduct } from './product.interface';
 import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 import { parseProductQuery } from '../../helpers/queryBuilder';
+import { uploadToCloudinary } from '../../utils/sendImageToCloudinary';
 // import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 
 // Create Product
@@ -18,11 +19,11 @@ const createProduct = catchAsync(async (req, res) => {
   if (!categoryId) {
     throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
   }
-  
+
   const { primaryImage, otherImages } = req.body;
-if (!primaryImage) {
-  throw new AppError(httpStatus.BAD_REQUEST, 'Primary image is required.');
-}
+  if (!primaryImage) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Primary image is required.');
+  }
 
   // Image handling
   // if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
@@ -129,12 +130,24 @@ const updateProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
 
   // Handle new images
+  // let newImageUrls: string[] = [];
+  // if (req.files && Array.isArray(req.files)) {
+  //   const uploadedFiles = req.files as Express.Multer.File[];
+  //   newImageUrls = uploadedFiles.map(
+  //     (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
+  //   );
+  // }
   let newImageUrls: string[] = [];
   if (req.files && Array.isArray(req.files)) {
     const uploadedFiles = req.files as Express.Multer.File[];
-    newImageUrls = uploadedFiles.map(
-      (file) => `${process.env.BACKEND_LIVE_URL}/uploads/${file.filename}`
+
+    const uploaded = await Promise.all(
+      uploadedFiles.map((file) =>
+        uploadToCloudinary(file, "khushbuwaala_images/products", "product")
+      )
     );
+
+    newImageUrls = uploaded.map((u) => u.location);
   }
 
   // Parse data

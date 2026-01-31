@@ -126,7 +126,13 @@ const updateProductZodSchema = z.object({
     }, z.boolean())
     .optional(),
 
-  imagesToKeep: z.array(z.string().url()).optional(),
+  // imagesToKeep: z.array(z.string().url()).optional(),
+  imagesToKeep: z.preprocess((val) => {
+    if (typeof val === "string") {
+      try { return JSON.parse(val); } catch { return val; }
+    }
+    return val;
+  }, z.array(z.string().url()).optional()),
 
   variants: z.array(productVariantSchema)
     .min(1, 'At least one variant is required')

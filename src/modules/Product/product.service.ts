@@ -27,6 +27,7 @@ import {
 } from './product.constant';
 import { Unit } from '@prisma/client';
 import slugify from 'slugify';
+import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
 
 // Create Product
 export const createProduct = async (payload: IProduct): Promise<IProductResponse> => {
@@ -375,7 +376,14 @@ export const updateProduct = async (
       img => img && !imagesToKeep.includes(img) && !newImages.includes(img)
     );
 
-    await Promise.all(imagesToDelete.map(deleteFile));
+    const safeDeleteCloudinary = async (url: string) => {
+      const publicId = getPublicIdFromCloudinaryUrl(url);
+      if (!publicId) return;
+      await deleteFromCloudinaryByPublicId(publicId);
+    };
+
+    // await Promise.all(imagesToDelete.map(deleteFile));
+    await Promise.all(imagesToDelete.map(safeDeleteCloudinary));
 
     const allNewImages = [...imagesToKeep, ...newImages];
     if (allNewImages.length > 0) {
@@ -543,8 +551,15 @@ const deleteProduct = async (id: string) => {
   });
 
   // Delete images from storage
+  const safeDeleteCloudinary = async (url: string) => {
+    const publicId = getPublicIdFromCloudinaryUrl(url);
+    if (!publicId) return;
+    await deleteFromCloudinaryByPublicId(publicId);
+  };
+
   const allImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
-  await Promise.all(allImages.filter(Boolean).map(deleteFile));
+  // await Promise.all(allImages.filter(Boolean).map(deleteFile));
+  await Promise.all(allImages.filter(Boolean).map(safeDeleteCloudinary));
 
   return { id };
 };

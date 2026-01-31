@@ -28,11 +28,11 @@ exports.productArraySearchFields = [
 ];
 // Nested filters for related fields
 exports.productNestedFilters = [
-    {
-        key: 'category',
-        searchOption: 'exact',
-        queryFields: ['categoryName']
-    },
+    // {
+    //   key: 'category',
+    //   searchOption: 'exact',
+    //   queryFields: ['categoryName']
+    // },
     {
         key: 'variants',
         // searchOption: 'range',

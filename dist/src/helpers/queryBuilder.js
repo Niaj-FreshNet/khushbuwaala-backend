@@ -265,36 +265,42 @@ class QueryBuilder {
     }
 }
 exports.default = QueryBuilder;
+const SORT_VALUES = ["name", "price_asc", "price_desc", "newest", "oldest", "popularity"];
+const isSortBy = (v) => SORT_VALUES.includes(v);
+const toStringArray = (v) => {
+    if (!v)
+        return [];
+    if (Array.isArray(v))
+        return v.map(String).map(s => s.trim()).filter(Boolean);
+    return String(v).split(",").map(s => s.trim()).filter(Boolean);
+};
 const parseProductQuery = (query) => {
+    var _a;
+    const categoryValues = (_a = query.category) !== null && _a !== void 0 ? _a : query.categories;
+    const rawSortBy = query.sortBy;
+    const sortBy = isSortBy(rawSortBy) ? rawSortBy : undefined;
+    const sort = sortBy === "newest" ? "-createdAt"
+        : sortBy === "oldest" ? "createdAt"
+            : sortBy === "name" ? "name"
+                : sortBy === "popularity" ? "-salesCount"
+                    : "-createdAt";
+    const rawGender = query.gender ? String(query.gender).toUpperCase() : undefined;
+    const gender = rawGender === "MALE" || rawGender === "FEMALE" || rawGender === "UNISEX"
+        ? rawGender
+        : undefined;
     return {
-        categories: query.categories
-            ? Array.isArray(query.categories)
-                ? query.categories.map(String)
-                : [String(query.categories)]
-            : [],
-        brands: query.brands
-            ? Array.isArray(query.brands)
-                ? query.brands.map(String)
-                : [String(query.brands)]
-            : [],
-        priceRange: {
-            min: query.minPrice ? Number(query.minPrice) : 0,
-            max: query.maxPrice ? Number(query.maxPrice) : 0,
-        },
-        origins: query.origins
-            ? Array.isArray(query.origins)
-                ? query.origins.map(String)
-                : [String(query.origins)]
-            : [],
-        accords: query.accords
-            ? Array.isArray(query.accords)
-                ? query.accords.map(String)
-                : [String(query.accords)]
-            : [],
+        category: toStringArray(categoryValues),
+        gender,
+        minPrice: query.minPrice != null ? Number(query.minPrice) : undefined,
+        maxPrice: query.maxPrice != null ? Number(query.maxPrice) : undefined,
+        accords: toStringArray(query.accords),
+        bestFor: toStringArray(query.bestFor),
+        tags: toStringArray(query.tags),
+        sortBy,
+        sort,
         page: query.page ? Number(query.page) : 1,
-        limit: query.limit ? Number(query.limit) : 10,
-        sort: query.sort ? String(query.sort) : '-createdAt',
-        searchTerm: query.searchTerm ? String(query.searchTerm) : '',
+        limit: query.limit ? Number(query.limit) : 20,
+        searchTerm: query.searchTerm ? String(query.searchTerm) : "",
     };
 };
 exports.parseProductQuery = parseProductQuery;

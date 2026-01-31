@@ -18,6 +18,6 @@ router.patch('/update-order-status/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADM
 router.get('/get-all-customers', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN'), order_controller_1.OrderController.getAllCustomers);
 // User orders (customer)
 router.get('/get-user-orders/:id', order_controller_1.OrderController.getUserOrders);
-router.get('/my-orders', (0, auth_1.default)('USER', 'SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.getMyOrders);
+router.get('/my-orders', (0, auth_1.default)("USER", "SUPER_ADMIN", "ADMIN", "SALESMAN"), order_controller_1.OrderController.getMyOrders);
 router.get('/my-orders/:id', (0, auth_1.default)('USER'), order_controller_1.OrderController.getMyOrderByID);
 exports.OrderRoutes = router;

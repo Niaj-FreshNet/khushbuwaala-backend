@@ -14,6 +14,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrderController = void 0;
 const http_status_1 = __importDefault(require("http-status"));
+const crypto_1 = __importDefault(require("crypto"));
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const catchAsync_1 = __importDefault(require("../../utils/catchAsync"));
 const sendResponse_1 = __importDefault(require("../../utils/sendResponse"));
@@ -22,6 +23,7 @@ const order_constant_1 = require("./order.constant");
 // Create Order (Customer OR Guest)
 const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
+    const payToken = crypto_1.default.randomBytes(24).toString("hex");
     const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || null; // Optional Auth user
     const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo } = req.body;
     // Validation
@@ -34,6 +36,7 @@ const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
     // ✅ Build payload
     const payload = {
         customerId: userId, // can be null for guests
+        payToken, // ✅ add
         amount,
         isPaid: isPaid || false,
         method,

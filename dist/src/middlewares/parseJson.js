@@ -1,20 +1,23 @@
 "use strict";
+// import { Request, Response, NextFunction } from "express";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseJsonFields = parseJsonFields;
 function parseJsonFields(req, res, next) {
     const body = req.body || {};
     // List of fields that can be JSON
     const jsonFields = [
-        'variants',
-        'tags',
-        'perfumeNotes',
-        'accords',
-        'bestFor',
+        "variants",
+        "tags",
+        "perfumeNotes",
+        "accords",
+        "bestFor",
+        "imagesToKeep", // ✅ ADD THIS
+        "materialIds", // ✅ recommended (FormData sends as string)
+        "fragranceIds", // ✅ recommended
     ];
-    jsonFields.forEach((field) => {
+    for (const field of jsonFields) {
         if (body[field] !== undefined) {
-            // If it's a string, try parsing
-            if (typeof body[field] === 'string') {
+            if (typeof body[field] === "string") {
                 try {
                     body[field] = JSON.parse(body[field]);
                 }
@@ -22,25 +25,20 @@ function parseJsonFields(req, res, next) {
                     return res.status(400).json({ message: `${field} must be valid JSON` });
                 }
             }
-            // If it's already an object/array, leave it as-is
         }
-    });
-    // Convert 'published' string to boolean
-    if (body.published !== undefined) {
-        if (typeof body.published === 'string') {
-            body.published = body.published.toLowerCase() === 'true';
-        }
-        // if it's already boolean, leave it
     }
-    // 🔥 Convert numeric fields
-    const numberFields = ["stock", "price", "size"];
-    numberFields.forEach((field) => {
+    // Convert 'published' string to boolean
+    if (body.published !== undefined && typeof body.published === "string") {
+        body.published = body.published.toLowerCase() === "true";
+    }
+    // 🔥 Convert numeric fields (only top-level numeric fields)
+    const numberFields = ["stock"];
+    for (const field of numberFields) {
         if (body[field] !== undefined && body[field] !== null) {
             const num = Number(body[field]);
-            if (!isNaN(num)) {
+            if (!isNaN(num))
                 body[field] = num;
-            }
         }
-    });
+    }
     next();
 }

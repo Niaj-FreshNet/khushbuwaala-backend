@@ -16,11 +16,11 @@ exports.ProductServices = exports.updateProduct = exports.createProduct = void 0
 const date_fns_1 = require("date-fns");
 const client_1 = require("../../../prisma/client");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
-const fileDelete_1 = require("../../helpers/fileDelete");
 const queryBuilder_1 = __importDefault(require("../../helpers/queryBuilder"));
 const product_constant_1 = require("./product.constant");
 const client_2 = require("@prisma/client");
 const slugify_1 = __importDefault(require("slugify"));
+const sendImageToCloudinary_1 = require("../../utils/sendImageToCloudinary");
 // Create Product
 const createProduct = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
@@ -124,33 +124,53 @@ const createProduct = (payload) => __awaiter(void 0, void 0, void 0, function* (
 exports.createProduct = createProduct;
 // Get All Products (Public)
 const getAllProducts = (query) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e, _f;
     const queryBuilder = new queryBuilder_1.default(query, client_1.prisma.product);
+    // ✅ Category names -> categoryIds -> where categoryId IN ...
+    if ((_a = query.category) === null || _a === void 0 ? void 0 : _a.length) {
+        const cats = yield client_1.prisma.category.findMany({
+            where: { categoryName: { in: query.category } },
+            select: { id: true },
+        });
+        const categoryIds = cats.map(c => c.id);
+        if (!categoryIds.length) {
+            return { data: [], meta: { page: (_b = query.page) !== null && _b !== void 0 ? _b : 1, limit: (_c = query.limit) !== null && _c !== void 0 ? _c : 20, total: 0, totalPage: 0 } };
+        }
+        queryBuilder.rawFilter({ categoryId: { in: categoryIds } });
+    }
+    // ✅ Gender (Product.gender is string)
+    if (query.gender) {
+        queryBuilder.rawFilter({ gender: query.gender });
+    }
+    // ✅ Arrays (tags/accords/bestFor) - use hasSome
+    if ((_d = query.accords) === null || _d === void 0 ? void 0 : _d.length)
+        queryBuilder.rawFilter({ accords: { hasSome: query.accords } });
+    if ((_e = query.bestFor) === null || _e === void 0 ? void 0 : _e.length)
+        queryBuilder.rawFilter({ bestFor: { hasSome: query.bestFor } });
+    if ((_f = query.tags) === null || _f === void 0 ? void 0 : _f.length)
+        queryBuilder.rawFilter({ tags: { hasSome: query.tags } });
+    // ✅ Price range: ProductVariant.price
+    if (query.minPrice != null || query.maxPrice != null) {
+        queryBuilder.rawFilter({
+            variants: {
+                some: {
+                    price: Object.assign(Object.assign({}, (query.minPrice != null ? { gte: query.minPrice } : {})), (query.maxPrice != null ? { lte: query.maxPrice } : {})),
+                },
+            },
+        });
+    }
+    // ✅ Published always
+    queryBuilder.rawFilter({ published: true });
     let results = yield queryBuilder
-        .filter(product_constant_1.productFilterFields)
         .search(product_constant_1.productSearchFields)
-        // .arraySearch(productArraySearchFields)
-        .nestedFilter(product_constant_1.productNestedFilters)
         .sort()
         .paginate()
         .include(product_constant_1.productInclude)
-        .fields()
-        .filterByRange(product_constant_1.productRangeFilter)
-        .rawFilter({ published: true })
         .execute();
     const meta = yield queryBuilder.countTotal();
-    // Apply stock filtering
-    if (query.stock === 'in') {
-        results = results.filter((product) => product.variants.some((v) => v.stock > 0));
-    }
-    else if (query.stock === 'out') {
-        results = results.filter((product) => product.variants.every((v) => v.stock === 0));
-    }
-    // Apply custom sorting
+    // ✅ sortBy price requires JS sorting (since variant min-price)
     results = applySorting(results, query.sortBy);
-    return {
-        data: results.map(formatProductResponse),
-        meta,
-    };
+    return { data: results.map(formatProductResponse), meta };
 });
 // Get All Products (Admin)
 const getAllProductsAdmin = (query) => __awaiter(void 0, void 0, void 0, function* () {
@@ -292,7 +312,14 @@ const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, functio
         const newImages = payload.newImages || [];
         const currentImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
         const imagesToDelete = currentImages.filter(img => img && !imagesToKeep.includes(img) && !newImages.includes(img));
-        yield Promise.all(imagesToDelete.map(fileDelete_1.deleteFile));
+        const safeDeleteCloudinary = (url) => __awaiter(void 0, void 0, void 0, function* () {
+            const publicId = (0, sendImageToCloudinary_1.getPublicIdFromCloudinaryUrl)(url);
+            if (!publicId)
+                return;
+            yield (0, sendImageToCloudinary_1.deleteFromCloudinaryByPublicId)(publicId);
+        });
+        // await Promise.all(imagesToDelete.map(deleteFile));
+        yield Promise.all(imagesToDelete.map(safeDeleteCloudinary));
         const allNewImages = [...imagesToKeep, ...newImages];
         if (allNewImages.length > 0) {
             primaryImage = allNewImages[0];
@@ -415,8 +442,15 @@ const deleteProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
         yield tx.product.delete({ where: { id } });
     }));
     // Delete images from storage
+    const safeDeleteCloudinary = (url) => __awaiter(void 0, void 0, void 0, function* () {
+        const publicId = (0, sendImageToCloudinary_1.getPublicIdFromCloudinaryUrl)(url);
+        if (!publicId)
+            return;
+        yield (0, sendImageToCloudinary_1.deleteFromCloudinaryByPublicId)(publicId);
+    });
     const allImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
-    yield Promise.all(allImages.filter(Boolean).map(fileDelete_1.deleteFile));
+    // await Promise.all(allImages.filter(Boolean).map(deleteFile));
+    yield Promise.all(allImages.filter(Boolean).map(safeDeleteCloudinary));
     return { id };
 });
 // Get Trending Products
@@ -557,7 +591,7 @@ const getNewArrivals = () => __awaiter(void 0, void 0, void 0, function* () {
     return products.map(formatProductResponse);
 });
 // Get Products by Category
-const getProductsByCategory = (categoryId, query) => __awaiter(void 0, void 0, void 0, function* () {
+const getProductsByCategoryId = (categoryId, query) => __awaiter(void 0, void 0, void 0, function* () {
     const categoryQuery = Object.assign(Object.assign({}, query), { category: categoryId });
     const queryBuilder = new queryBuilder_1.default(categoryQuery, client_1.prisma.product);
     let results = yield queryBuilder
@@ -571,6 +605,30 @@ const getProductsByCategory = (categoryId, query) => __awaiter(void 0, void 0, v
         .fields()
         .filterByRange(product_constant_1.productRangeFilter)
         .rawFilter({ published: true, categoryId })
+        .execute();
+    const meta = yield queryBuilder.countTotal();
+    // Apply custom sorting
+    results = applySorting(results, query.sortBy);
+    return {
+        data: results.map(formatProductResponse),
+        meta,
+    };
+});
+// Get Products by Category Name ------------------(NOT WORKING)
+const getProductsByCategoryName = (categoryName, query) => __awaiter(void 0, void 0, void 0, function* () {
+    const categoryQuery = Object.assign(Object.assign({}, query), { category: categoryName });
+    const queryBuilder = new queryBuilder_1.default(categoryQuery, client_1.prisma.product);
+    let results = yield queryBuilder
+        .filter(product_constant_1.productFilterFields)
+        .search(product_constant_1.productSearchFields)
+        // .arraySearch(productArraySearchFields)
+        .nestedFilter(product_constant_1.productNestedFilters)
+        .sort()
+        .paginate()
+        .include(product_constant_1.productInclude)
+        .fields()
+        .filterByRange(product_constant_1.productRangeFilter)
+        .rawFilter({ published: true, categoryName })
         .execute();
     const meta = yield queryBuilder.countTotal();
     // Apply custom sorting
@@ -1034,7 +1092,8 @@ exports.ProductServices = {
     getNavbarProducts,
     getFeaturedProducts,
     getNewArrivals,
-    getProductsByCategory,
+    getProductsByCategoryId,
+    getProductsByCategoryName,
     getRelatedProducts,
     searchProducts,
     getProductVariants,
