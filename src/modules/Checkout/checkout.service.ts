@@ -33,8 +33,8 @@ class BkashGatewayService {
     const { data } = await this.http.post(
       "/tokenized/checkout/token/grant",
       {
-        app_key: process.env.BKASH_APP_KEY,
-        app_secret: process.env.BKASH_APP_SECRET,
+        app_key: process.env.BKASH_API_KEY,
+        app_secret: process.env.BKASH_SECRET_KEY,
       },
       { headers: this.credsHeaders() }
     );
@@ -52,8 +52,8 @@ class BkashGatewayService {
     const { data } = await this.http.post(
       "/tokenized/checkout/token/refresh",
       {
-        app_key: process.env.BKASH_APP_KEY,
-        app_secret: process.env.BKASH_APP_SECRET,
+        app_key: process.env.BKASH_API_KEY,
+        app_secret: process.env.BKASH_SECRET_KEY,
         refresh_token: this.token.refreshToken,
       },
       { headers: this.credsHeaders() }
@@ -88,7 +88,7 @@ class BkashGatewayService {
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: idToken, // id_token used as Authorization :contentReference[oaicite:13]{index=13}
-      "X-App-Key": process.env.BKASH_APP_KEY!,
+      "X-App-Key": process.env.BKASH_API_KEY!,
     };
   }
 

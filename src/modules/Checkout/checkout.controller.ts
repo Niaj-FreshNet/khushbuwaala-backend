@@ -7,270 +7,273 @@ import { bkashGateway } from "./checkout.service";
 import { getClientRedirects, makeInvoice } from "./checkout.utils";
 
 export const CheckoutController = {
-    // POST /api/checkout/bkash/create
-    create: catchAsync(async (req: Request, res: Response) => {
-        const user = (req as any).user || null;
+  // POST /api/checkout/bkash/create
+  create: catchAsync(async (req: Request, res: Response) => {
+    // ✅ Strong guard: must be a plain object
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      throw new AppError(httpStatus.BAD_REQUEST, "Invalid request body");
+    }
 
-        // const { orderId } = req.body as { orderId: string };
-        // if (!orderId) throw new AppError(httpStatus.BAD_REQUEST, "orderId is required");
+    const user = (req as any).user || null;
 
-        // const order = await prisma.order.findUnique({ where: { id: orderId } });
-        // if (!order) throw new AppError(httpStatus.NOT_FOUND, "Order not found");
-        // if (order.isPaid) throw new AppError(httpStatus.BAD_REQUEST, "Order already paid");
+    const { orderId, payToken } = req.body as { orderId?: string; payToken?: string };
 
-        // /**
-        //  * ✅ Security rule:
-        //  * - If order has a customerId (logged-in order), only that user (or admin) can pay
-        //  * - If order is guest (customerId null), anyone can pay (visitor ok)
-        //  */
-        // if (order.customerId) {
-        //     const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-        //     if (!user?.id && !isAdmin) {
-        //         throw new AppError(httpStatus.UNAUTHORIZED, "Login required to pay for this order");
-        //     }
-        //     if (!isAdmin && user?.id !== order.customerId) {
-        //         throw new AppError(httpStatus.FORBIDDEN, "You cannot pay for someone else’s order");
-        //     }
-        // }
+    if (!orderId || typeof orderId !== "string") {
+      throw new AppError(httpStatus.BAD_REQUEST, "orderId is required");
+    }
+    if (!payToken || typeof payToken !== "string") {
+      throw new AppError(httpStatus.BAD_REQUEST, "payToken is required");
+    }
 
-        const { orderId, payToken } = req.body as { orderId: string; payToken: string };
-        // console.log("CheckoutController.create called with ", req.body);
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new AppError(httpStatus.NOT_FOUND, "Order not found");
+    if (order.isPaid) throw new AppError(httpStatus.BAD_REQUEST, "Order already paid");
 
-        if (!orderId) throw new AppError(httpStatus.BAD_REQUEST, "orderId is required");
-        if (!payToken) throw new AppError(httpStatus.BAD_REQUEST, "payToken is required");
+    // ✅ Guest-friendly security: anyone can pay if they have payToken
+    if (!order.payToken || order.payToken !== payToken) {
+      throw new AppError(httpStatus.UNAUTHORIZED, "Invalid payment token");
+    }
 
-        const order = await prisma.order.findUnique({ where: { id: orderId } });
-        if (!order) throw new AppError(httpStatus.NOT_FOUND, "Order not found");
-        if (order.isPaid) throw new AppError(httpStatus.BAD_REQUEST, "Order already paid");
+    // ✅ callback base must be domain only
+    const callbackBase = process.env.BKASH_CALLBACK_BASE_URL;
+    if (!callbackBase) {
+      throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, "BKASH_CALLBACK_BASE_URL missing");
+    }
 
-        // ✅ Anyone can pay, but must have the token
-        if (!order.payToken || order.payToken !== payToken) {
-            throw new AppError(httpStatus.UNAUTHORIZED, "Invalid payment token");
-        }
+    const callbackURL = `${callbackBase}/api/checkout/bkash/callback`;
 
-        const callbackBase = process.env.BKASH_CALLBACK_BASE_URL;
-        if (!callbackBase) {
-            throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, "BKASH_CALLBACK_BASE_URL missing");
-        }
+    // ✅ make safe invoice + payer ref (avoid @ . spaces etc)
+    const invoice = order.invoice || makeInvoice();
+    const invoiceSafe = String(invoice).replace(/[^0-9a-zA-Z_-]/g, "").slice(0, 50) || makeInvoice();
 
-        const invoice = order.invoice || makeInvoice();
+    const payerRefRaw = user?.phone || (order as any)?.phone || user?.email || "guest";
+    const payerReference =
+      String(payerRefRaw).replace(/[^0-9a-zA-Z_-]/g, "").slice(0, 50) || "guest";
 
-        // ✅ Idempotency: if there's already an INITIATED BKASH payment for this order, reuse it
-        const existing = await prisma.payment.findFirst({
-            where: {
-                orderId: order.id,
-                provider: "BKASH",
-                status: "INITIATED",
-                gatewayPaymentId: { not: null },
-            },
-            orderBy: { createdAt: "desc" },
+    const amount = Number(order.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new AppError(httpStatus.BAD_REQUEST, "Invalid order amount");
+    }
+
+    // ✅ Idempotency: reuse latest INITIATED payment if exists (optional but good)
+    const existing = await prisma.payment.findFirst({
+      where: {
+        orderId: order.id,
+        provider: "BKASH",
+        status: "INITIATED",
+        gatewayPaymentId: { not: null },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // If you want to always create a new payment attempt, ignore existing.
+    // We'll create a new INITIATED row each time for clean attempts.
+    let payment: any = null;
+
+    try {
+      // Create payment row first so you can track attempts
+      payment = await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          amount: amount,
+          provider: "BKASH",
+          status: "INITIATED",
+          gatewayInvoice: invoiceSafe,
+          gatewayStatus: "Initiated",
+        },
+      });
+
+      // Call bKash create
+      const data = await bkashGateway.createPayment({
+        amount,
+        payerReference,
+        callbackURL,
+        invoice: invoiceSafe,
+      });
+
+      // Validate response
+      if (!data?.bkashURL || !data?.paymentID) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: "FAILED", gatewayResponse: data || null },
         });
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          data?.statusMessage || data?.message || "bKash create payment failed"
+        );
+      }
 
-        if (existing?.gatewayPaymentId) {
-            // We cannot reconstruct bkashURL without calling create again,
-            // so simplest: create again to get a new bkashURL (allowed) OR store bkashURL in gatewayResponse.
-            // We'll create again to return a fresh bkashURL.
-        }
+      // Save gateway payment id
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          gatewayPaymentId: data.paymentID,
+          gatewayResponse: data,
+        },
+      });
 
-        // Create a Payment row now (gateway-agnostic)
-        const payment = await prisma.payment.create({
+      return res.status(200).json({
+        success: true,
+        bkashURL: data.bkashURL,
+        paymentID: data.paymentID,
+      });
+    } catch (err: any) {
+      // ✅ Never crash if payment was not created
+      const status = err?.response?.status;
+      const bkashErr = err?.response?.data;
+
+      if (bkashErr || status) {
+        console.error("❌ bKash createPayment failed:", status, bkashErr);
+      } else {
+        console.error("❌ Create payment internal error:", err?.message);
+      }
+
+      // If payment exists, mark failed
+      if (payment?.id) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: "FAILED",
+            gatewayResponse: bkashErr || err?.message || null,
+          },
+        });
+      }
+
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        bkashErr?.statusMessage || bkashErr?.message || err?.message || "bKash create payment failed"
+      );
+    }
+  }),
+
+  // GET /api/checkout/bkash/callback?paymentID=...&status=success|failure|cancel
+  callback: catchAsync(async (req: Request, res: Response) => {
+    const { paymentID, status } = req.query as { paymentID?: string; status?: string };
+    const { success, fail } = getClientRedirects();
+
+    if (!paymentID) return res.redirect(`${fail}?message=missing_paymentID`);
+
+    const payment = await prisma.payment.findFirst({
+      where: { gatewayPaymentId: paymentID, provider: "BKASH" },
+    });
+
+    if (!payment) return res.redirect(`${fail}?message=payment_not_found`);
+
+    if (payment.status === "COMPLETED") return res.redirect(success);
+
+    if (status === "cancel" || status === "cancelled") {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: "CANCELLED" } });
+      return res.redirect(`${fail}?message=cancelled`);
+    }
+
+    if (status === "failure") {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
+      return res.redirect(`${fail}?message=failure`);
+    }
+
+    if (status !== "success") {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
+      return res.redirect(`${fail}?message=unknown_status`);
+    }
+
+    // status=success -> Execute payment
+    try {
+      const exec = await bkashGateway.executePayment(paymentID);
+
+      if (exec?.statusCode === "0000") {
+        await prisma.$transaction([
+          prisma.payment.update({
+            where: { id: payment.id },
             data: {
-                orderId: order.id,
-                amount: order.amount,
-                provider: "BKASH",
-                status: "INITIATED",
-                gatewayInvoice: invoice,
-                // Optional: store visitor info for tracking (only if you want)
-                gatewayStatus: "Initiated",
+              status: "COMPLETED",
+              gatewayTrxId: exec.trxID || null,
+              gatewayStatus: exec.transactionStatus || "Completed",
+              gatewayResponse: exec,
             },
-        });
+          }),
+          prisma.order.update({
+            where: { id: payment.orderId },
+            data: { isPaid: true, method: "BKASH", status: "PROCESSING" },
+          }),
+        ]);
 
-        const payerRef =
-            user?.phone ||
-            user?.email ||
-            (order.phone ?? "") || // if your order has phone in shipping/customerInfo JSON, you can pull it from there
-            "guest";
+        return res.redirect(success);
+      }
 
-        const data = await bkashGateway.createPayment({
-            amount: order.amount,
-            payerReference: payerRef,
-            callbackURL: `${callbackBase}/callback`,
-            invoice,
-        });
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "FAILED", gatewayResponse: exec || null },
+      });
 
-        if (!data?.bkashURL || !data?.paymentID) {
-            await prisma.payment.update({
-                where: { id: payment.id },
-                data: { status: "FAILED", gatewayResponse: data || null },
-            });
-            throw new AppError(httpStatus.BAD_REQUEST, data?.statusMessage || "bKash create payment failed");
+      return res.redirect(`${fail}?message=${encodeURIComponent(exec?.statusMessage || "execute_failed")}`);
+    } catch (err: any) {
+      try {
+        const q = await bkashGateway.queryPayment(paymentID);
+
+        if (q?.transactionStatus === "Completed") {
+          await prisma.$transaction([
+            prisma.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: "COMPLETED",
+                gatewayTrxId: q.trxID || payment.gatewayTrxId || null,
+                gatewayStatus: q.transactionStatus || "Completed",
+                gatewayResponse: q,
+              },
+            }),
+            prisma.order.update({
+              where: { id: payment.orderId },
+              data: { isPaid: true, method: "BKASH", status: "PROCESSING" },
+            }),
+          ]);
+          return res.redirect(success);
         }
 
         await prisma.payment.update({
-            where: { id: payment.id },
-            data: {
-                gatewayPaymentId: data.paymentID,
-                gatewayResponse: data,
-            },
+          where: { id: payment.id },
+          data: { status: "FAILED", gatewayResponse: q || null },
         });
 
-        return res.status(200).json({
-            success: true,
-            bkashURL: data.bkashURL,
-            paymentID: data.paymentID,
-        });
-    }),
+        return res.redirect(`${fail}?message=${encodeURIComponent(q?.transactionStatus || "initiated")}`);
+      } catch {
+        await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
+        return res.redirect(`${fail}?message=${encodeURIComponent(err?.message || "execute_timeout")}`);
+      }
+    }
+  }),
 
-    // GET /api/checkout/bkash/callback?paymentID=...&status=success|failure|cancel
-    callback: catchAsync(async (req: Request, res: Response) => {
-        const { paymentID, status } = req.query as { paymentID?: string; status?: string };
-        const { success, fail } = getClientRedirects();
+  // POST /api/checkout/bkash/refund/:trxID
+  refund: catchAsync(async (req: Request, res: Response) => {
+    const { trxID } = req.params;
 
-        if (!paymentID) {
-            return res.redirect(`${fail}?message=missing_paymentID`);
-        }
+    const payment = await prisma.payment.findFirst({
+      where: { gatewayTrxId: trxID, provider: "BKASH", status: "COMPLETED" },
+    });
 
-        const payment = await prisma.payment.findFirst({
-            where: { gatewayPaymentId: paymentID, provider: "BKASH" },
-        });
+    if (!payment) throw new AppError(httpStatus.NOT_FOUND, "Payment not found or not completed");
 
-        if (!payment) {
-            return res.redirect(`${fail}?message=payment_not_found`);
-        }
+    const refundAmount = payment.amount;
+    const refund = await bkashGateway.refundTransaction({
+      paymentId: payment.gatewayPaymentId!,
+      trxId: trxID,
+      refundAmount,
+      sku: "order-refund",
+      reason: "customer_refund",
+    });
 
-        // ✅ Idempotency guard: callback may hit multiple times
-        if (payment.status === "COMPLETED") {
-            return res.redirect(success);
-        }
+    const ok = refund?.refundTransactionStatus === "Completed" || refund?.statusCode === "0000";
 
-        if (status === "cancel" || status === "cancelled") {
-            await prisma.payment.update({ where: { id: payment.id }, data: { status: "CANCELLED" } });
-            return res.redirect(`${fail}?message=cancelled`);
-        }
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: ok ? "REFUNDED" : payment.status,
+        refundedAmount: ok ? refundAmount : payment.refundedAmount,
+        refundTrxId: refund?.refundTrxId || null,
+        refundStatus: refund?.refundTransactionStatus || refund?.statusMessage || null,
+        gatewayResponse: refund,
+      },
+    });
 
-        if (status === "failure") {
-            await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
-            return res.redirect(`${fail}?message=failure`);
-        }
-
-        if (status !== "success") {
-            await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
-            return res.redirect(`${fail}?message=unknown_status`);
-        }
-
-        // status=success -> Execute payment
-        try {
-            const exec = await bkashGateway.executePayment(paymentID);
-
-            if (exec?.statusCode === "0000") {
-                await prisma.$transaction([
-                    prisma.payment.update({
-                        where: { id: payment.id },
-                        data: {
-                            status: "COMPLETED",
-                            gatewayTrxId: exec.trxID || null,
-                            gatewayStatus: exec.transactionStatus || "Completed",
-                            gatewayResponse: exec,
-                        },
-                    }),
-                    prisma.order.update({
-                        where: { id: payment.orderId },
-                        data: {
-                            isPaid: true,
-                            method: "BKASH",
-                            status: "PROCESSING",
-                        },
-                    }),
-                ]);
-
-                return res.redirect(success);
-            }
-
-            // if execute failed -> mark failed
-            await prisma.payment.update({
-                where: { id: payment.id },
-                data: { status: "FAILED", gatewayResponse: exec || null },
-            });
-
-            return res.redirect(`${fail}?message=${encodeURIComponent(exec?.statusMessage || "execute_failed")}`);
-        } catch (err: any) {
-            // If execute has no response/timeouts -> Query payment (recommended by bKash) :contentReference[oaicite:20]{index=20}
-            try {
-                const q = await bkashGateway.queryPayment(paymentID);
-
-                if (q?.transactionStatus === "Completed") {
-                    await prisma.$transaction([
-                        prisma.payment.update({
-                            where: { id: payment.id },
-                            data: {
-                                status: "COMPLETED",
-                                gatewayTrxId: q.trxID || payment.gatewayTrxId || null,
-                                gatewayStatus: q.transactionStatus || "Completed",
-                                gatewayResponse: q,
-                            },
-                        }),
-                        prisma.order.update({
-                            where: { id: payment.orderId },
-                            data: { isPaid: true, method: "BKASH", status: "PROCESSING" },
-                        }),
-                    ]);
-                    return res.redirect(success);
-                }
-
-                // Initiated means not completed; user may retry from create payment again :contentReference[oaicite:21]{index=21}
-                await prisma.payment.update({
-                    where: { id: payment.id },
-                    data: { status: "FAILED", gatewayResponse: q || null },
-                });
-                return res.redirect(`${fail}?message=${encodeURIComponent(q?.transactionStatus || "initiated")}`);
-            } catch {
-                await prisma.payment.update({
-                    where: { id: payment.id },
-                    data: { status: "FAILED" },
-                });
-                return res.redirect(`${fail}?message=${encodeURIComponent(err?.message || "execute_timeout")}`);
-            }
-        }
-    }),
-
-    // POST /api/checkout/bkash/refund/:trxID
-    refund: catchAsync(async (req: Request, res: Response) => {
-        const { trxID } = req.params;
-
-        const payment = await prisma.payment.findFirst({
-            where: { gatewayTrxId: trxID, provider: "BKASH", status: "COMPLETED" },
-        });
-
-        if (!payment) throw new AppError(httpStatus.NOT_FOUND, "Payment not found or not completed");
-
-        const refundAmount = payment.amount; // full refund here (you can make partial too)
-        const refund = await bkashGateway.refundTransaction({
-            paymentId: payment.gatewayPaymentId!,
-            trxId: trxID,
-            refundAmount,
-            sku: "order-refund",
-            reason: "customer_refund",
-        });
-
-        // docs say check refundTransactionStatus = Completed for success :contentReference[oaicite:22]{index=22}
-        const ok =
-            refund?.refundTransactionStatus === "Completed" ||
-            refund?.statusCode === "0000";
-
-        await prisma.payment.update({
-            where: { id: payment.id },
-            data: {
-                status: ok ? "REFUNDED" : payment.status,
-                refundedAmount: ok ? refundAmount : payment.refundedAmount,
-                refundTrxId: refund?.refundTrxId || null,
-                refundStatus: refund?.refundTransactionStatus || refund?.statusMessage || null,
-                gatewayResponse: refund,
-            },
-        });
-
-        return res.status(ok ? 200 : 400).json({
-            success: ok,
-            refund,
-        });
-    }),
+    return res.status(ok ? 200 : 400).json({ success: ok, refund });
+  }),
 };
