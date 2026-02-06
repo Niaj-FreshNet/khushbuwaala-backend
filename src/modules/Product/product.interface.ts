@@ -188,6 +188,8 @@ export interface IProductResponse {
 
   supplier: string;
 
+  discounts?: IDiscount[];
+
   variants: IProductVariantResponse[];
 
   // Computed fields
@@ -208,8 +210,21 @@ export interface IProductVariantResponse {
   price: number;
   stock: number;
   productId: string;
+  discounts?: IDiscount[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface IDiscount {
+  id: string;
+  productId: string;
+  code?: string;
+  type: "percentage" | "fixed";
+  value: number;
+  maxUsage?: number;
+  startDate?: string;
+  endDate?: string;
+  variantId?: string; // null means product-level discount
 }
 
 // Analytics Interfaces

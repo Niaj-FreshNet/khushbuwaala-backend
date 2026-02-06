@@ -5,6 +5,7 @@ import httpStatus from "http-status";
 import { prisma } from "../../../prisma/client";
 import { bkashGateway } from "./checkout.service";
 import { getClientRedirects, makeInvoice } from "./checkout.utils";
+import { DiscountServices } from "../Discount/discount.service";
 
 export const CheckoutController = {
   // POST /api/checkout/bkash/create
@@ -181,8 +182,8 @@ export const CheckoutController = {
       const exec = await bkashGateway.executePayment(paymentID);
 
       if (exec?.statusCode === "0000") {
-        await prisma.$transaction([
-          prisma.payment.update({
+        await prisma.$transaction(async (tx) => {
+          await tx.payment.update({
             where: { id: payment.id },
             data: {
               status: "COMPLETED",
@@ -190,12 +191,18 @@ export const CheckoutController = {
               gatewayStatus: exec.transactionStatus || "Completed",
               gatewayResponse: exec,
             },
-          }),
-          prisma.order.update({
+          });
+
+          const order = await tx.order.update({
             where: { id: payment.orderId },
             data: { isPaid: true, method: "BKASH", status: "PROCESSING" },
-          }),
-        ]);
+          });
+
+          // ✅ Consume coupon usage ONLY after payment success
+          if (order.coupon) {
+            await DiscountServices.consumeDiscountUsageByCode(tx, order.coupon, order.id);
+          }
+        });
 
         return res.redirect(success);
       }
@@ -211,8 +218,8 @@ export const CheckoutController = {
         const q = await bkashGateway.queryPayment(paymentID);
 
         if (q?.transactionStatus === "Completed") {
-          await prisma.$transaction([
-            prisma.payment.update({
+          await prisma.$transaction(async (tx) => {
+            await tx.payment.update({
               where: { id: payment.id },
               data: {
                 status: "COMPLETED",
@@ -220,12 +227,19 @@ export const CheckoutController = {
                 gatewayStatus: q.transactionStatus || "Completed",
                 gatewayResponse: q,
               },
-            }),
-            prisma.order.update({
+            });
+
+            const order = await tx.order.update({
               where: { id: payment.orderId },
               data: { isPaid: true, method: "BKASH", status: "PROCESSING" },
-            }),
-          ]);
+            });
+
+            // ✅ Consume coupon usage ONLY after payment success
+            if (order.coupon) {
+              await DiscountServices.consumeDiscountUsageByCode(tx, order.coupon, order.id);
+            }
+          });
+
           return res.redirect(success);
         }
 

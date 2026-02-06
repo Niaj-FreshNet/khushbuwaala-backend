@@ -10,7 +10,21 @@ import { ORDER_ERROR_MESSAGES } from './order.constant';
 const createOrder = catchAsync(async (req, res) => {
   const payToken = crypto.randomBytes(24).toString("hex");
   const userId = req.user?.id || null; // Optional Auth user
-  const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo } = req.body;
+  const { 
+    cartItemIds, 
+    amount, 
+    isPaid, 
+    method, 
+    saleType, 
+    shippingCost, 
+    additionalNotes, 
+    shippingAddress, 
+    billingAddress, 
+    orderSource, 
+    customerInfo,
+    coupon,          
+    discountAmount,  
+  } = req.body;
 
   // Validation
   if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
@@ -35,6 +49,8 @@ const createOrder = catchAsync(async (req, res) => {
     additionalNotes,
     shippingAddress,
     billingAddress,
+    coupon: coupon || null,                       
+    discountAmount: Number(discountAmount || 0),
   };
 
   // ✅ Create order through service

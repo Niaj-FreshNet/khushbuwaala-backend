@@ -24,6 +24,17 @@ const getAllAdmin = catchAsync(async (req, res) => {
   });
 });
 
+const getSingle = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await DiscountServices.getSingle(id);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Discount fetched",
+    data: result,
+  });
+});
+
 const updateDiscount = catchAsync(async (req, res) => {
   const { id } = req.params;
   const result = await DiscountServices.updateDiscount(id, req.body);
@@ -59,6 +70,7 @@ const applyDiscount = catchAsync(async (req, res) => {
 export const DiscountController = {
   createDiscount,
   getAllAdmin,
+  getSingle,
   updateDiscount,
   deleteDiscount,
   applyDiscount,

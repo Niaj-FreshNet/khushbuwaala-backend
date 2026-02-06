@@ -290,6 +290,9 @@ model Order {
   orderSource OrderSource
   productIds  String[]
 
+  coupon         String?
+  discountAmount Int     @default(0)
+
   // Website orders
   customerId String? @db.ObjectId
   customer   User?   @relation("CustomerOrders", fields: [customerId], references: [id])
@@ -403,18 +406,31 @@ model Payment {
   @@map("payments")
 }
 
+enum DiscountScope {
+  ORDER
+  PRODUCT
+  VARIANT
+}
+
 model Discount {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
-  productId String    @db.ObjectId
-  variantId String?   @db.ObjectId // null means discount is for the whole product
-  code      String?   @unique // optional promo code
-  type      String // "percentage" | "fixed"
-  value     Float
-  maxUsage  Int? // optional
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  scope DiscountScope @default(PRODUCT)
+
+  // For PRODUCT/VARIANT scope only
+  productId String? @db.ObjectId
+  variantId String? @db.ObjectId
+
+  code  String? @unique
+  type  String // "percentage" | "fixed"
+  value Float
+
+  maxUsage  Int?
+  usedCount Int @default(0)
   startDate DateTime?
   endDate   DateTime?
 
-  product Product         @relation(fields: [productId], references: [id])
+  product Product?        @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id])
 
   OrderDiscount OrderDiscount[]

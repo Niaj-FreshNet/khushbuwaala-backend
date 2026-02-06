@@ -149,11 +149,17 @@ const addStock = async (payload: {
 };
 
 const getStockLogs = async (productId: string) => {
+  const isValidObjectId = (id: string) => /^[a-f\d]{24}$/i.test(id);
+
+  if (!isValidObjectId(productId)) {
+    throw new AppError(httpStatus.BAD_REQUEST, "Invalid productId");
+  }
+
   const product = await prisma.product.findUnique({
     where: { id: productId },
   });
 
-  if (!product) throw new AppError(httpStatus.NOT_FOUND, 'Product not found');
+  if (!product) throw new AppError(httpStatus.NOT_FOUND, "Product not found");
 
   const logs = await prisma.stockLog.findMany({
     where: { productId },
@@ -161,7 +167,7 @@ const getStockLogs = async (productId: string) => {
       product: { select: { name: true } },
       variant: { select: { size: true, unit: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
   });
 
   return logs;

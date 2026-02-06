@@ -4,6 +4,7 @@ import httpStatus from 'http-status';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { OrderSource, SaleType } from '@prisma/client';// ✅ Get All Orders (with customer + salesman info)
 import { generateInvoice } from '../../helpers/generateInvoice';
+import { DiscountServices } from '../Discount/discount.service';
 
 const getAllOrders = async (queryParams: Record<string, unknown>) => {
   const { searchTerm, status, ...rest } = queryParams;
@@ -113,6 +114,8 @@ const createOrderWithCartItems = async (payload: {
   saleType?: SaleType;
   shippingCost?: number;
   additionalNotes?: string;
+  coupon?: string | null;
+  discountAmount?: number;
   customerInfo?: {
     name?: string;
     phone?: string;
@@ -152,6 +155,8 @@ const createOrderWithCartItems = async (payload: {
     customerInfo,
     shippingAddress,
     billingAddress,
+    coupon,
+    discountAmount,
   } = payload;
 
   // 1️⃣ Fetch valid cart items
@@ -163,6 +168,14 @@ const createOrderWithCartItems = async (payload: {
   if (cartItems.length === 0) {
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
   }
+
+  const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
+
+  const discount = Math.max(0, Number(discountAmount || 0));
+  const shipping = Number(shippingCost || 0);
+
+  // final server truth
+  const serverAmount = Math.max(0, subtotal - discount) + shipping;
 
   // 2️⃣ Start transaction with extended timeout
   const order = await prisma.$transaction(
@@ -176,13 +189,19 @@ const createOrderWithCartItems = async (payload: {
           invoice,
           // customerId: customerId || "",
           payToken: payToken || null, // ✅ ADD THIS LINE
-          amount: Number(amount),
+          // amount: Number(amount),
+          amount: serverAmount,
           isPaid: isPaid || false,
           method: method || "",
           orderSource: orderSource || 'WEBSITE',
           saleType: saleType || 'SINGLE',
-          shippingCost: shippingCost || 0,
+          // shippingCost: shippingCost || 0,
+          shippingCost: shipping,
           additionalNotes: additionalNotes || "",
+          // coupon: coupon ? String(coupon).trim().toUpperCase() : null,  
+          coupon: coupon ? String(coupon).trim().toUpperCase() : null,
+          discountAmount: Number(discountAmount || 0),
+
 
           // ✅ Correct customer relation handling
           customer: customerId
@@ -255,6 +274,11 @@ const createOrderWithCartItems = async (payload: {
             reason: 'SALE',
           },
         });
+      }
+
+      // ✅ consume coupon usage ONLY if COD (successful order placement)
+      if (coupon && method === "cashOnDelivery") {
+        await DiscountServices.consumeDiscountUsageByCode(tx, coupon, newOrder.id);
       }
 
       return newOrder;

@@ -7,6 +7,7 @@ const router = Router();
 
 router.post("/create", auth("ADMIN", "SUPER_ADMIN"), DiscountController.createDiscount);
 router.get("/admin", auth("ADMIN", "SUPER_ADMIN"), DiscountController.getAllAdmin);
+router.get("/:id", auth("ADMIN", "SUPER_ADMIN"), DiscountController.getSingle);
 router.patch("/:id", auth("ADMIN", "SUPER_ADMIN"), DiscountController.updateDiscount);
 router.delete("/:id", auth("ADMIN", "SUPER_ADMIN"), DiscountController.deleteDiscount);
 

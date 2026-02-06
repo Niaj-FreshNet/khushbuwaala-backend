@@ -1245,8 +1245,15 @@ const formatProductResponse = (product: any): IProductResponse => {
 
     supplier: product.supplier,
 
-    variants: variants,
+    // ✅ IMPORTANT: return discounts
+    discounts: product.discounts || [],
 
+    // ✅ IMPORTANT: keep variant discounts too
+    variants: variants.map((v: any) => ({
+      ...v,
+      discounts: v.discounts || [],
+    })),
+    
     // Computed fields
     minPrice: prices.length > 0 ? Math.min(...prices) : 0,
     maxPrice: prices.length > 0 ? Math.max(...prices) : 0,
