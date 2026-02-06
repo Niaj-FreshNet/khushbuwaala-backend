@@ -123,18 +123,22 @@ const addStock = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     return stockLog;
 });
 const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* () {
+    const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(id);
+    if (!isValidObjectId(productId)) {
+        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Invalid productId");
+    }
     const product = yield client_2.prisma.product.findUnique({
         where: { id: productId },
     });
     if (!product)
-        throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Product not found');
+        throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Product not found");
     const logs = yield client_2.prisma.stockLog.findMany({
         where: { productId },
         include: {
             product: { select: { name: true } },
             variant: { select: { size: true, unit: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
     });
     return logs;
 });

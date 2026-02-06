@@ -11,6 +11,7 @@ const discount_controller_1 = require("./discount.controller");
 const router = (0, express_1.Router)();
 router.post("/create", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), discount_controller_1.DiscountController.createDiscount);
 router.get("/admin", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), discount_controller_1.DiscountController.getAllAdmin);
+router.get("/:id", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), discount_controller_1.DiscountController.getSingle);
 router.patch("/:id", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), discount_controller_1.DiscountController.updateDiscount);
 router.delete("/:id", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), discount_controller_1.DiscountController.deleteDiscount);
 // Public endpoint – no auth (used by checkout)

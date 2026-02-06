@@ -21,7 +21,7 @@ export const DiscountServices = {
     const { scope, productId, variantId } = payload;
 
     const normalizedCode = payload.code?.trim();
-    // const code = normalizedCode ? normalizedCode.toUpperCase() : undefined;
+    const code = normalizedCode ? normalizedCode.toUpperCase() : null;
 
     if (scope === "ORDER") {
       if (!normalizedCode) {
@@ -52,8 +52,8 @@ export const DiscountServices = {
       if (!variant) throw new AppError(httpStatus.NOT_FOUND, "Variant not found");
     }
 
-    if (normalizedCode) {
-      const exists = await prisma.discount.findUnique({ where: { code: normalizedCode } });
+    if (code) {
+      const exists = await prisma.discount.findUnique({ where: { code } });
       if (exists) throw new AppError(httpStatus.BAD_REQUEST, "Discount code already exists");
     }
 
@@ -75,7 +75,7 @@ export const DiscountServices = {
         scope,
         productId: scope === "ORDER" ? undefined : productId,
         variantId: scope === "ORDER" ? undefined : variantId,
-        code: normalizedCode,
+        code: code,
         type: payload.type,
         value: numericValue,
         maxUsage: numericMaxUsage,
@@ -114,15 +114,47 @@ export const DiscountServices = {
     const discount = await prisma.discount.findUnique({ where: { id } });
     if (!discount) throw new AppError(httpStatus.NOT_FOUND, "Discount not found");
 
-    const numericValue = payload.value ? Number(payload.value) : undefined;
-    const numericMaxUsage = payload.maxUsage ? Number(payload.maxUsage) : undefined;
+    const numericValue =
+      payload.value === undefined || payload.value === null
+        ? undefined
+        : Number(payload.value);
+
+    const numericMaxUsage =
+      payload.maxUsage === undefined || payload.maxUsage === null || payload.maxUsage === ("" as any)
+        ? undefined
+        : Number(payload.maxUsage);
+
+    if (numericValue !== undefined && (!Number.isFinite(numericValue) || numericValue <= 0)) {
+      throw new AppError(httpStatus.BAD_REQUEST, "Discount value must be a positive number");
+    }
+
+    if (numericMaxUsage !== undefined && (!Number.isInteger(numericMaxUsage) || numericMaxUsage < 1)) {
+      throw new AppError(httpStatus.BAD_REQUEST, "maxUsage must be a positive integer");
+    }
+
+    const toDateOrUndefined = (v?: string | null) => {
+      if (v === undefined) return undefined;          // not provided -> don't update
+      if (!v || !String(v).trim()) return null;       // blank -> clear date (set null)
+
+      const d = new Date(v); // accepts "YYYY-MM-DDTHH:mm"
+      if (isNaN(d.getTime())) throw new AppError(httpStatus.BAD_REQUEST, "Invalid date format");
+      return d;
+    };
 
     return prisma.discount.update({
       where: { id },
       data: {
-        ...payload,
+        ...(payload.scope !== undefined && { scope: payload.scope }),
+        ...(payload.productId !== undefined && { productId: payload.productId || null }),
+        ...(payload.variantId !== undefined && { variantId: payload.variantId || null }),
+        ...(payload.code !== undefined && { code: payload.code || null }),
+        ...(payload.type !== undefined && { type: payload.type }),
+
         ...(numericValue !== undefined && { value: numericValue }),
-        ...(numericMaxUsage !== undefined && { maxUsage: numericMaxUsage }),
+        ...(payload.maxUsage !== undefined && { maxUsage: numericMaxUsage ?? null }),
+
+        ...(payload.startDate !== undefined && { startDate: toDateOrUndefined(payload.startDate) }),
+        ...(payload.endDate !== undefined && { endDate: toDateOrUndefined(payload.endDate) }),
       },
     });
   },
@@ -149,23 +181,20 @@ export const DiscountServices = {
           {
             OR: [
               ...(normalizedCode
-                ? [{ code: { equals: normalizedCode, mode: "insensitive" } }]
+                ? [{ code: { equals: normalizedCode } }]
                 : []),
               { code: null },
-              { code: { isSet: false } },
             ],
           },
           {
             OR: [
               { startDate: null },
-              { startDate: { isSet: false } },
               { startDate: { lte: now } },
             ],
           },
           {
             OR: [
               { endDate: null },
-              { endDate: { isSet: false } },
               { endDate: { gte: now } },
             ],
           },

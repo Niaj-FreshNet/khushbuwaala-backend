@@ -25,7 +25,7 @@ const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
     var _a;
     const payToken = crypto_1.default.randomBytes(24).toString("hex");
     const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || null; // Optional Auth user
-    const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo } = req.body;
+    const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo, coupon, discountAmount, } = req.body;
     // Validation
     if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, order_constant_1.ORDER_ERROR_MESSAGES.EMPTY_ORDER);
@@ -48,6 +48,8 @@ const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
         additionalNotes,
         shippingAddress,
         billingAddress,
+        coupon: coupon || null,
+        discountAmount: Number(discountAmount || 0),
     };
     // ✅ Create order through service
     const result = yield order_service_1.OrderServices.createOrderWithCartItems(payload);

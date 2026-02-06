@@ -60,9 +60,9 @@ const createProduct = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
 // Get All Products (Public)
 const getAllProducts = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const query = (0, queryBuilder_1.parseProductQuery)(req.query);
-    console.log("RAW query:", req.query);
+    // console.log("RAW query:", req.query);
     const result = yield product_service_1.ProductServices.getAllProducts(query);
-    console.log("PARSED query:", query);
+    // console.log("PARSED query:", query);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,

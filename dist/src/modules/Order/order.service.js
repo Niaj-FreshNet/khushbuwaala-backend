@@ -29,6 +29,7 @@ const AppError_1 = __importDefault(require("../../errors/AppError"));
 const http_status_1 = __importDefault(require("http-status"));
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const generateInvoice_1 = require("../../helpers/generateInvoice");
+const discount_service_1 = require("../Discount/discount.service");
 const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     const { searchTerm, status } = queryParams, rest = __rest(queryParams, ["searchTerm", "status"]);
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(rest, ['id', 'customer.name']);
@@ -114,7 +115,7 @@ const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* ()
 });
 // ✅ Create Order with existing CartItems
 const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const { customerId, payToken, cartItemIds, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, } = payload;
+    const { customerId, payToken, cartItemIds, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, coupon, discountAmount, } = payload;
     // 1️⃣ Fetch valid cart items
     const cartItems = yield client_1.prisma.cartItem.findMany({
         where: { id: { in: cartItemIds }, status: 'IN_CART' },
@@ -123,6 +124,11 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
     if (cartItems.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'No valid cart items found.');
     }
+    const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
+    const discount = Math.max(0, Number(discountAmount || 0));
+    const shipping = Number(shippingCost || 0);
+    // final server truth
+    const serverAmount = Math.max(0, subtotal - discount) + shipping;
     // 2️⃣ Start transaction with extended timeout
     const order = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
         var _a, _b, _c, _d, _e;
@@ -133,13 +139,18 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                 invoice,
                 // customerId: customerId || "",
                 payToken: payToken || null, // ✅ ADD THIS LINE
-                amount: Number(amount),
+                // amount: Number(amount),
+                amount: serverAmount,
                 isPaid: isPaid || false,
                 method: method || "",
                 orderSource: orderSource || 'WEBSITE',
                 saleType: saleType || 'SINGLE',
-                shippingCost: shippingCost || 0,
+                // shippingCost: shippingCost || 0,
+                shippingCost: shipping,
                 additionalNotes: additionalNotes || "",
+                // coupon: coupon ? String(coupon).trim().toUpperCase() : null,  
+                coupon: coupon ? String(coupon).trim().toUpperCase() : null,
+                discountAmount: Number(discountAmount || 0),
                 // ✅ Correct customer relation handling
                 customer: customerId
                     ? { connect: { id: customerId } }
@@ -206,6 +217,10 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                     reason: 'SALE',
                 },
             });
+        }
+        // ✅ consume coupon usage ONLY if COD (successful order placement)
+        if (coupon && method === "cashOnDelivery") {
+            yield discount_service_1.DiscountServices.consumeDiscountUsageByCode(tx, coupon, newOrder.id);
         }
         return newOrder;
     }), {

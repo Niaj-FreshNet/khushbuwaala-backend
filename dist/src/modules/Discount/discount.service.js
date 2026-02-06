@@ -21,34 +21,67 @@ exports.DiscountServices = {
     // ── CREATE DISCOUNT ─────────────────────────────
     createDiscount(payload) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { productId, variantId, code } = payload;
-            // Validate product existence
-            const product = yield client_1.prisma.product.findUnique({
-                where: { id: productId },
-            });
-            if (!product)
-                throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Product not found");
-            // Validate variant existence if provided
+            var _a;
+            const { scope, productId, variantId } = payload;
+            const normalizedCode = (_a = payload.code) === null || _a === void 0 ? void 0 : _a.trim();
+            const code = normalizedCode ? normalizedCode.toUpperCase() : null;
+            if (scope === "ORDER") {
+                if (!normalizedCode) {
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Coupon code is required for order discount");
+                }
+                if (productId || variantId) {
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Order discount cannot be tied to product/variant");
+                }
+            }
+            if (scope === "PRODUCT") {
+                if (!productId)
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Product is required for product discount");
+                if (variantId)
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Product scope discount cannot have variantId");
+            }
+            if (scope === "VARIANT") {
+                if (!productId)
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Product is required for variant discount");
+                if (!variantId)
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Variant is required for variant discount");
+            }
+            if (productId) {
+                const product = yield client_1.prisma.product.findUnique({ where: { id: productId } });
+                if (!product)
+                    throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Product not found");
+            }
             if (variantId) {
                 const variant = yield client_1.prisma.productVariant.findUnique({ where: { id: variantId } });
                 if (!variant)
                     throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Variant not found");
             }
-            // Validate code uniqueness for promo discounts
             if (code) {
                 const exists = yield client_1.prisma.discount.findUnique({ where: { code } });
                 if (exists)
                     throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Discount code already exists");
             }
-            // ✅ Convert numeric values properly
             const numericValue = Number(payload.value);
-            const numericMaxUsage = payload.maxUsage ? Number(payload.maxUsage) : undefined;
-            if (isNaN(numericValue)) {
-                throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Discount value must be a valid number");
+            const numericMaxUsage = payload.maxUsage === undefined || payload.maxUsage === null
+                ? undefined
+                : Number(payload.maxUsage);
+            if (!Number.isFinite(numericValue) || numericValue <= 0) {
+                throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Discount value must be a positive number");
             }
-            // Create discount
+            if (numericMaxUsage !== undefined && (!Number.isInteger(numericMaxUsage) || numericMaxUsage < 1)) {
+                throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "maxUsage must be a positive integer");
+            }
             return client_1.prisma.discount.create({
-                data: Object.assign(Object.assign({}, payload), { value: numericValue, maxUsage: numericMaxUsage }),
+                data: {
+                    scope,
+                    productId: scope === "ORDER" ? undefined : productId,
+                    variantId: scope === "ORDER" ? undefined : variantId,
+                    code: code,
+                    type: payload.type,
+                    value: numericValue,
+                    maxUsage: numericMaxUsage,
+                    startDate: payload.startDate ? new Date(payload.startDate) : undefined,
+                    endDate: payload.endDate ? new Date(payload.endDate) : undefined,
+                },
             });
         });
     },
@@ -64,17 +97,51 @@ exports.DiscountServices = {
             });
         });
     },
+    getSingle(id) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const discount = yield client_1.prisma.discount.findUnique({
+                where: { id },
+                include: {
+                    product: { select: { name: true } },
+                    variant: { select: { sku: true, size: true, unit: true } },
+                },
+            });
+            if (!discount)
+                throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Discount not found");
+            return discount;
+        });
+    },
     // ── UPDATE DISCOUNT ────────────────────────────
     updateDiscount(id, payload) {
         return __awaiter(this, void 0, void 0, function* () {
             const discount = yield client_1.prisma.discount.findUnique({ where: { id } });
             if (!discount)
                 throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Discount not found");
-            const numericValue = payload.value ? Number(payload.value) : undefined;
-            const numericMaxUsage = payload.maxUsage ? Number(payload.maxUsage) : undefined;
+            const numericValue = payload.value === undefined || payload.value === null
+                ? undefined
+                : Number(payload.value);
+            const numericMaxUsage = payload.maxUsage === undefined || payload.maxUsage === null || payload.maxUsage === ""
+                ? undefined
+                : Number(payload.maxUsage);
+            if (numericValue !== undefined && (!Number.isFinite(numericValue) || numericValue <= 0)) {
+                throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Discount value must be a positive number");
+            }
+            if (numericMaxUsage !== undefined && (!Number.isInteger(numericMaxUsage) || numericMaxUsage < 1)) {
+                throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "maxUsage must be a positive integer");
+            }
+            const toDateOrUndefined = (v) => {
+                if (v === undefined)
+                    return undefined; // not provided -> don't update
+                if (!v || !String(v).trim())
+                    return null; // blank -> clear date (set null)
+                const d = new Date(v); // accepts "YYYY-MM-DDTHH:mm"
+                if (isNaN(d.getTime()))
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Invalid date format");
+                return d;
+            };
             return client_1.prisma.discount.update({
                 where: { id },
-                data: Object.assign(Object.assign(Object.assign({}, payload), (numericValue !== undefined && { value: numericValue })), (numericMaxUsage !== undefined && { maxUsage: numericMaxUsage })),
+                data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (payload.scope !== undefined && { scope: payload.scope })), (payload.productId !== undefined && { productId: payload.productId || null })), (payload.variantId !== undefined && { variantId: payload.variantId || null })), (payload.code !== undefined && { code: payload.code || null })), (payload.type !== undefined && { type: payload.type })), (numericValue !== undefined && { value: numericValue })), (payload.maxUsage !== undefined && { maxUsage: numericMaxUsage !== null && numericMaxUsage !== void 0 ? numericMaxUsage : null })), (payload.startDate !== undefined && { startDate: toDateOrUndefined(payload.startDate) })), (payload.endDate !== undefined && { endDate: toDateOrUndefined(payload.endDate) })),
             });
         });
     },
@@ -91,41 +158,111 @@ exports.DiscountServices = {
     applyDiscount(code, items) {
         return __awaiter(this, void 0, void 0, function* () {
             const now = new Date();
+            const normalizedCode = code === null || code === void 0 ? void 0 : code.trim().toUpperCase();
             const allDiscounts = yield client_1.prisma.discount.findMany({
                 where: {
-                    OR: [
-                        { code },
-                        { code: null },
-                    ],
                     AND: [
-                        { OR: [{ startDate: null }, { startDate: { lte: now } }] },
-                        { OR: [{ endDate: null }, { endDate: { gte: now } }] },
+                        {
+                            OR: [
+                                ...(normalizedCode
+                                    ? [{ code: { equals: normalizedCode } }]
+                                    : []),
+                                { code: null },
+                            ],
+                        },
+                        {
+                            OR: [
+                                { startDate: null },
+                                { startDate: { lte: now } },
+                            ],
+                        },
+                        {
+                            OR: [
+                                { endDate: null },
+                                { endDate: { gte: now } },
+                            ],
+                        },
                     ],
                 },
             });
-            if (code && !allDiscounts.some(d => d.code === code)) {
-                throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Invalid discount code");
+            // If user provided a code, ensure it exists + not overused (BUT DO NOT increment here)
+            let codedDiscount = null;
+            if (normalizedCode) {
+                codedDiscount = yield client_1.prisma.discount.findUnique({
+                    where: { code: normalizedCode },
+                });
+                if (!codedDiscount) {
+                    throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Invalid discount code");
+                }
+                // date validity (extra safety)
+                const startOk = !codedDiscount.startDate || codedDiscount.startDate <= now;
+                const endOk = !codedDiscount.endDate || codedDiscount.endDate >= now;
+                if (!startOk || !endOk) {
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "This coupon is not active right now");
+                }
+                // usage check (validate only)
+                if (codedDiscount.maxUsage && codedDiscount.usedCount >= codedDiscount.maxUsage) {
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "This coupon has reached maximum usage");
+                }
             }
+            // 1) Item-level discounts (AUTO + promo that targets product/variant)
             const results = items.map(item => {
                 const originalPrice = item.price;
-                const autoDiscount = allDiscounts.find(d => !d.code && (d.variantId ? d.variantId === item.variantId : d.productId === item.productId));
-                const promoDiscount = allDiscounts.find(d => d.code === code && (d.variantId ? d.variantId === item.variantId : d.productId === item.productId));
                 let discountedPrice = originalPrice;
+                const autoDiscount = allDiscounts.find(d => !d.code &&
+                    (d.scope === "PRODUCT" || d.scope === "VARIANT") &&
+                    (d.scope === "VARIANT"
+                        ? d.variantId === item.variantId
+                        : d.productId === item.productId));
+                const promoItemDiscount = allDiscounts.find(d => normalizedCode &&
+                    (d.code || "").toUpperCase() === normalizedCode &&
+                    (d.scope === "PRODUCT" || d.scope === "VARIANT") &&
+                    (d.scope === "VARIANT"
+                        ? d.variantId === item.variantId
+                        : d.productId === item.productId));
                 const apply = (d) => {
                     if (!d)
                         return;
                     if (d.type === "percentage")
-                        discountedPrice *= 1 - d.value / 100;
+                        discountedPrice = discountedPrice * (1 - d.value / 100);
                     else
                         discountedPrice = Math.max(0, discountedPrice - d.value);
                 };
                 apply(autoDiscount);
-                apply(promoDiscount);
+                apply(promoItemDiscount);
+                // keep no decimals (your preference)
+                discountedPrice = Math.round(discountedPrice);
                 return Object.assign(Object.assign({}, item), { originalPrice,
-                    discountedPrice, appliedDiscounts: [autoDiscount, promoDiscount].filter(Boolean) });
+                    discountedPrice, appliedDiscounts: [autoDiscount, promoItemDiscount].filter(Boolean) });
             });
-            const discountAmount = results.reduce((sum, i) => sum + (i.originalPrice - i.discountedPrice) * i.qty, 0);
-            return { items: results, discountAmount };
+            const subtotalOriginal = results.reduce((sum, i) => sum + i.originalPrice * i.qty, 0);
+            const subtotalAfterItemDiscount = results.reduce((sum, i) => sum + i.discountedPrice * i.qty, 0);
+            // 2) ORDER-level coupon discount (applies once)
+            const orderDiscount = allDiscounts.find(d => normalizedCode &&
+                (d.code || "").toUpperCase() === normalizedCode &&
+                d.scope === "ORDER");
+            let orderDiscountAmount = 0;
+            if (orderDiscount) {
+                if (orderDiscount.type === "percentage") {
+                    orderDiscountAmount = Math.round(subtotalAfterItemDiscount * (orderDiscount.value / 100));
+                }
+                else {
+                    orderDiscountAmount = Math.round(orderDiscount.value);
+                }
+                orderDiscountAmount = Math.min(orderDiscountAmount, subtotalAfterItemDiscount);
+            }
+            const grandTotalAfterDiscount = Math.max(0, subtotalAfterItemDiscount - orderDiscountAmount);
+            const itemDiscountAmount = subtotalOriginal - subtotalAfterItemDiscount;
+            const totalDiscountAmount = itemDiscountAmount + orderDiscountAmount;
+            return {
+                items: results,
+                subtotalOriginal,
+                subtotalAfterItemDiscount,
+                orderDiscount: orderDiscount || null,
+                orderDiscountAmount,
+                discountAmount: totalDiscountAmount,
+                grandTotalAfterDiscount,
+            };
         });
     },
     // ── GET AUTO DISCOUNT FOR PRODUCT LISTINGS ─────
@@ -141,7 +278,7 @@ exports.DiscountServices = {
             const activeDiscounts = product.discounts.filter(d => {
                 const started = !d.startDate || d.startDate <= now;
                 const notEnded = !d.endDate || d.endDate >= now;
-                return started && notEnded && !d.code;
+                return started && notEnded && (!d.code || String(d.code).trim() === "");
             });
             if (activeDiscounts.length === 0)
                 return { discountedPrice: null };
@@ -178,4 +315,53 @@ exports.DiscountServices = {
             };
         });
     },
+    consumeDiscountUsageByCode(tx, code, orderId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const normalizedCode = code.trim().toUpperCase();
+            const discount = yield tx.discount.findUnique({
+                where: { code: normalizedCode },
+            });
+            if (!discount)
+                return; // silently ignore (or throw if you prefer strict)
+            // Prevent double-consume for same order
+            const already = yield tx.orderDiscount.findFirst({
+                where: { orderId, discountId: discount.id },
+            });
+            if (already)
+                return;
+            // Check active dates again (server truth)
+            const now = new Date();
+            const startOk = !discount.startDate || discount.startDate <= now;
+            const endOk = !discount.endDate || discount.endDate >= now;
+            if (!startOk || !endOk) {
+                throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Coupon is not active now");
+            }
+            // Atomic “maxUsage” enforcement (race-safe)
+            if (discount.maxUsage) {
+                const updated = yield tx.discount.updateMany({
+                    where: {
+                        id: discount.id,
+                        usedCount: { lt: discount.maxUsage },
+                    },
+                    data: { usedCount: { increment: 1 } },
+                });
+                if (updated.count === 0) {
+                    throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "This coupon has reached maximum usage");
+                }
+            }
+            else {
+                yield tx.discount.update({
+                    where: { id: discount.id },
+                    data: { usedCount: { increment: 1 } },
+                });
+            }
+            // Keep audit link
+            yield tx.orderDiscount.create({
+                data: {
+                    orderId,
+                    discountId: discount.id,
+                },
+            });
+        });
+    }
 };

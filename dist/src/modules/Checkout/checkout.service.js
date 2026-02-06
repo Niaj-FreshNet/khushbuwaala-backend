@@ -37,8 +37,8 @@ class BkashGatewayService {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d;
             const { data } = yield this.http.post("/tokenized/checkout/token/grant", {
-                app_key: process.env.BKASH_APP_KEY,
-                app_secret: process.env.BKASH_APP_SECRET,
+                app_key: process.env.BKASH_API_KEY,
+                app_secret: process.env.BKASH_SECRET_KEY,
             }, { headers: this.credsHeaders() });
             // docs: expires_in default 3600s :contentReference[oaicite:10]{index=10}
             const expiresInSec = Number((_a = data.expires_in) !== null && _a !== void 0 ? _a : 3600);
@@ -52,8 +52,8 @@ class BkashGatewayService {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d;
             const { data } = yield this.http.post("/tokenized/checkout/token/refresh", {
-                app_key: process.env.BKASH_APP_KEY,
-                app_secret: process.env.BKASH_APP_SECRET,
+                app_key: process.env.BKASH_API_KEY,
+                app_secret: process.env.BKASH_SECRET_KEY,
                 refresh_token: this.token.refreshToken,
             }, { headers: this.credsHeaders() });
             const expiresInSec = Number((_a = data.expires_in) !== null && _a !== void 0 ? _a : 3600);
@@ -87,7 +87,7 @@ class BkashGatewayService {
                 "Content-Type": "application/json",
                 Accept: "application/json",
                 Authorization: idToken, // id_token used as Authorization :contentReference[oaicite:13]{index=13}
-                "X-App-Key": process.env.BKASH_APP_KEY,
+                "X-App-Key": process.env.BKASH_API_KEY,
             };
         });
     }

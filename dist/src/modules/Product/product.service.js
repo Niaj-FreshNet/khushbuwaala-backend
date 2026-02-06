@@ -1014,7 +1014,10 @@ const formatProductResponse = (product) => {
         materialIds: ((_a = product.ProductMaterial) === null || _a === void 0 ? void 0 : _a.map((pm) => pm.material.id)) || [],
         fragranceIds: ((_b = product.ProductFragrance) === null || _b === void 0 ? void 0 : _b.map((pf) => pf.fragrance.id)) || [],
         supplier: product.supplier,
-        variants: variants,
+        // ✅ IMPORTANT: return discounts
+        discounts: product.discounts || [],
+        // ✅ IMPORTANT: keep variant discounts too
+        variants: variants.map((v) => (Object.assign(Object.assign({}, v), { discounts: v.discounts || [] }))),
         // Computed fields
         minPrice: prices.length > 0 ? Math.min(...prices) : 0,
         maxPrice: prices.length > 0 ? Math.max(...prices) : 0,

@@ -35,6 +35,16 @@ const getAllAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
         data: result,
     });
 }));
+const getSingle = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const result = yield discount_service_1.DiscountServices.getSingle(id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: "Discount fetched",
+        data: result,
+    });
+}));
 const updateDiscount = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const result = yield discount_service_1.DiscountServices.updateDiscount(id, req.body);
@@ -67,6 +77,7 @@ const applyDiscount = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
 exports.DiscountController = {
     createDiscount,
     getAllAdmin,
+    getSingle,
     updateDiscount,
     deleteDiscount,
     applyDiscount,
