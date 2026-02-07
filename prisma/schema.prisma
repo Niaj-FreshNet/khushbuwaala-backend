@@ -41,12 +41,6 @@ enum ExpenseStatus {
   CANCELED
 }
 
-enum Unit {
-  ML
-  GM
-  PIECE
-}
-
 enum CartItemStatus {
   IN_CART
   ORDERED
@@ -226,7 +220,7 @@ model ProductVariant {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   productId String   @db.ObjectId
   sku       String   @unique
-  unit      Unit
+  unit      String
   size      Float // e.g. 3, 6, 12 ml or 100, 500 gm
   price     Float
   // stock     Float // tracks ml or gm left in inventory

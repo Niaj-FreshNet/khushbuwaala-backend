@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { Unit } from '@prisma/client';
 import {
   PERFUME_GENDERS,
   PERFORMANCE_LEVELS,
@@ -21,9 +20,7 @@ const perfumeNotesSchema = z.object({
 // Product Variant Schema
 const productVariantSchema = z.object({
   sku: z.string().min(1, 'SKU is required').max(50),
-  unit: z.nativeEnum(Unit, {
-    errorMap: () => ({ message: 'Unit must be ML, GM, or PIECE' })
-  }),
+  unit: z.string().min(1, 'Unit is required').max(50),
   size: z.number()
     .min(PRODUCT_VALIDATION.MIN_SIZE, `Size must be at least ${PRODUCT_VALIDATION.MIN_SIZE}`)
     .max(PRODUCT_VALIDATION.MAX_SIZE, `Size cannot exceed ${PRODUCT_VALIDATION.MAX_SIZE}`),

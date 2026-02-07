@@ -25,7 +25,6 @@ import {
   QUERY_DEFAULTS,
   PRODUCT_ERROR_MESSAGES,
 } from './product.constant';
-import { Unit } from '@prisma/client';
 import slugify from 'slugify';
 import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
 
@@ -83,7 +82,7 @@ export const createProduct = async (payload: IProduct): Promise<IProductResponse
         create: payload.variants.map(v => ({
           sku: v.sku,
           size: v.size,
-          unit: Unit.ML,
+          unit: v.unit,
           price: v.price,
         })),
       },
@@ -440,7 +439,7 @@ export const updateProduct = async (
       data: payload.variants.map(v => ({
         sku: v.sku,
         size: v.size,
-        unit: Unit.ML,
+        unit: v.unit,
         price: v.price,
         productId: id,
       })),
@@ -1212,6 +1211,9 @@ const formatProductResponse = (product: any): IProductResponse => {
       ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviewCount
       : 0;
 
+  const materials = product.ProductMaterial?.map((pm: any) => pm.material) || [];
+  const fragrances = product.ProductFragrance?.map((pf: any) => pf.fragrance) || [];
+
   return {
     id: product.id,
     name: product.name,
@@ -1240,8 +1242,19 @@ const formatProductResponse = (product: any): IProductResponse => {
     category: product.category,
 
     // Map material/fragrance IDs
-    materialIds: product.ProductMaterial?.map((pm: any) => pm.material.id) || [],
-    fragranceIds: product.ProductFragrance?.map((pf: any) => pf.fragrance.id) || [],
+    materialIds: product.ProductMaterial?.map((m: any) => m.material.id) || [],
+    fragranceIds: product.ProductFragrance?.map((f: any) => f.fragrance.id) || [],
+
+    // ✅ ADD these (names for frontend)
+    materials: materials.map((m: any) => ({
+      id: m.id,
+      name: m.materialName,
+    })),
+
+    fragrances: fragrances.map((f: any) => ({
+      id: f.id,
+      name: f.fragranceName,
+    })),
 
     supplier: product.supplier,
 
@@ -1253,7 +1266,7 @@ const formatProductResponse = (product: any): IProductResponse => {
       ...v,
       discounts: v.discounts || [],
     })),
-    
+
     // Computed fields
     minPrice: prices.length > 0 ? Math.min(...prices) : 0,
     maxPrice: prices.length > 0 ? Math.max(...prices) : 0,

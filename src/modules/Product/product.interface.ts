@@ -179,8 +179,17 @@ export interface IProductResponse {
     imageUrl: string;
   };
 
-  materialIds: string[];
-  fragranceIds: string[];
+  materialIds?: string[];
+  fragranceIds?: string[];
+
+  materials?: {
+    id: string;
+    materialName: string[];
+  };
+  fragrances?: {
+    id: string;
+    fragranceName: string[];
+  };
 
   reviews: IReview[];
   averageRating: number;

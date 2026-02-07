@@ -101,6 +101,7 @@ const updateCategory = async (id: string, payload: Partial<ICategory>) => {
     data: {
       categoryName: payload?.categoryName?.toUpperCase(),
       sizes: payload.sizes,
+      unit: payload.unit,
       imageUrl: imageUrl,
       published: payload.published,
     },
