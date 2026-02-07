@@ -24,9 +24,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StockServices = void 0;
-const client_1 = require("@prisma/client");
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
-const client_2 = require("../../../prisma/client");
+const client_1 = require("../../../prisma/client");
 const http_status_1 = __importDefault(require("http-status"));
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const getAllProducts = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
@@ -45,18 +44,18 @@ const getAllProducts = (queryParams) => __awaiter(void 0, void 0, void 0, functi
             { description: { contains: s, mode: 'insensitive' } },
         ];
     }
-    const data = yield client_2.prisma.product.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
+    const data = yield client_1.prisma.product.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
             variants: {
                 select: { id: true, sku: true, size: true, price: true, unit: true },
             },
             category: { select: { unit: true } },
         } }));
     const meta = yield queryBuilder.getPaginationMeta({
-        count: (args) => { var _a; return client_2.prisma.product.count({ where: Object.assign(Object.assign({}, where), ((_a = args === null || args === void 0 ? void 0 : args.where) !== null && _a !== void 0 ? _a : {})) }); },
+        count: (args) => { var _a; return client_1.prisma.product.count({ where: Object.assign(Object.assign({}, where), ((_a = args === null || args === void 0 ? void 0 : args.where) !== null && _a !== void 0 ? _a : {})) }); },
     });
     return {
         meta,
-        data: data.map((product) => (Object.assign(Object.assign({}, product), { unit: product.category.unit || client_1.Unit.ML }))),
+        data: data.map((product) => (Object.assign(Object.assign({}, product), { unit: product.category.unit || null }))),
     };
 });
 const getLowStockProducts = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
@@ -75,23 +74,23 @@ const getLowStockProducts = (queryParams) => __awaiter(void 0, void 0, void 0, f
             { description: { contains: s, mode: 'insensitive' } },
         ];
     }
-    const data = yield client_2.prisma.product.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
+    const data = yield client_1.prisma.product.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
             variants: {
                 select: { id: true, sku: true, size: true, price: true, unit: true },
             },
             category: { select: { unit: true } },
         } }));
     const meta = yield queryBuilder.getPaginationMeta({
-        count: (args) => { var _a; return client_2.prisma.product.count({ where: Object.assign(Object.assign({}, where), ((_a = args === null || args === void 0 ? void 0 : args.where) !== null && _a !== void 0 ? _a : {})) }); },
+        count: (args) => { var _a; return client_1.prisma.product.count({ where: Object.assign(Object.assign({}, where), ((_a = args === null || args === void 0 ? void 0 : args.where) !== null && _a !== void 0 ? _a : {})) }); },
     });
     return {
         meta,
-        data: data.map((product) => (Object.assign(Object.assign({}, product), { unit: product.category.unit || client_1.Unit.ML }))),
+        data: data.map((product) => (Object.assign(Object.assign({}, product), { unit: product.category.unit || null }))),
     };
 });
 const addStock = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     const { productId, variantId, change, reason } = payload;
-    const product = yield client_2.prisma.product.findUnique({
+    const product = yield client_1.prisma.product.findUnique({
         where: { id: productId },
         include: { variants: true },
     });
@@ -102,7 +101,7 @@ const addStock = (payload) => __awaiter(void 0, void 0, void 0, function* () {
         if (!variant)
             throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Variant not found');
     }
-    const stockLog = yield client_2.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+    const stockLog = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
         // Update product stock
         yield tx.product.update({
             where: { id: productId },
@@ -127,12 +126,12 @@ const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* 
     if (!isValidObjectId(productId)) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Invalid productId");
     }
-    const product = yield client_2.prisma.product.findUnique({
+    const product = yield client_1.prisma.product.findUnique({
         where: { id: productId },
     });
     if (!product)
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, "Product not found");
-    const logs = yield client_2.prisma.stockLog.findMany({
+    const logs = yield client_1.prisma.stockLog.findMany({
         where: { productId },
         include: {
             product: { select: { name: true } },

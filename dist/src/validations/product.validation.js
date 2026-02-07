@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProductValidation = void 0;
 const zod_1 = require("zod");
-const client_1 = require("@prisma/client");
 const product_constant_1 = require("../modules/Product/product.constant");
 // Perfume Notes Schema
 const perfumeNotesSchema = zod_1.z.object({
@@ -13,9 +12,7 @@ const perfumeNotesSchema = zod_1.z.object({
 // Product Variant Schema
 const productVariantSchema = zod_1.z.object({
     sku: zod_1.z.string().min(1, 'SKU is required').max(50),
-    unit: zod_1.z.nativeEnum(client_1.Unit, {
-        errorMap: () => ({ message: 'Unit must be ML, GM, or PIECE' })
-    }),
+    unit: zod_1.z.string().min(1, 'Unit is required').max(50),
     size: zod_1.z.number()
         .min(product_constant_1.PRODUCT_VALIDATION.MIN_SIZE, `Size must be at least ${product_constant_1.PRODUCT_VALIDATION.MIN_SIZE}`)
         .max(product_constant_1.PRODUCT_VALIDATION.MAX_SIZE, `Size cannot exceed ${product_constant_1.PRODUCT_VALIDATION.MAX_SIZE}`),

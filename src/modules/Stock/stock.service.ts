@@ -1,4 +1,4 @@
-import { Prisma, Unit } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { prisma } from '../../../prisma/client';
 import httpStatus from 'http-status';
@@ -48,7 +48,7 @@ const getAllProducts = async (queryParams: Record<string, unknown>) => {
     meta,
     data: data.map((product) => ({
       ...product,
-      unit: (product as any).category.unit || Unit.ML,
+      unit: (product as any).category.unit || null,
     })),
   };
 };
@@ -99,7 +99,7 @@ const getLowStockProducts = async (queryParams: Record<string, unknown>) => {
     meta,
     data: data.map((product) => ({
       ...product,
-      unit: (product as any).category.unit || Unit.ML,
+      unit: (product as any).category.unit || null,
     })),
   };
 };

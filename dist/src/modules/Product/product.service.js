@@ -18,7 +18,6 @@ const client_1 = require("../../../prisma/client");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const queryBuilder_1 = __importDefault(require("../../helpers/queryBuilder"));
 const product_constant_1 = require("./product.constant");
-const client_2 = require("@prisma/client");
 const slugify_1 = __importDefault(require("slugify"));
 const sendImageToCloudinary_1 = require("../../utils/sendImageToCloudinary");
 // Create Product
@@ -69,7 +68,7 @@ const createProduct = (payload) => __awaiter(void 0, void 0, void 0, function* (
                 create: payload.variants.map(v => ({
                     sku: v.sku,
                     size: v.size,
-                    unit: client_2.Unit.ML,
+                    unit: v.unit,
                     price: v.price,
                 })),
             },
@@ -351,7 +350,7 @@ const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, functio
             data: payload.variants.map(v => ({
                 sku: v.sku,
                 size: v.size,
-                unit: client_2.Unit.ML,
+                unit: v.unit,
                 price: v.price,
                 productId: id,
             })),
@@ -977,7 +976,7 @@ const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* 
 });
 // Helper Functions
 const formatProductResponse = (product) => {
-    var _a, _b;
+    var _a, _b, _c, _d;
     const variants = product.variants || [];
     const prices = variants.map((v) => v.price);
     const reviews = product.Review || [];
@@ -986,6 +985,8 @@ const formatProductResponse = (product) => {
     const averageRating = reviewCount > 0
         ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
         : 0;
+    const materials = ((_a = product.ProductMaterial) === null || _a === void 0 ? void 0 : _a.map((pm) => pm.material)) || [];
+    const fragrances = ((_b = product.ProductFragrance) === null || _b === void 0 ? void 0 : _b.map((pf) => pf.fragrance)) || [];
     return {
         id: product.id,
         name: product.name,
@@ -1011,8 +1012,17 @@ const formatProductResponse = (product) => {
         categoryId: product.categoryId,
         category: product.category,
         // Map material/fragrance IDs
-        materialIds: ((_a = product.ProductMaterial) === null || _a === void 0 ? void 0 : _a.map((pm) => pm.material.id)) || [],
-        fragranceIds: ((_b = product.ProductFragrance) === null || _b === void 0 ? void 0 : _b.map((pf) => pf.fragrance.id)) || [],
+        materialIds: ((_c = product.ProductMaterial) === null || _c === void 0 ? void 0 : _c.map((m) => m.material.id)) || [],
+        fragranceIds: ((_d = product.ProductFragrance) === null || _d === void 0 ? void 0 : _d.map((f) => f.fragrance.id)) || [],
+        // ✅ ADD these (names for frontend)
+        materials: materials.map((m) => ({
+            id: m.id,
+            name: m.materialName,
+        })),
+        fragrances: fragrances.map((f) => ({
+            id: f.id,
+            name: f.fragranceName,
+        })),
         supplier: product.supplier,
         // ✅ IMPORTANT: return discounts
         discounts: product.discounts || [],

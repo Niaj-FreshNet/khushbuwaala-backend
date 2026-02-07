@@ -97,6 +97,7 @@ const updateCategory = (id, payload) => __awaiter(void 0, void 0, void 0, functi
         data: {
             categoryName: (_a = payload === null || payload === void 0 ? void 0 : payload.categoryName) === null || _a === void 0 ? void 0 : _a.toUpperCase(),
             sizes: payload.sizes,
+            unit: payload.unit,
             imageUrl: imageUrl,
             published: payload.published,
         },
