@@ -3,7 +3,7 @@ import sendResponse from '../../utils/sendResponse';
 import { ReviewServices } from './review.service';
 
 const createReview = catchAsync(async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.user?.id ?? null;
   const result = await ReviewServices.createReview(userId, req.body);
 
   sendResponse(res, {

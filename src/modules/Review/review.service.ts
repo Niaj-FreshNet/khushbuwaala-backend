@@ -3,9 +3,7 @@ import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
 import { IReview } from './review.interface';
 
-const createReview = async (userId: string, payload: IReview) => {
-  if (!userId) throw new AppError(404, 'User not found');
-
+const createReview = async (userId: string | null, payload: IReview) => {
   const product = await prisma.product.findUnique({
     where: { id: payload.productId },
   });
@@ -14,18 +12,21 @@ const createReview = async (userId: string, payload: IReview) => {
   if (payload.rating < 0 || payload.rating > 5)
     throw new AppError(400, 'Rating must be between 0 and 5');
 
-  const existing = await prisma.review.findFirst({
-    where: { userId, productId: payload.productId },
-  });
-  if (existing) throw new AppError(400, 'You already reviewed this product');
+  // ✅ Only block duplicate if user is logged in
+  if (userId) {
+    const existing = await prisma.review.findFirst({
+      where: { userId, productId: payload.productId },
+    });
+    if (existing) throw new AppError(400, 'You already reviewed this product');
+  }
 
   const review = await prisma.review.create({
     data: {
       rating: payload.rating,
-      title: payload.title,
+      title: payload.title,         // (your "name" stored here)
       comment: payload.comment,
       productId: payload.productId,
-      userId,
+      userId: userId ?? undefined,  // ✅ allow null
       isPublished: true,
     },
     include: {

@@ -4,7 +4,7 @@ import auth from '../../middlewares/auth';
 
 const router = Router();
 
-// ✏️ Create a review (only logged-in users)
+// ✏️ Create a review
 router.post('/create-review', auth('OPTIONAL'), reviewController.createReview);
 
 // 🌍 Publicly visible reviews (published only)
