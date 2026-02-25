@@ -19,6 +19,19 @@ router.patch(
   auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
   OrderController.updateOrderStatus,
 );
+router.patch(
+  '/update-payment-status/:id',
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  OrderController.updatePaymentStatus,
+);
+router.patch(
+  '/update-order/:id',
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  OrderController.updateOrder,
+);
+
+router.get("/dashboard/metrics", auth('ADMIN', 'SUPER_ADMIN'), OrderController.getDashboardMetrics);
+router.get("/dashboard/weekly-sales", auth('ADMIN', 'SUPER_ADMIN'), OrderController.getWeeklySalesOverview);
 
 // Customer management
 router.get('/get-all-customers', auth('SUPER_ADMIN', 'ADMIN'), OrderController.getAllCustomers);

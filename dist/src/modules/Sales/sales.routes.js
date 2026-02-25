@@ -17,7 +17,7 @@ router.get('/my-sales', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
 router.get('/get-sale-by-id/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSaleById);
 // Get sales by customer phone/name (walk-in tracking)
 router.get('/get-sales-by-customer/:phone', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSalesByCustomer);
-// Update sale status (delivered/cancelled etc.)
+// Update sale status (delivered/CANCELED etc.)
 router.patch('/update-sale-status/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.updateSaleStatus);
 // Analytics for sales performance
 router.get('/get-sales-analytics', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSalesAnalytics);

@@ -162,7 +162,7 @@ const getUserSales = (id, queryParams) => __awaiter(void 0, void 0, void 0, func
             'PENDING',
             'PROCESSING',
             'COMPLETED',
-            'CANCELLED',
+            'CANCELED',
         ];
         // Build OR conditions for searchable string fields
         const orConditions = [

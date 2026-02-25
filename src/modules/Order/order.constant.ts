@@ -108,7 +108,7 @@ export const ORDER_STATUSES = [
     'PROCESSING',
     'SHIPPED',
     'DELIVERED',
-    'CANCELLED',
+    'CANCELED',
     'RETURNED'
 ] as const;
 

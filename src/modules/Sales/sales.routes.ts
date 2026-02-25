@@ -23,7 +23,7 @@ router.get('/get-sale-by-id/:id', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), Sale
 // Get sales by customer phone/name (walk-in tracking)
 router.get('/get-sales-by-customer/:phone', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), SalesController.getSalesByCustomer);
 
-// Update sale status (delivered/cancelled etc.)
+// Update sale status (delivered/CANCELED etc.)
 router.patch(
   '/update-sale-status/:id',
   auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),

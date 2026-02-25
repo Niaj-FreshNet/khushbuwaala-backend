@@ -94,12 +94,12 @@ class QueryBuilder<T> {
     return this;
   }
 
-    /**
-   * Filter for array fields in MongoDB (Prisma)
-   * @param arrayFields - list of fields to search in arrays
-   * Example usage:
-   *   queryBuilder.arraySearch(['tags', 'bestFor'])
-   */
+  /**
+ * Filter for array fields in MongoDB (Prisma)
+ * @param arrayFields - list of fields to search in arrays
+ * Example usage:
+ *   queryBuilder.arraySearch(['tags', 'bestFor'])
+ */
   arraySearch(arrayFields: string[]) {
     arrayFields.forEach((field) => {
       const value = this.query[field];
@@ -358,6 +358,24 @@ class QueryBuilder<T> {
     return this.model.findMany(this.prismaQuery);
   }
 
+  async executeWithCount() {
+    const where = this.prismaQuery.where;
+    const page = Number(this.query.page) || 1;
+    const limit = Number(this.query.limit) || 10;
+
+    const [data, total] = await Promise.all([
+      this.model.findMany(this.prismaQuery),
+      this.model.count({ where }),
+    ]);
+
+    const totalPage = Math.ceil(total / limit);
+
+    return {
+      data,
+      meta: { page, limit, total, totalPage },
+    };
+  }
+
   // Count Total
   async countTotal() {
     const total = await this.model.count({ where: this.prismaQuery.where });
@@ -395,10 +413,10 @@ export const parseProductQuery = (query: any): IProductQuery => {
 
   const sort =
     sortBy === "newest" ? "-createdAt"
-    : sortBy === "oldest" ? "createdAt"
-    : sortBy === "name" ? "name"
-    : sortBy === "popularity" ? "-salesCount"
-    : "-createdAt";
+      : sortBy === "oldest" ? "createdAt"
+        : sortBy === "name" ? "name"
+          : sortBy === "popularity" ? "-salesCount"
+            : "-createdAt";
 
   const rawGender = query.gender ? String(query.gender).toUpperCase() : undefined;
   const gender =

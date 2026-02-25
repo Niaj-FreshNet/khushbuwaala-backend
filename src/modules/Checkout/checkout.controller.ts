@@ -162,9 +162,9 @@ export const CheckoutController = {
 
     if (payment.status === "COMPLETED") return res.redirect(success);
 
-    if (status === "cancel" || status === "cancelled") {
-      await prisma.payment.update({ where: { id: payment.id }, data: { status: "CANCELLED" } });
-      return res.redirect(`${fail}?message=cancelled`);
+    if (status === "cancel" || status === "CANCELED") {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: "CANCELED" } });
+      return res.redirect(`${fail}?message=CANCELED`);
     }
 
     if (status === "failure") {

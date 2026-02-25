@@ -150,9 +150,9 @@ exports.CheckoutController = {
             return res.redirect(`${fail}?message=payment_not_found`);
         if (payment.status === "COMPLETED")
             return res.redirect(success);
-        if (status === "cancel" || status === "cancelled") {
-            yield client_1.prisma.payment.update({ where: { id: payment.id }, data: { status: "CANCELLED" } });
-            return res.redirect(`${fail}?message=cancelled`);
+        if (status === "cancel" || status === "CANCELED") {
+            yield client_1.prisma.payment.update({ where: { id: payment.id }, data: { status: "CANCELED" } });
+            return res.redirect(`${fail}?message=CANCELED`);
         }
         if (status === "failure") {
             yield client_1.prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });

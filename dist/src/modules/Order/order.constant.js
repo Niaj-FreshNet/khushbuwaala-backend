@@ -102,7 +102,7 @@ exports.ORDER_STATUSES = [
     'PROCESSING',
     'SHIPPED',
     'DELIVERED',
-    'CANCELLED',
+    'CANCELED',
     'RETURNED'
 ];
 // Payment methods

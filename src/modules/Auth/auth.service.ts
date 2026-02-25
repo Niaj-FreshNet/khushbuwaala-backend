@@ -13,48 +13,58 @@ import {
 import AppError from '../../errors/AppError';
 
 const register = async (payload: IUser) => {
-  // check if user already exists
-  const existingUser = await prisma.user.findUnique({
-    where: {
-      email: payload.email,
-    },
-  });
+  // normalize email (allow empty)
+  const email = (payload.email ?? "").trim().toLowerCase();
 
-  if (existingUser) {
-    throw new AppError(400, 'User already exists with this email');
+  // ✅ store as null when empty (instead of "")
+  const normalizedPayload: IUser = {
+    ...payload,
+    email: email === "" ? null : email,
+  };
+
+  // check duplicate only if email exists
+  if (normalizedPayload.email) {
+    const existingUser = await prisma.user.findFirst({
+      where: { email: normalizedPayload.email },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      throw new AppError(400, "User already exists with this email");
+    }
   }
 
-  if (!payload.password) {
-    throw new AppError(400, 'Password is required');
+  if (!normalizedPayload.password) {
+    throw new AppError(400, "Password is required");
   }
 
-  // Hash the password
-  const password = await bcrypt.hash(
-    payload.password,
-    Number(config.salt_round),
+  // Hash password
+  normalizedPayload.password = await bcrypt.hash(
+    normalizedPayload.password,
+    Number(config.salt_round)
   );
 
-  // Update payload with hashed password
-  payload.password = password;
+  // ✅ only generate + send verification if email exists
+  let verificationToken: string | null = null;
+  let verificationTokenExpiry: Date | null = null;
 
-  const verificationToken = Math.floor(
-    100000 + Math.random() * 900000,
-  ).toString();
+  if (normalizedPayload.email) {
+    verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+    verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
-  const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+    // don't block registration if email fails (optional)
+    sendVerificationEmail(normalizedPayload.email, verificationToken);
+  }
 
-  sendVerificationEmail(payload.email, verificationToken);
-
-  // Create the user
   const result = await prisma.user.create({
     data: {
-      ...payload,
-      role: payload.role as Role,
+      ...normalizedPayload,
+      role: normalizedPayload.role as Role,
       verificationToken,
       verificationTokenExpiry,
     },
   });
-  // console.log('result', result);
+
   return result;
 };
 

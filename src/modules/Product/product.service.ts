@@ -519,7 +519,7 @@ const deleteProduct = async (id: string) => {
   const hasActiveOrders = await prisma.order.findFirst({
     where: {
       productIds: { has: id }, // ✅ works on String[]
-      status: { not: 'CANCEL' },
+      status: { not: 'CANCELED' },
     },
   });
 
@@ -571,7 +571,7 @@ const getTrendingProducts = async (): Promise<ITrendingProduct[]> => {
     where: {
       orderTime: { gte: threeMonthsAgo },
       isPaid: true,
-      status: { not: 'CANCEL' },
+      status: { not: 'CANCELED' },
     },
     select: { cartItems: true },
   });
@@ -615,7 +615,7 @@ const getNavbarProducts = async () => {
     where: {
       orderTime: { gte: threeMonthsAgo },
       isPaid: true,
-      status: { not: 'CANCEL' },
+      status: { not: 'CANCELED' },
     },
     select: { cartItems: true },
   });

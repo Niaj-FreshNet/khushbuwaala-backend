@@ -31,7 +31,7 @@ enum OrderStatus {
   PROCESSING
   DELIVERED
   COMPLETED
-  CANCEL
+  CANCELED
 }
 
 enum ExpenseStatus {
@@ -61,7 +61,7 @@ enum PaymentState {
   INITIATED
   COMPLETED
   FAILED
-  CANCELLED
+  CANCELED
   REFUNDED
 }
 
@@ -275,7 +275,7 @@ model Order {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
   invoice     String      @unique
   orderTime   DateTime    @default(now())
-  payToken    String?     @unique
+  payToken    String?
   amount      Float
   isPaid      Boolean
   method      String?

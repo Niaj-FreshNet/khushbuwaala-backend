@@ -61,6 +61,42 @@ export const productRangeFilter: rangeFilteringParams[] = [
   }
 ];
 
+export const productListInclude: Prisma.ProductInclude = {
+  category: { select: { id: true, categoryName: true, imageUrl: true } },
+
+  // keep variants but keep them light
+  variants: {
+    select: {
+      id: true,
+      size: true,
+      unit: true,
+      price: true,
+      discounts: true,
+    },
+    orderBy: [{ price: "asc" }],
+  },
+  discounts: true,
+
+  // ✅ Include related fragrances
+  // ProductFragrance: {
+  //   include: {
+  //     fragrance: {
+  //       select: {
+  //         id: true,
+  //         fragranceName: true,
+  //       },
+  //     },
+  //   },
+  // },
+
+  // ✅ Include related materials
+  // REMOVE these from listing:
+  // Review: ...
+  // ProductMaterial: ...
+  // ProductFragrance: ...
+  // discounts: ...
+};
+
 // Prisma include config for basic product queries
 export const productInclude: Prisma.ProductInclude = {
   category: {

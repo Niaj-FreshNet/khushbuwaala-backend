@@ -10,20 +10,20 @@ import { ORDER_ERROR_MESSAGES } from './order.constant';
 const createOrder = catchAsync(async (req, res) => {
   const payToken = crypto.randomBytes(24).toString("hex");
   const userId = req.user?.id || null; // Optional Auth user
-  const { 
-    cartItemIds, 
-    amount, 
-    isPaid, 
-    method, 
-    saleType, 
-    shippingCost, 
-    additionalNotes, 
-    shippingAddress, 
-    billingAddress, 
-    orderSource, 
+  const {
+    cartItemIds,
+    amount,
+    isPaid,
+    method,
+    saleType,
+    shippingCost,
+    additionalNotes,
+    shippingAddress,
+    billingAddress,
+    orderSource,
     customerInfo,
-    coupon,          
-    discountAmount,  
+    coupon,
+    discountAmount,
   } = req.body;
 
   // Validation
@@ -49,7 +49,7 @@ const createOrder = catchAsync(async (req, res) => {
     additionalNotes,
     shippingAddress,
     billingAddress,
-    coupon: coupon || null,                       
+    coupon: coupon || null,
     discountAmount: Number(discountAmount || 0),
   };
 
@@ -116,6 +116,37 @@ const updateOrderStatus = catchAsync(async (req, res) => {
   });
 });
 
+// Update Payment Status (Admin)
+const updatePaymentStatus = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { isPaid } = req.body;
+
+  const result = await OrderServices.updatePaymentStatus(id, { isPaid });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Payment status updated successfully',
+    data: result,
+  });
+});
+
+const updateOrder = catchAsync(async (req, res) => {
+  const { id } = req.params;
+
+  // all editable fields come from body
+  const result = await OrderServices.updateOrder(id, req.body, req.user);
+
+  if (!result) throw new AppError(httpStatus.BAD_REQUEST, 'Order update failed');
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Order updated successfully',
+    data: result,
+  });
+});
+
 // Get Logged-in User Orders
 const getMyOrders = catchAsync(async (req, res) => {
   const userId = req.user.id;
@@ -156,13 +187,31 @@ const getAllCustomers = catchAsync(async (req, res) => {
   });
 });
 
+export const getDashboardMetrics = catchAsync(async (req, res) => {
+  const type = (req.query.type as any) || "all";
+  const data = await OrderServices.getDashboardMetrics(type);
+
+  sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
+});
+
+export const getWeeklySalesOverview = catchAsync(async (req, res) => {
+  const type = (req.query.type as any) || "all";
+  const data = await OrderServices.getWeeklySalesOverview(type);
+
+  sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
+});
+
 export const OrderController = {
   createOrder,
   getAllOrders,
   getOrderById,
   getUserOrders,
   updateOrderStatus,
+  updatePaymentStatus,
+  updateOrder,
   getMyOrders,
   getMyOrderByID,
   getAllCustomers,
+  getDashboardMetrics,
+  getWeeklySalesOverview,
 };
