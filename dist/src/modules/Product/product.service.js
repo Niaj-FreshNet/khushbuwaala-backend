@@ -419,7 +419,7 @@ const deleteProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const hasActiveOrders = yield client_1.prisma.order.findFirst({
         where: {
             productIds: { has: id }, // ✅ works on String[]
-            status: { not: 'CANCEL' },
+            status: { not: 'CANCELED' },
         },
     });
     if (hasActiveOrders && existingProduct.published) {
@@ -459,7 +459,7 @@ const getTrendingProducts = () => __awaiter(void 0, void 0, void 0, function* ()
         where: {
             orderTime: { gte: threeMonthsAgo },
             isPaid: true,
-            status: { not: 'CANCEL' },
+            status: { not: 'CANCELED' },
         },
         select: { cartItems: true },
     });
@@ -492,7 +492,7 @@ const getNavbarProducts = () => __awaiter(void 0, void 0, void 0, function* () {
         where: {
             orderTime: { gte: threeMonthsAgo },
             isPaid: true,
-            status: { not: 'CANCEL' },
+            status: { not: 'CANCELED' },
         },
         select: { cartItems: true },
     });

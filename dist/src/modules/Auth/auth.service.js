@@ -22,31 +22,34 @@ const auth_utils_1 = require("./auth.utils");
 const emails_1 = require("../../helpers/emailSender/emails");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const register = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    // check if user already exists
+    var _a;
+    const email = ((_a = payload.email) !== null && _a !== void 0 ? _a : "").trim().toLowerCase();
+    // ✅ Prisma requires email (String @unique)
+    if (!email) {
+        throw new AppError_1.default(400, "Email is required");
+    }
+    const normalizedPayload = Object.assign(Object.assign({}, payload), { email });
+    // check duplicate
     const existingUser = yield client_1.prisma.user.findUnique({
-        where: {
-            email: payload.email,
-        },
+        where: { email: normalizedPayload.email },
+        select: { id: true },
     });
     if (existingUser) {
-        throw new AppError_1.default(400, 'User already exists with this email');
+        throw new AppError_1.default(400, "User already exists with this email");
     }
-    if (!payload.password) {
-        throw new AppError_1.default(400, 'Password is required');
+    if (!normalizedPayload.password) {
+        throw new AppError_1.default(400, "Password is required");
     }
-    // Hash the password
-    const password = yield bcrypt_1.default.hash(payload.password, Number(config_1.default.salt_round));
-    // Update payload with hashed password
-    payload.password = password;
+    normalizedPayload.password = yield bcrypt_1.default.hash(normalizedPayload.password, Number(config_1.default.salt_round));
+    // ✅ always generate + send verification (email is guaranteed)
     const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
     const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
-    (0, emails_1.sendVerificationEmail)(payload.email, verificationToken);
-    // Create the user
+    // (optional) await if you want to catch failures
+    (0, emails_1.sendVerificationEmail)(normalizedPayload.email, verificationToken);
     const result = yield client_1.prisma.user.create({
-        data: Object.assign(Object.assign({}, payload), { role: payload.role, verificationToken,
+        data: Object.assign(Object.assign({}, normalizedPayload), { role: normalizedPayload.role, verificationToken,
             verificationTokenExpiry }),
     });
-    // console.log('result', result);
     return result;
 });
 const verifyEmail = (email, token) => __awaiter(void 0, void 0, void 0, function* () {

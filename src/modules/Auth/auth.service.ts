@@ -13,48 +13,43 @@ import {
 import AppError from '../../errors/AppError';
 
 const register = async (payload: IUser) => {
-  // normalize email (allow empty)
   const email = (payload.email ?? "").trim().toLowerCase();
 
-  // ✅ store as null when empty (instead of "")
+  // ✅ Prisma requires email (String @unique)
+  if (!email) {
+    throw new AppError(400, "Email is required");
+  }
+
   const normalizedPayload: IUser = {
     ...payload,
-    email: email === "" ? null : email,
+    email, // ✅ always string
   };
 
-  // check duplicate only if email exists
-  if (normalizedPayload.email) {
-    const existingUser = await prisma.user.findFirst({
-      where: { email: normalizedPayload.email },
-      select: { id: true },
-    });
+  // check duplicate
+  const existingUser = await prisma.user.findUnique({
+    where: { email: normalizedPayload.email },
+    select: { id: true },
+  });
 
-    if (existingUser) {
-      throw new AppError(400, "User already exists with this email");
-    }
+  if (existingUser) {
+    throw new AppError(400, "User already exists with this email");
   }
 
   if (!normalizedPayload.password) {
     throw new AppError(400, "Password is required");
   }
 
-  // Hash password
   normalizedPayload.password = await bcrypt.hash(
     normalizedPayload.password,
     Number(config.salt_round)
   );
 
-  // ✅ only generate + send verification if email exists
-  let verificationToken: string | null = null;
-  let verificationTokenExpiry: Date | null = null;
+  // ✅ always generate + send verification (email is guaranteed)
+  const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+  const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
-  if (normalizedPayload.email) {
-    verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
-    verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
-
-    // don't block registration if email fails (optional)
-    sendVerificationEmail(normalizedPayload.email, verificationToken);
-  }
+  // (optional) await if you want to catch failures
+  sendVerificationEmail(normalizedPayload.email, verificationToken);
 
   const result = await prisma.user.create({
     data: {

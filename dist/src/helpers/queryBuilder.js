@@ -248,6 +248,22 @@ class QueryBuilder {
             return this.model.findMany(this.prismaQuery);
         });
     }
+    executeWithCount() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const where = this.prismaQuery.where;
+            const page = Number(this.query.page) || 1;
+            const limit = Number(this.query.limit) || 10;
+            const [data, total] = yield Promise.all([
+                this.model.findMany(this.prismaQuery),
+                this.model.count({ where }),
+            ]);
+            const totalPage = Math.ceil(total / limit);
+            return {
+                data,
+                meta: { page, limit, total, totalPage },
+            };
+        });
+    }
     // Count Total
     countTotal() {
         return __awaiter(this, void 0, void 0, function* () {

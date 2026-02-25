@@ -8,7 +8,7 @@ const express_1 = require("express");
 const review_controller_1 = require("./review.controller");
 const auth_1 = __importDefault(require("../../middlewares/auth"));
 const router = (0, express_1.Router)();
-// ✏️ Create a review (only logged-in users)
+// ✏️ Create a review
 router.post('/create-review', (0, auth_1.default)('OPTIONAL'), review_controller_1.reviewController.createReview);
 // 🌍 Publicly visible reviews (published only)
 router.get('/get-all-reviews', review_controller_1.reviewController.getAllReviews);

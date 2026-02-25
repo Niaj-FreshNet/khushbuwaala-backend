@@ -14,6 +14,10 @@ router.post('/create-order', (0, auth_1.default)('OPTIONAL'), order_controller_1
 router.get('/get-all-orders', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.getAllOrders);
 router.get('/get-order-by-id/:id', (0, auth_1.default)('OPTIONAL'), order_controller_1.OrderController.getOrderById);
 router.patch('/update-order-status/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.updateOrderStatus);
+router.patch('/update-payment-status/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.updatePaymentStatus);
+router.patch('/update-order/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.updateOrder);
+router.get("/dashboard/metrics", (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), order_controller_1.OrderController.getDashboardMetrics);
+router.get("/dashboard/weekly-sales", (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), order_controller_1.OrderController.getWeeklySalesOverview);
 // Customer management
 router.get('/get-all-customers', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN'), order_controller_1.OrderController.getAllCustomers);
 // User orders (customer)

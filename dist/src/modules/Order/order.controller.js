@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OrderController = void 0;
+exports.OrderController = exports.getWeeklySalesOverview = exports.getDashboardMetrics = void 0;
 const http_status_1 = __importDefault(require("http-status"));
 const crypto_1 = __importDefault(require("crypto"));
 const AppError_1 = __importDefault(require("../../errors/AppError"));
@@ -104,6 +104,31 @@ const updateOrderStatus = (0, catchAsync_1.default)((req, res) => __awaiter(void
         data: result,
     });
 }));
+// Update Payment Status (Admin)
+const updatePaymentStatus = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const { isPaid } = req.body;
+    const result = yield order_service_1.OrderServices.updatePaymentStatus(id, { isPaid });
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Payment status updated successfully',
+        data: result,
+    });
+}));
+const updateOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    // all editable fields come from body
+    const result = yield order_service_1.OrderServices.updateOrder(id, req.body, req.user);
+    if (!result)
+        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'Order update failed');
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Order updated successfully',
+        data: result,
+    });
+}));
 // Get Logged-in User Orders
 const getMyOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const userId = req.user.id;
@@ -138,13 +163,27 @@ const getAllCustomers = (0, catchAsync_1.default)((req, res) => __awaiter(void 0
         data: result,
     });
 }));
+exports.getDashboardMetrics = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const type = req.query.type || "all";
+    const data = yield order_service_1.OrderServices.getDashboardMetrics(type);
+    (0, sendResponse_1.default)(res, { statusCode: 200, success: true, message: "OK", data });
+}));
+exports.getWeeklySalesOverview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const type = req.query.type || "all";
+    const data = yield order_service_1.OrderServices.getWeeklySalesOverview(type);
+    (0, sendResponse_1.default)(res, { statusCode: 200, success: true, message: "OK", data });
+}));
 exports.OrderController = {
     createOrder,
     getAllOrders,
     getOrderById,
     getUserOrders,
     updateOrderStatus,
+    updatePaymentStatus,
+    updateOrder,
     getMyOrders,
     getMyOrderByID,
     getAllCustomers,
+    getDashboardMetrics: exports.getDashboardMetrics,
+    getWeeklySalesOverview: exports.getWeeklySalesOverview,
 };

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PRODUCT_ERROR_MESSAGES = exports.CACHE_KEYS = exports.QUERY_DEFAULTS = exports.PRODUCT_VALIDATION = exports.BEST_FOR_OCCASIONS = exports.COMMON_ACCORDS = exports.SILLAGE_LEVELS = exports.PROJECTION_LEVELS = exports.LONGEVITY_LEVELS = exports.PERFORMANCE_LEVELS = exports.PERFUME_NOTES_CATEGORIES = exports.PERFUME_GENDERS = exports.productSortOptions = exports.productAdminInclude = exports.productDetailInclude = exports.productInclude = exports.productRangeFilter = exports.productNestedFilters = exports.productArraySearchFields = exports.productSearchFields = exports.productFilterFields = void 0;
+exports.PRODUCT_ERROR_MESSAGES = exports.CACHE_KEYS = exports.QUERY_DEFAULTS = exports.PRODUCT_VALIDATION = exports.BEST_FOR_OCCASIONS = exports.COMMON_ACCORDS = exports.SILLAGE_LEVELS = exports.PROJECTION_LEVELS = exports.LONGEVITY_LEVELS = exports.PERFORMANCE_LEVELS = exports.PERFUME_NOTES_CATEGORIES = exports.PERFUME_GENDERS = exports.productSortOptions = exports.productAdminInclude = exports.productDetailInclude = exports.productInclude = exports.productListInclude = exports.productRangeFilter = exports.productNestedFilters = exports.productArraySearchFields = exports.productSearchFields = exports.productFilterFields = void 0;
 // Basic filtering fields
 exports.productFilterFields = [
     'published',
@@ -56,6 +56,38 @@ exports.productRangeFilter = [
         dataType: 'number',
     }
 ];
+exports.productListInclude = {
+    category: { select: { id: true, categoryName: true, imageUrl: true } },
+    // keep variants but keep them light
+    variants: {
+        select: {
+            id: true,
+            size: true,
+            unit: true,
+            price: true,
+            discounts: true,
+        },
+        orderBy: [{ price: "asc" }],
+    },
+    discounts: true,
+    // ✅ Include related fragrances
+    // ProductFragrance: {
+    //   include: {
+    //     fragrance: {
+    //       select: {
+    //         id: true,
+    //         fragranceName: true,
+    //       },
+    //     },
+    //   },
+    // },
+    // ✅ Include related materials
+    // REMOVE these from listing:
+    // Review: ...
+    // ProductMaterial: ...
+    // ProductFragrance: ...
+    // discounts: ...
+};
 // Prisma include config for basic product queries
 exports.productInclude = {
     category: {

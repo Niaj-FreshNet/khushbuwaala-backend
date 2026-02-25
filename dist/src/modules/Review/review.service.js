@@ -17,8 +17,6 @@ const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const client_1 = require("../../../prisma/client");
 const createReview = (userId, payload) => __awaiter(void 0, void 0, void 0, function* () {
-    if (!userId)
-        throw new AppError_1.default(404, 'User not found');
     const product = yield client_1.prisma.product.findUnique({
         where: { id: payload.productId },
     });
@@ -26,18 +24,21 @@ const createReview = (userId, payload) => __awaiter(void 0, void 0, void 0, func
         throw new AppError_1.default(404, 'Product not found');
     if (payload.rating < 0 || payload.rating > 5)
         throw new AppError_1.default(400, 'Rating must be between 0 and 5');
-    const existing = yield client_1.prisma.review.findFirst({
-        where: { userId, productId: payload.productId },
-    });
-    if (existing)
-        throw new AppError_1.default(400, 'You already reviewed this product');
+    // ✅ Only block duplicate if user is logged in
+    if (userId) {
+        const existing = yield client_1.prisma.review.findFirst({
+            where: { userId, productId: payload.productId },
+        });
+        if (existing)
+            throw new AppError_1.default(400, 'You already reviewed this product');
+    }
     const review = yield client_1.prisma.review.create({
         data: {
             rating: payload.rating,
-            title: payload.title,
+            title: payload.title, // (your "name" stored here)
             comment: payload.comment,
             productId: payload.productId,
-            userId,
+            userId: userId !== null && userId !== void 0 ? userId : undefined, // ✅ allow null
             isPublished: true,
         },
         include: {
