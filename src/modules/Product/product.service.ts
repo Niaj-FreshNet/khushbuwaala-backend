@@ -198,7 +198,7 @@ const getAllProducts = async (query: IProductQuery) => {
   // ✅ sortBy price requires JS sorting (since variant min-price)
   results = applySorting(results, query.sortBy);
 
-  return { data: results.map(formatProductResponse), meta };
+  return { data: results.map(formatAllProductResponse), meta };
 };
 
 // Get All Products (Admin)
@@ -234,7 +234,7 @@ const getAllProductsAdmin = async (query: IProductQuery) => {
   results = applySorting(results, query.sortBy);
 
   return {
-    data: results.map(formatProductResponse),
+    data: results.map(formatAllProductResponse),
     meta,
   };
 };
@@ -325,11 +325,11 @@ const getProductBySlug = async (slug: string): Promise<IProductResponse | null> 
     orderBy: { salesCount: 'desc' },
   });
 
-  const formattedProduct = formatProductResponse(product);
+  const formattedProduct = formatAllProductResponse(product);
 
   return {
     ...formattedProduct,
-    relatedProducts: relatedProducts.map(formatProductResponse),
+    relatedProducts: relatedProducts.map(formatAllProductResponse),
   } as any;
 };
 
@@ -730,7 +730,7 @@ const getNewArrivals = async (): Promise<IProductResponse[]> => {
     take: 12,
   });
 
-  return products.map(formatProductResponse);
+  return products.map(formatAllProductResponse);
 };
 
 // Get Products by Category
@@ -757,7 +757,7 @@ const getProductsByCategoryId = async (categoryId: string, query: IProductQuery)
   results = applySorting(results, query.sortBy);
 
   return {
-    data: results.map(formatProductResponse),
+    data: results.map(formatAllProductResponse),
     meta,
   };
 };
@@ -881,16 +881,16 @@ const searchProducts = async (query: IProductQuery): Promise<IProductSearchResul
 
   return {
     ...result,
-    filters: {
-      brands: brands.map(b => b.brand!).filter(Boolean),
-      categories: categories.map(c => ({ id: c.id, name: c.categoryName })),
-      priceRange: {
-        min: priceRange._min.price || 0,
-        max: priceRange._max.price || 0,
-      },
-      origins: origins.map(o => o.origin!).filter(Boolean),
-      accords: uniqueAccords,
-    },
+    // filters: {
+    //   brands: brands.map(b => b.brand!).filter(Boolean),
+    //   categories: categories.map(c => ({ id: c.id, name: c.categoryName })),
+    //   priceRange: {
+    //     min: priceRange._min.price || 0,
+    //     max: priceRange._max.price || 0,
+    //   },
+    //   origins: origins.map(o => o.origin!).filter(Boolean),
+    //   accords: uniqueAccords,
+    // },
     meta: {
       ...result.meta,
       totalPages: result.meta.totalPage,
@@ -1222,6 +1222,200 @@ const formatProductResponse = (product: any): IProductResponse => {
     primaryImage: product.primaryImage,
     otherImages: product.otherImages || [],
     videoUrl: product.videoUrl,
+    tags: product.tags || [],
+    salesCount: product.salesCount,
+    published: product.published,
+
+    // Perfume specifications
+    origin: product.origin,
+    brand: product.brand,
+    gender: product.gender,
+    perfumeNotes: product.perfumeNotes,
+    accords: product.accords || [],
+    performance: product.performance,
+    longevity: product.longevity,
+    projection: product.projection,
+    sillage: product.sillage,
+    bestFor: product.bestFor || [],
+
+    categoryId: product.categoryId,
+    category: product.category,
+
+    // Map material/fragrance IDs
+    materialIds: product.ProductMaterial?.map((m: any) => m.material.id) || [],
+    fragranceIds: product.ProductFragrance?.map((f: any) => f.fragrance.id) || [],
+
+    // ✅ ADD these (names for frontend)
+    materials: materials.map((m: any) => ({
+      id: m.id,
+      name: m.materialName,
+    })),
+
+    fragrances: fragrances.map((f: any) => ({
+      id: f.id,
+      name: f.fragranceName,
+    })),
+
+    supplier: product.supplier,
+
+    // ✅ IMPORTANT: return discounts
+    discounts: product.discounts || [],
+
+    // ✅ IMPORTANT: keep variant discounts too
+    variants: variants.map((v: any) => ({
+      ...v,
+      discounts: v.discounts || [],
+    })),
+
+    // Computed fields
+    minPrice: prices.length > 0 ? Math.min(...prices) : 0,
+    maxPrice: prices.length > 0 ? Math.max(...prices) : 0,
+    totalStock: product.stock,
+    inStock: product.stock > 0,
+
+    // Review fields
+    reviews: reviews.map((r: any) => ({
+      id: r.id,
+      rating: r.rating,
+      title: r.title,
+      comment: r.comment,
+      isPublished: r.isPublished,
+      productId: r.productId,
+      userId: r.userId,
+      user: r.user
+        ? { name: r.user.name, imageUrl: r.user.imageUrl || '/default-avatar.png' }
+        : { name: 'Anonymous', imageUrl: '/default-avatar.png' },
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+    averageRating: parseFloat(averageRating.toFixed(2)),
+    reviewCount,
+
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+};
+
+const formatAllProductResponse = (product: any): IProductResponse => {
+  const variants = product.variants || [];
+  const prices = variants.map((v: any) => v.price);
+  const reviews = product.Review || [];
+
+  // Calculate average rating and review count
+  const reviewCount = reviews.length;
+  const averageRating =
+    reviewCount > 0
+      ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviewCount
+      : 0;
+
+  const materials = product.ProductMaterial?.map((pm: any) => pm.material) || [];
+  const fragrances = product.ProductFragrance?.map((pf: any) => pf.fragrance) || [];
+
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    // description: product.description,
+    primaryImage: product.primaryImage,
+    otherImages: product.otherImages || [],
+    // videoUrl: product.videoUrl,
+    tags: product.tags || [],
+    salesCount: product.salesCount,
+    published: product.published,
+
+    // Perfume specifications
+    origin: product.origin,
+    brand: product.brand,
+    gender: product.gender,
+    perfumeNotes: product.perfumeNotes,
+    accords: product.accords || [],
+    performance: product.performance,
+    longevity: product.longevity,
+    projection: product.projection,
+    sillage: product.sillage,
+    bestFor: product.bestFor || [],
+
+    categoryId: product.categoryId,
+    category: product.category,
+
+    // Map material/fragrance IDs
+    materialIds: product.ProductMaterial?.map((m: any) => m.material.id) || [],
+    fragranceIds: product.ProductFragrance?.map((f: any) => f.fragrance.id) || [],
+
+    // ✅ ADD these (names for frontend)
+    materials: materials.map((m: any) => ({
+      id: m.id,
+      name: m.materialName,
+    })),
+
+    fragrances: fragrances.map((f: any) => ({
+      id: f.id,
+      name: f.fragranceName,
+    })),
+
+    supplier: product.supplier,
+
+    // ✅ IMPORTANT: return discounts
+    discounts: product.discounts || [],
+
+    // ✅ IMPORTANT: keep variant discounts too
+    variants: variants.map((v: any) => ({
+      ...v,
+      discounts: v.discounts || [],
+    })),
+
+    // Computed fields
+    minPrice: prices.length > 0 ? Math.min(...prices) : 0,
+    maxPrice: prices.length > 0 ? Math.max(...prices) : 0,
+    totalStock: product.stock,
+    inStock: product.stock > 0,
+
+    // Review fields
+    reviews: reviews.map((r: any) => ({
+      id: r.id,
+      rating: r.rating,
+      title: r.title,
+      comment: r.comment,
+      isPublished: r.isPublished,
+      productId: r.productId,
+      userId: r.userId,
+      user: r.user
+        ? { name: r.user.name, imageUrl: r.user.imageUrl || '/default-avatar.png' }
+        : { name: 'Anonymous', imageUrl: '/default-avatar.png' },
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+    averageRating: parseFloat(averageRating.toFixed(2)),
+    reviewCount,
+
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+};
+
+const formatSearchProductResponse = (product: any): IProductResponse => {
+  const variants = product.variants || [];
+  const prices = variants.map((v: any) => v.price);
+  const reviews = product.Review || [];
+
+  // Calculate average rating and review count
+  const reviewCount = reviews.length;
+  const averageRating =
+    reviewCount > 0
+      ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviewCount
+      : 0;
+
+  const materials = product.ProductMaterial?.map((pm: any) => pm.material) || [];
+  const fragrances = product.ProductFragrance?.map((pf: any) => pf.fragrance) || [];
+
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    // description: product.description,
+    primaryImage: product.primaryImage,
+    otherImages: product.otherImages || [],
+    // videoUrl: product.videoUrl,
     tags: product.tags || [],
     salesCount: product.salesCount,
     published: product.published,

@@ -275,16 +275,16 @@ export interface IProductSearchResult {
     limit: number;
     totalPages: number;
   };
-  filters: {
-    brands: string[];
-    categories: { id: string; name: string }[];
-    priceRange: {
-      min: number;
-      max: number;
-    };
-    origins: string[];
-    accords: string[];
-  };
+  // filters: {
+  //   brands: string[];
+  //   categories: { id: string; name: string }[];
+  //   priceRange: {
+  //     min: number;
+  //     max: number;
+  //   };
+  //   origins: string[];
+  //   accords: string[];
+  // };
 }
 
 // Trending Product Interface

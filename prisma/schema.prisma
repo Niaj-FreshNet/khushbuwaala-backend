@@ -420,7 +420,7 @@ model Discount {
   value Float
 
   maxUsage  Int?
-  usedCount Int @default(0)
+  usedCount Int       @default(0)
   startDate DateTime?
   endDate   DateTime?
 
