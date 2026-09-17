@@ -185,9 +185,23 @@ model Product {
   orderItems CartItem[]
   wishlist   Wishlist[]
 
+  // ==========================================
+  // ⚡ NEW FIELDS FOR OPTIMIZED PERFORMANCE ⚡
+  // ==========================================
+  minPrice      Float @default(0)
+  maxPrice      Float @default(0)
+  averageRating Float @default(0)
+  reviewCount   Int   @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ==========================================
+  // ⚡ NEW INDEXES FOR INSTANT DB SORTING ⚡
+  // ==========================================
+  @@index([categoryId, published])
+  @@index([minPrice])
+  @@index([averageRating])
   @@map("products")
 }
 

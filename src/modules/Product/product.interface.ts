@@ -1,11 +1,10 @@
-
 // Base Product Variant Interface (aligned with schema)
 export interface IProductVariant {
   sku: string;
   unit: string;
-  size: number; // Changed from string to number as per schema
+  size: number;
   price: number;
-  stock: number; // Changed from quantity to stock as per schema
+  stock: number;
 }
 
 // Product Creation Interface
@@ -18,7 +17,6 @@ export interface IProduct {
   videoUrl?: string;
   tags: string[];
 
-  // Perfume specifications
   origin?: string;
   brand?: string;
   gender?: string;
@@ -58,7 +56,6 @@ export interface IUpdateProduct {
   videoUrl?: string;
   tags?: string[];
 
-  // Perfume specifications
   origin?: string;
   brand?: string;
   gender?: string;
@@ -80,7 +77,6 @@ export interface IUpdateProduct {
   materialIds: string[];
   fragranceIds: string[];
 
-  // Image handling
   imagesToKeep?: string[];
   newImages?: string[];
 
@@ -99,32 +95,22 @@ export type ProductSortBy =
 
 export interface IProductQuery {
   searchTerm?: string;
-
-  // category names coming from query string (comma separated)
-  category?: string[];     // ✅ was categories / object array (not right for query parsing)
-
+  category?: string[];
   brand?: string;
-  gender?: string; // normalize in parser
+  gender?: string;
   origin?: string;
-
   minPrice?: number;
   maxPrice?: number;
-
-  accords?: string[];      // ✅ was string
-  perfumeNotes?: string[]; // ✅ add
-  performance?: string[];  // ✅ add (or string if DB uses scalar)
-
-  bestFor?: string[];       // Product.bestFor (String[])
-  tags?: string[];          // Product.tags (String[])
-
+  accords?: string[];
+  perfumeNotes?: string[];
+  performance?: string[];
+  bestFor?: string[];
+  tags?: string[];
   stock?: "in" | "out";
-
-  sortBy?: ProductSortBy;  // ✅ keep literal union
-  sort?: string;           // ✅ used by QueryBuilder.sort(), like "-createdAt"
-
+  sortBy?: ProductSortBy;
+  sort?: string;
   page?: number;
   limit?: number;
-
   [key: string]: unknown;
 }
 
@@ -144,71 +130,22 @@ export interface IReview {
   updatedAt: Date;
 }
 
-// Response Interfaces
-export interface IProductResponse {
+export interface IDiscount {
   id: string;
-  name: string;
-  slug: string;
-  description: string;
-  primaryImage: string;
-  otherImages: string[];
-  videoUrl?: string;
-  tags: string[];
-  salesCount: number;
-  published: boolean;
+  productId: string;
+  code?: string;
+  type: "percentage" | "fixed";
+  value: number;
+  maxUsage?: number;
+  startDate?: string;
+  endDate?: string;
+  variantId?: string;
+}
 
-  // Perfume specifications
-  origin?: string;
-  brand?: string;
-  gender?: string;
-  perfumeNotes?: {
-    top: string[];
-    middle: string[];
-    base: string[];
-  };
-  accords: string[];
-  performance?: string;
-  longevity?: string;
-  projection?: string;
-  sillage?: string;
-  bestFor: string[];
-
-  categoryId: string;
-  category?: {
-    categoryName: string;
-    imageUrl: string;
-  };
-
-  materialIds?: string[];
-  fragranceIds?: string[];
-
-  materials?: {
-    id: string;
-    materialName: string[];
-  };
-  fragrances?: {
-    id: string;
-    fragranceName: string[];
-  };
-
-  reviews: IReview[];
-  averageRating: number;
-  reviewCount: number;
-
-  supplier: string;
-
-  discounts?: IDiscount[];
-
-  variants: IProductVariantResponse[];
-
-  // Computed fields
-  minPrice: number;
-  maxPrice: number;
-  totalStock: number;
-  inStock: boolean;
-
-  createdAt: Date;
-  updatedAt: Date;
+// Lightweight discount for cards/listing badges
+export interface IDiscountLight {
+  type: "percentage" | "fixed";
+  value: number;
 }
 
 export interface IProductVariantResponse {
@@ -224,17 +161,121 @@ export interface IProductVariantResponse {
   updatedAt: Date;
 }
 
-export interface IDiscount {
+// Lightweight variant for listing/search cards
+export interface IProductVariantLight {
   id: string;
-  productId: string;
-  code?: string;
-  type: "percentage" | "fixed";
-  value: number;
-  maxUsage?: number;
-  startDate?: string;
-  endDate?: string;
-  variantId?: string; // null means product-level discount
+  sku: string;
+  unit: string;
+  size: number;
+  price: number;
+  stock: number;
 }
+
+// ============================================================
+// SHARED BASE — common to listing, search, and detail responses
+// ============================================================
+interface IProductCore {
+  id: string;
+  name: string;
+  slug: string;
+  primaryImage: string;
+  brand?: string;
+  gender?: string;
+  origin?: string;
+  accords?: string[];
+  bestFor?: string[];
+  tags?: string[];
+  published: boolean;
+  salesCount: number;
+
+  categoryId?: string;
+  category?: {
+    categoryName: string;
+    imageUrl: string;
+  };
+
+  minPrice: number;
+  maxPrice: number;
+  totalStock: number;
+  inStock: boolean;
+
+  averageRating: number;
+  reviewCount: number;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// 1) LISTING — getAllProducts, getAllProductsAdmin, category pages,
+//    new arrivals, trending, bestsellers, featured
+// ============================================================
+export interface IProductListingResponse extends IProductCore {
+  discount?: IDiscountLight;
+}
+
+// ============================================================
+// 2) SEARCH — searchProducts
+// ============================================================
+export interface IProductSearchResponse {
+  id: string;
+  name: string;
+  slug: string;
+  primaryImage: string;
+  accords: string[];
+
+  categoryName?: string;
+
+  minPrice: number;
+  maxPrice: number;
+  inStock: boolean;
+
+  averageRating: number;
+  reviewCount: number;
+
+  discount?: IDiscountLight;
+}
+
+// ============================================================
+// 3) DETAIL — getProduct / getProductBySlug (single product page)
+// ============================================================
+export interface IProductDetailResponse extends IProductCore {
+  description: string;
+  videoUrl?: string;
+  otherImages: string[];
+
+  perfumeNotes?: {
+    top: string[];
+    middle: string[];
+    base: string[];
+  };
+  performance?: string;
+  longevity?: string;
+  projection?: string;
+  sillage?: string;
+
+  materialIds: string[];
+  fragranceIds: string[];
+  materials: { id: string; name: string }[];
+  fragrances: { id: string; name: string }[];
+
+  supplier: string;
+
+  discounts: IDiscount[];
+  variants: IProductVariantResponse[];
+
+  reviews: IReview[];
+
+  relatedProducts?: {
+    sameBrand: IProductListingResponse[];
+    sameCategory: IProductListingResponse[];
+    similarAccords: IProductListingResponse[];
+  };
+}
+
+// Kept as an alias so anything still importing the old name doesn't break.
+// New code should use IProductDetailResponse directly.
+export type IProductResponse = IProductDetailResponse;
 
 // Analytics Interfaces
 export interface IProductAnalytics {
@@ -268,49 +309,25 @@ export interface IStockUpdate {
 
 // Search Result Interface
 export interface IProductSearchResult {
-  data: IProductResponse[];
+  data: IProductSearchResponse[];
   meta: {
     total: number;
     page: number;
     limit: number;
     totalPages: number;
   };
-  // filters: {
-  //   brands: string[];
-  //   categories: { id: string; name: string }[];
-  //   priceRange: {
-  //     min: number;
-  //     max: number;
-  //   };
-  //   origins: string[];
-  //   accords: string[];
-  // };
 }
 
-// Trending Product Interface
-export interface ITrendingProduct extends IProductResponse {
+// Trending Product Interface — now built on the light listing shape
+export interface ITrendingProduct extends IProductListingResponse {
   totalSold: number;
   trendingScore: number;
 }
 
-// Related Products Interface
+// Related Products Interface — light listing cards, not full detail
 export interface IRelatedProductsResponse {
-  sameBrand: IProductResponse[];
-  sameCategory: IProductResponse[];
-  similarAccords: IProductResponse[];
-  recentlyViewed?: IProductResponse[];
+  sameBrand: IProductListingResponse[];
+  sameCategory: IProductListingResponse[];
+  similarAccords: IProductListingResponse[];
+  recentlyViewed?: IProductListingResponse[];
 }
-
-// export default {
-//   IProduct,
-//   IUpdateProduct,
-//   IProductQuery,
-//   IProductResponse,
-//   IProductVariantResponse,
-//   IProductAnalytics,
-//   IStockUpdate,
-//   IProductSearchResult,
-//   ITrendingProduct,
-//   IRelatedProductsResponse,
-//   IProductVariant
-// };

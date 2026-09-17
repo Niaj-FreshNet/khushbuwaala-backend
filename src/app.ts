@@ -20,6 +20,7 @@ export const corsOptions = {
     'https://www.khushbuwaala.com',
     'http://khushbuwaala.com',
     'http://www.khushbuwaala.com',
+    'https://sgtm.khushbuwaala.com',
   ],
 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

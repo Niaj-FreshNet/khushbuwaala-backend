@@ -293,7 +293,6 @@ const searchProducts = catchAsync(async (req, res) => {
     message: 'Products search completed successfully',
     meta: result.meta,
     data: result.data,
-    filters: result.filters,
   });
 });
 

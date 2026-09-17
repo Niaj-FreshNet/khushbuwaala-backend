@@ -131,22 +131,26 @@ export const productInclude: Prisma.ProductInclude = {
     },
   },
 
+  // Review: {
+  //   where: {
+  //     isPublished: true
+  //   },
+  //   include: {
+  //     user: {
+  //       select: {
+  //         id: true,
+  //         name: true,
+  //         imageUrl: true,
+  //       },
+  //     },
+  //   },
+  //   orderBy: {
+  //     createdAt: 'desc'
+  //   }
+  // },
+  
   Review: {
-    where: {
-      isPublished: true
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: 'desc'
-    }
+    select: { rating: true } // DO NOT fetch title, comment, userId, etc. here
   },
 
   variants: {
@@ -299,6 +303,19 @@ export const BEST_FOR_OCCASIONS = [
   'TRAVEL'
 ] as const;
 
+export const LEAN_PRODUCT_INCLUDE = {
+  category: { select: { categoryName: true } },
+  variants: { select: { price: true, sku: true } },
+  Review: { select: { rating: true } }, // ONLY fetch rating number, ignore comment/user data
+  discounts: {
+    where: {
+      startDate: { lte: new Date() },
+      endDate: { gte: new Date() }
+    },
+    select: { type: true, value: true }
+  }
+};
+
 // Validation constants
 export const PRODUCT_VALIDATION = {
   NAME_MIN_LENGTH: 2,
@@ -367,6 +384,7 @@ export default {
   productDetailInclude,
   productAdminInclude,
   productSortOptions,
+  LEAN_PRODUCT_INCLUDE,
   PERFUME_GENDERS,
   PERFUME_NOTES_CATEGORIES,
   PERFORMANCE_LEVELS,
