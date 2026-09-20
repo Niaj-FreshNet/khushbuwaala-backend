@@ -1046,16 +1046,23 @@ const computeRating = (reviews: any[]) => {
   return { averageRating: parseFloat(averageRating.toFixed(2)), reviewCount };
 };
 
-// Pick the single best currently-active discount for a light card badge
+// in product.service.ts
 const pickBestDiscount = (discounts: any[] = []) => {
   if (!discounts.length) return undefined;
+
   const now = new Date();
+
+  // Instant in-memory check for only auto-applied active discounts
   const active = discounts.filter((d) => {
+    if (d.code && String(d.code).trim() !== '') return false; // Ignore promo coupons
     const startOk = !d.startDate || new Date(d.startDate) <= now;
     const endOk = !d.endDate || new Date(d.endDate) >= now;
     return startOk && endOk;
   });
+
   if (!active.length) return undefined;
+
+  // Pick the highest discount value
   const best = active.reduce((a, b) => (b.value > a.value ? b : a));
   return { type: best.type, value: best.value };
 };
@@ -1073,6 +1080,7 @@ const formatProductListingResponse = (product: any): IProductListingResponse => 
     name: product.name,
     slug: product.slug,
     primaryImage: product.primaryImage,
+    otherImages: product.otherImages || [],
     accords: product.accords || [],
     published: product.published,
     salesCount: product.salesCount,
@@ -1089,6 +1097,7 @@ const formatProductListingResponse = (product: any): IProductListingResponse => 
     reviewCount,
 
     discount: pickBestDiscount(product.discounts),
+    variants: variants.map((v: any) => ({ ...v })),
 
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,

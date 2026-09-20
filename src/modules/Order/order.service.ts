@@ -212,40 +212,64 @@ const createOrderWithCartItems = async (payload: {
   // 2️⃣ Start transaction with extended timeout
   const order = await prisma.$transaction(
     async (tx) => {
-
       const invoice = await generateInvoice();
+
+      // Resolve existing customer or determine connect/create logic
+      let customerConnectOrCreate: Prisma.UserCreateNestedOneWithoutCustomerOrdersInput | undefined;
+
+      const customerEmail = customerInfo?.email?.trim().toLowerCase();
+
+      if (customerId) {
+        // Logged-in user
+        customerConnectOrCreate = { connect: { id: customerId } };
+      } else if (customerEmail) {
+        // Check if a user with this email already exists in DB
+        const existingUser = await tx.user.findUnique({
+          where: { email: customerEmail },
+          select: { id: true },
+        });
+
+        if (existingUser) {
+          customerConnectOrCreate = { connect: { id: existingUser.id } };
+        } else {
+          customerConnectOrCreate = {
+            create: {
+              name: customerInfo?.name ?? '',
+              phone: customerInfo?.phone ?? '',
+              email: customerEmail,
+              address: customerInfo?.address ?? '',
+            },
+          };
+        }
+      } else {
+        // Fallback for anonymous guest without an email provided
+        customerConnectOrCreate = {
+          create: {
+            name: customerInfo?.name ?? 'Guest Customer',
+            phone: customerInfo?.phone ?? '',
+            email: `guest+${Date.now()}-${Math.random().toString(16).slice(2)}@khushbuwaala.local`,
+            address: customerInfo?.address ?? '',
+          },
+        };
+      }
 
       // Create Order
       const newOrder = await tx.order.create({
         data: {
           invoice,
-          // customerId: customerId || "",
-          payToken: payToken || null, // ✅ ADD THIS LINE
-          // amount: Number(amount),
+          payToken: payToken || null,
           amount: serverAmount,
           isPaid: isPaid || false,
-          method: method || "",
+          method: method || '',
           orderSource: orderSource || 'WEBSITE',
           saleType: saleType || 'SINGLE',
-          // shippingCost: shippingCost || 0,
           shippingCost: shipping,
-          additionalNotes: additionalNotes || "",
-          // coupon: coupon ? String(coupon).trim().toUpperCase() : null,  
+          additionalNotes: additionalNotes || '',
           coupon: coupon ? String(coupon).trim().toUpperCase() : null,
           discountAmount: Number(discountAmount || 0),
 
-
-          // ✅ Correct customer relation handling
-          customer: customerId
-            ? { connect: { id: customerId } }
-            : {
-              create: {
-                name: customerInfo?.name ?? "",
-                phone: customerInfo?.phone ?? "",
-                email: normalizeOrGuestEmail(customerInfo?.email), // ✅ changed line
-                address: customerInfo?.address ?? "",
-              },
-            },
+          // ✅ Safe connection or creation
+          customer: customerConnectOrCreate,
 
           shipping: {
             name: shippingAddress?.name || customerInfo?.name || null,

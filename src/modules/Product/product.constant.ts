@@ -148,7 +148,7 @@ export const productInclude: Prisma.ProductInclude = {
   //     createdAt: 'desc'
   //   }
   // },
-  
+
   Review: {
     select: { rating: true } // DO NOT fetch title, comment, userId, etc. here
   },
@@ -305,14 +305,10 @@ export const BEST_FOR_OCCASIONS = [
 
 export const LEAN_PRODUCT_INCLUDE = {
   category: { select: { categoryName: true } },
-  variants: { select: { price: true, sku: true } },
+  variants: { select: { id: true, sku: true, unit: true, size: true, price: true } },
   Review: { select: { rating: true } }, // ONLY fetch rating number, ignore comment/user data
   discounts: {
-    where: {
-      startDate: { lte: new Date() },
-      endDate: { gte: new Date() }
-    },
-    select: { type: true, value: true }
+    select: { type: true, value: true, code: true, startDate: true, endDate: true },
   }
 };
 

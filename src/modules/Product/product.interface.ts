@@ -179,6 +179,7 @@ interface IProductCore {
   name: string;
   slug: string;
   primaryImage: string;
+  otherImages?: string[];
   brand?: string;
   gender?: string;
   origin?: string;
@@ -212,6 +213,7 @@ interface IProductCore {
 // ============================================================
 export interface IProductListingResponse extends IProductCore {
   discount?: IDiscountLight;
+  variants?: IProductVariantLight[];
 }
 
 // ============================================================
