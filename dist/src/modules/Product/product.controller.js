@@ -236,7 +236,6 @@ const searchProducts = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
         message: 'Products search completed successfully',
         meta: result.meta,
         data: result.data,
-        filters: result.filters,
     });
 }));
 // Get Product Variants

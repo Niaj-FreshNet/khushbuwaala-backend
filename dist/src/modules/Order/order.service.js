@@ -161,37 +161,62 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
     };
     // 2️⃣ Start transaction with extended timeout
     const order = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const invoice = yield (0, generateInvoice_1.generateInvoice)();
+        // Resolve existing customer or determine connect/create logic
+        let customerConnectOrCreate;
+        const customerEmail = (_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) === null || _a === void 0 ? void 0 : _a.trim().toLowerCase();
+        if (customerId) {
+            // Logged-in user
+            customerConnectOrCreate = { connect: { id: customerId } };
+        }
+        else if (customerEmail) {
+            // Check if a user with this email already exists in DB
+            const existingUser = yield tx.user.findUnique({
+                where: { email: customerEmail },
+                select: { id: true },
+            });
+            if (existingUser) {
+                customerConnectOrCreate = { connect: { id: existingUser.id } };
+            }
+            else {
+                customerConnectOrCreate = {
+                    create: {
+                        name: (_b = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _b !== void 0 ? _b : '',
+                        phone: (_c = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _c !== void 0 ? _c : '',
+                        email: customerEmail,
+                        address: (_d = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _d !== void 0 ? _d : '',
+                    },
+                };
+            }
+        }
+        else {
+            // Fallback for anonymous guest without an email provided
+            customerConnectOrCreate = {
+                create: {
+                    name: (_e = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _e !== void 0 ? _e : 'Guest Customer',
+                    phone: (_f = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _f !== void 0 ? _f : '',
+                    email: `guest+${Date.now()}-${Math.random().toString(16).slice(2)}@khushbuwaala.local`,
+                    address: (_g = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _g !== void 0 ? _g : '',
+                },
+            };
+        }
         // Create Order
         const newOrder = yield tx.order.create({
             data: {
                 invoice,
-                // customerId: customerId || "",
-                payToken: payToken || null, // ✅ ADD THIS LINE
-                // amount: Number(amount),
+                payToken: payToken || null,
                 amount: serverAmount,
                 isPaid: isPaid || false,
-                method: method || "",
+                method: method || '',
                 orderSource: orderSource || 'WEBSITE',
                 saleType: saleType || 'SINGLE',
-                // shippingCost: shippingCost || 0,
                 shippingCost: shipping,
-                additionalNotes: additionalNotes || "",
-                // coupon: coupon ? String(coupon).trim().toUpperCase() : null,  
+                additionalNotes: additionalNotes || '',
                 coupon: coupon ? String(coupon).trim().toUpperCase() : null,
                 discountAmount: Number(discountAmount || 0),
-                // ✅ Correct customer relation handling
-                customer: customerId
-                    ? { connect: { id: customerId } }
-                    : {
-                        create: {
-                            name: (_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _a !== void 0 ? _a : "",
-                            phone: (_b = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _b !== void 0 ? _b : "",
-                            email: normalizeOrGuestEmail(customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email), // ✅ changed line
-                            address: (_c = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _c !== void 0 ? _c : "",
-                        },
-                    },
+                // ✅ Safe connection or creation
+                customer: customerConnectOrCreate,
                 shipping: {
                     name: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.name) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) || null,
                     phone: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.phone) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) || null,
@@ -229,7 +254,7 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
             const variantId = item.variantId;
             const productId = item.productId;
             const qty = item.quantity;
-            const variantSize = ((_d = item.variant) === null || _d === void 0 ? void 0 : _d.size) || 0;
+            const variantSize = ((_h = item.variant) === null || _h === void 0 ? void 0 : _h.size) || 0;
             // Update Product stock & salesCount
             yield tx.product.update({
                 where: { id: productId },

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PRODUCT_ERROR_MESSAGES = exports.CACHE_KEYS = exports.QUERY_DEFAULTS = exports.PRODUCT_VALIDATION = exports.BEST_FOR_OCCASIONS = exports.COMMON_ACCORDS = exports.SILLAGE_LEVELS = exports.PROJECTION_LEVELS = exports.LONGEVITY_LEVELS = exports.PERFORMANCE_LEVELS = exports.PERFUME_NOTES_CATEGORIES = exports.PERFUME_GENDERS = exports.productSortOptions = exports.productAdminInclude = exports.productDetailInclude = exports.productInclude = exports.productListInclude = exports.productRangeFilter = exports.productNestedFilters = exports.productArraySearchFields = exports.productSearchFields = exports.productFilterFields = void 0;
+exports.PRODUCT_ERROR_MESSAGES = exports.CACHE_KEYS = exports.QUERY_DEFAULTS = exports.PRODUCT_VALIDATION = exports.LEAN_PRODUCT_INCLUDE = exports.BEST_FOR_OCCASIONS = exports.COMMON_ACCORDS = exports.SILLAGE_LEVELS = exports.PROJECTION_LEVELS = exports.LONGEVITY_LEVELS = exports.PERFORMANCE_LEVELS = exports.PERFUME_NOTES_CATEGORIES = exports.PERFUME_GENDERS = exports.productSortOptions = exports.productAdminInclude = exports.productDetailInclude = exports.productInclude = exports.productListInclude = exports.productRangeFilter = exports.productNestedFilters = exports.productArraySearchFields = exports.productSearchFields = exports.productFilterFields = void 0;
 // Basic filtering fields
 exports.productFilterFields = [
     'published',
@@ -119,22 +119,25 @@ exports.productInclude = {
             },
         },
     },
+    // Review: {
+    //   where: {
+    //     isPublished: true
+    //   },
+    //   include: {
+    //     user: {
+    //       select: {
+    //         id: true,
+    //         name: true,
+    //         imageUrl: true,
+    //       },
+    //     },
+    //   },
+    //   orderBy: {
+    //     createdAt: 'desc'
+    //   }
+    // },
     Review: {
-        where: {
-            isPublished: true
-        },
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    name: true,
-                    imageUrl: true,
-                },
-            },
-        },
-        orderBy: {
-            createdAt: 'desc'
-        }
+        select: { rating: true } // DO NOT fetch title, comment, userId, etc. here
     },
     variants: {
         include: {
@@ -272,6 +275,14 @@ exports.BEST_FOR_OCCASIONS = [
     'SPORT',
     'TRAVEL'
 ];
+exports.LEAN_PRODUCT_INCLUDE = {
+    category: { select: { categoryName: true } },
+    variants: { select: { id: true, sku: true, unit: true, size: true, price: true } },
+    Review: { select: { rating: true } }, // ONLY fetch rating number, ignore comment/user data
+    discounts: {
+        select: { type: true, value: true, code: true, startDate: true, endDate: true },
+    },
+};
 // Validation constants
 exports.PRODUCT_VALIDATION = {
     NAME_MIN_LENGTH: 2,
@@ -336,6 +347,7 @@ exports.default = {
     productDetailInclude: exports.productDetailInclude,
     productAdminInclude: exports.productAdminInclude,
     productSortOptions: exports.productSortOptions,
+    LEAN_PRODUCT_INCLUDE: exports.LEAN_PRODUCT_INCLUDE,
     PERFUME_GENDERS: exports.PERFUME_GENDERS,
     PERFUME_NOTES_CATEGORIES: exports.PERFUME_NOTES_CATEGORIES,
     PERFORMANCE_LEVELS: exports.PERFORMANCE_LEVELS,
