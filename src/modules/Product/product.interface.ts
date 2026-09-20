@@ -5,7 +5,7 @@ export interface IProductVariant {
   unit: string;
   size: number;
   price: number;
-  stock?: number;
+  stock: number;
 }
 
 // Product Creation Interface
