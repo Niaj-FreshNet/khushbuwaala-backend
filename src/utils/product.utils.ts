@@ -51,14 +51,14 @@ export const calculatePriceRange = (variants: IProductVariant[]) => {
  * Calculate total stock from variants
  */
 export const calculateTotalStock = (variants: IProductVariant[]): number => {
-  return variants.reduce((total, variant) => total + variant.stock, 0);
+  return variants.reduce((total, variant) => total + (variant.stock ?? 0), 0);
 };
 
 /**
  * Check if product is in stock
  */
 export const isProductInStock = (variants: IProductVariant[]): boolean => {
-  return variants.some(variant => variant.stock > 0);
+  return variants.some(variant => (variant.stock ?? 0) > 0);
 };
 
 /**
@@ -140,7 +140,7 @@ export const validateStockLevels = (variants: IProductVariant[]): { isValid: boo
   const errors: string[] = [];
   
   variants.forEach((variant, index) => {
-    if (variant.stock < 0) {
+    if ((variant.stock ?? 0) < 0) {
       errors.push(`Variant ${index + 1}: Stock cannot be negative`);
     }
     if (variant.price <= 0) {
@@ -190,7 +190,7 @@ export const filterByStock = (products: any[], stockFilter: 'in' | 'out'): any[]
   if (!stockFilter) return products;
   
   return products.filter(product => {
-    const hasStock = product.variants.some((v: any) => v.stock > 0);
+    const hasStock = product.variants.some((v: any) => (v.stock ?? 0) > 0);
     return stockFilter === 'in' ? hasStock : !hasStock;
   });
 };
@@ -204,7 +204,7 @@ export const getAvailabilityStatus = (variants: IProductVariant[]): {
   count: number;
 } => {
   const totalStock = calculateTotalStock(variants);
-  const inStockVariants = variants.filter(v => v.stock > 0).length;
+  const inStockVariants = variants.filter(v => (v.stock ?? 0) > 0).length;
   
   if (totalStock === 0) {
     return {
