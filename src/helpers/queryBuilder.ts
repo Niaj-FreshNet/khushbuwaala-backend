@@ -436,8 +436,7 @@ export const parseProductQuery = (query: any): IProductQuery => {
     tags: toStringArray(query.tags),
     performance: toStringArray(query.performance),
     perfumeNotes: toStringArray(query.perfumeNotes),
-
-    // variants: toStringArray(query.variants),
+    projection: toStringArray(query.projection),
 
     sortBy,
     sort,

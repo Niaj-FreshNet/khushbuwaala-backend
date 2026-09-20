@@ -1,10 +1,10 @@
-// Base Product Variant Interface (aligned with schema)
+// Base Product Variant Interface (aligned with schema — no per-variant stock;
+// stock is tracked only at the Product level)
 export interface IProductVariant {
   sku: string;
   unit: string;
   size: number;
   price: number;
-  stock: number;
 }
 
 // Product Creation Interface
@@ -104,6 +104,7 @@ export interface IProductQuery {
   accords?: string[];
   perfumeNotes?: string[];
   performance?: string[];
+  projection?: string[];
   bestFor?: string[];
   tags?: string[];
   stock?: "in" | "out";
@@ -154,21 +155,19 @@ export interface IProductVariantResponse {
   unit: string;
   size: number;
   price: number;
-  stock: number;
   productId: string;
   discounts?: IDiscount[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Lightweight variant for listing/search cards
+// Lightweight variant for listing/search/admin cards — no per-variant stock
 export interface IProductVariantLight {
   id: string;
   sku: string;
   unit: string;
   size: number;
   price: number;
-  stock: number;
 }
 
 // ============================================================
@@ -192,7 +191,7 @@ interface IProductCore {
   categoryId?: string;
   category?: {
     categoryName: string;
-    imageUrl: string;
+    imageUrl?: string;
   };
 
   minPrice: number;
@@ -208,8 +207,8 @@ interface IProductCore {
 }
 
 // ============================================================
-// 1) LISTING — getAllProducts, getAllProductsAdmin, category pages,
-//    new arrivals, trending, bestsellers, featured
+// 1) LISTING — getAllProducts, category pages, new arrivals,
+//    trending, bestsellers, featured (PUBLIC storefront)
 // ============================================================
 export interface IProductListingResponse extends IProductCore {
   discount?: IDiscountLight;
@@ -217,7 +216,19 @@ export interface IProductListingResponse extends IProductCore {
 }
 
 // ============================================================
-// 2) SEARCH — searchProducts
+// 1b) ADMIN LISTING — getAllProductsAdmin. Needs category name and
+// the actual variant list (for price range + variant count columns)
+// ============================================================
+export interface IProductAdminListingResponse extends IProductListingResponse {
+  category?: {
+    categoryName: string;
+    imageUrl?: string;
+  };
+  variants: IProductVariantLight[];
+}
+
+// ============================================================
+// 2) SEARCH — searchProducts (minimal fields for fast autocomplete)
 // ============================================================
 export interface IProductSearchResponse {
   id: string;
@@ -276,7 +287,6 @@ export interface IProductDetailResponse extends IProductCore {
 }
 
 // Kept as an alias so anything still importing the old name doesn't break.
-// New code should use IProductDetailResponse directly.
 export type IProductResponse = IProductDetailResponse;
 
 // Analytics Interfaces
@@ -320,7 +330,7 @@ export interface IProductSearchResult {
   };
 }
 
-// Trending Product Interface — now built on the light listing shape
+// Trending Product Interface — built on the light listing shape
 export interface ITrendingProduct extends IProductListingResponse {
   totalSold: number;
   trendingScore: number;

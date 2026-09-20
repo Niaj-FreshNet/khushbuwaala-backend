@@ -65,6 +65,12 @@ enum PaymentState {
   REFUNDED
 }
 
+type PerfumeNotes {
+  top    String[]
+  middle String[]
+  base   String[]
+}
+
 model User {
   id                      String    @id @default(auto()) @map("_id") @db.ObjectId
   name                    String
@@ -149,7 +155,7 @@ model Product {
   origin       String?
   brand        String?
   gender       String?
-  perfumeNotes Json? // { top: [...], middle: [...], base: [...] }
+  perfumeNotes PerfumeNotes? // { top: [...], middle: [...], base: [...] }
   accords      String[]
   performance  String?
   longevity    String?

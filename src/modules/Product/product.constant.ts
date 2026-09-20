@@ -309,7 +309,7 @@ export const LEAN_PRODUCT_INCLUDE = {
   Review: { select: { rating: true } }, // ONLY fetch rating number, ignore comment/user data
   discounts: {
     select: { type: true, value: true, code: true, startDate: true, endDate: true },
-  }
+  },
 };
 
 // Validation constants
