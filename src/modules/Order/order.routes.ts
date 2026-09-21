@@ -13,6 +13,8 @@ router.post(
 
 // Admin order management
 router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getAllOrders);
+// Public order tracking (by ID, invoice, phone, or email)
+router.get('/track/:query', OrderController.trackOrders);
 router.get('/get-order-by-id/:id', auth('OPTIONAL'), OrderController.getOrderById);
 router.patch(
   '/update-order-status/:id',

@@ -15,7 +15,6 @@ export const CartItemServices = {
   }) {
     let price: number;
 
-    // ✅ Determine price
     if (payload.variantId) {
       const variant = await prisma.productVariant.findUnique({
         where: { id: payload.variantId },
@@ -28,7 +27,7 @@ export const CartItemServices = {
       throw new AppError(httpStatus.BAD_REQUEST, 'Please select a valid variant or provide a price');
     }
 
-    // ✅ Check if the item already exists (same user/guest + product + variant)
+    // Find existing active cart item for this user/guest
     const existingItem = await prisma.cartItem.findFirst({
       where: {
         productId: payload.productId,
@@ -39,7 +38,6 @@ export const CartItemServices = {
     });
 
     if (existingItem) {
-      // ✅ If exists, just update quantity
       return prisma.cartItem.update({
         where: { id: existingItem.id },
         data: {
@@ -53,7 +51,6 @@ export const CartItemServices = {
       });
     }
 
-    // ✅ Create new cart item (even if userId is null)
     return prisma.cartItem.create({
       data: {
         userId: payload.userId ?? null,
@@ -111,4 +108,93 @@ export const CartItemServices = {
 
     return prisma.cartItem.delete({ where: { id } });
   },
-};
+
+  // Append to CartItemServices inside src/modules/Cart/cart.services.ts
+
+  async getAllCarts(queryParams: {
+    status?: string;
+    userId?: string;
+    searchTerm?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const limit = Math.max(1, Number(queryParams.limit || 20));
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (queryParams.status) {
+      where.status = queryParams.status;
+    }
+
+    if (queryParams.userId) {
+      where.userId = queryParams.userId;
+    }
+
+    if (queryParams.searchTerm) {
+      const term = String(queryParams.searchTerm).trim();
+      where.OR = [
+        { product: { name: { contains: term, mode: 'insensitive' } } },
+        { user: { name: { contains: term, mode: 'insensitive' } } },
+        { user: { email: { contains: term, mode: 'insensitive' } } },
+        { user: { phone: { contains: term, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.cartItem.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              primaryImage: true,
+              slug: true,
+            },
+          },
+          variant: {
+            select: {
+              id: true,
+              sku: true,
+              size: true,
+              unit: true,
+              price: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              imageUrl: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              invoice: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.cartItem.count({ where }),
+    ]);
+
+    return {
+      meta: {
+        page,
+        limit,
+        total,
+        totalPage: Math.ceil(total / limit),
+      },
+      data: items,
+    };
+  },
+}

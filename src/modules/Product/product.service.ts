@@ -493,11 +493,17 @@ const deleteProduct = async (id: string) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    // 1. Delete associated cart items to prevent orphaned references
+    await tx.cartItem.deleteMany({ where: { productId: id } });
+
+    // 2. Delete other related documents
     await tx.wishlist.deleteMany({ where: { productId: id } });
     await tx.comboVariant.deleteMany({ where: { productId: id } });
     await tx.review.deleteMany({ where: { productId: id } });
     await tx.productVariant.deleteMany({ where: { productId: id } });
     await tx.discount.deleteMany({ where: { productId: id } });
+
+    // 3. Delete the main product
     await tx.product.delete({ where: { id } });
   });
 

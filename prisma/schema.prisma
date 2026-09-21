@@ -352,7 +352,7 @@ model CartItem {
   status CartItemStatus @default(IN_CART) // IN_CART, ORDERED, SOLD
 
   // Relations
-  product Product         @relation(fields: [productId], references: [id])
+  product Product?         @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id])
   user    User?           @relation(fields: [userId], references: [id])
 

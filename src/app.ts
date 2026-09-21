@@ -1,67 +1,73 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import router from './routes/routes';
 import globalErrorHandler from './middlewares/globalErrorHandler';
-import cors from 'cors';
 import NotFound from './middlewares/NotFound';
 import path from 'path';
-// import { PaymentController } from './modules/Payment/payment.controller';
 import cookieParser from 'cookie-parser';
 
 const app = express();
 
-export const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'https://khushbuwaala.vercel.app',
-    'https://khushbuwaala.com',
-    'https://www.khushbuwaala.com',
-    'http://khushbuwaala.com',
-    'http://www.khushbuwaala.com',
-    'http://sgtm.khushbuwaala.com',
-    'https://sgtm.khushbuwaala.com',
-  ],
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://khushbuwaala.vercel.app',
+  'https://khushbuwaala.com',
+  'https://www.khushbuwaala.com',
+  'http://khushbuwaala.com',
+  'http://www.khushbuwaala.com',
+  'http://sgtm.khushbuwaala.com',
+  'https://sgtm.khushbuwaala.com',
+];
 
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-};
+// 1️⃣ Dedicated CORS & Preflight Interceptor (MUST BE FIRST)
+app.use((req: Request, res: Response, next: NextFunction): void => {
+  const origin = req.headers.origin as string;
 
-// **Handle preflight requests for all routes**
-// app.options('*', cors(corsOptions));
+  if (origin && (allowedOrigins.includes(origin) || origin.includes('localhost'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+  }
 
-// Apply CORS middleware globally
-app.use(cors(corsOptions));
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS'
+  );
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token'
+  );
+  res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24h
+
+  // 👉 Intercept OPTIONS preflight immediately and exit with 204 No Content
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
+  next();
+});
+
+// 2️⃣ Body Parsers & Cookies
 app.use(express.json());
 app.use(cookieParser());
-
-app.use('/api', router);
-app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
 
-// app.post(
-//   '/api/payment/webhook',
-//   express.raw({ type: 'application/json' }),
-//   PaymentController.webhook,
-// );
-
-// app.use("/uploads", express.static(path.join("/var/www/uploads")));
+// 3️⃣ Routes
+app.use('/api', router);
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-app.use(globalErrorHandler);
+// 4️⃣ Health Check
+app.get('/', (req: Request, res: Response) => {
+  res.send('Welcome to Khushbuwaala Server');
+});
 
-//test route
-const test = async (req: Request, res: Response) => {
-  const sayHi = 'Welcome to Khushbuwaala Server';
-  res.send(sayHi);
-};
-app.get('/', test);
-//gloabal err handler
+// 5️⃣ Error Handlers (Always last)
 app.use(globalErrorHandler);
-
-//Not Found Route
 app.use(NotFound);
 
 export default app;

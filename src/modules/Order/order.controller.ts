@@ -7,11 +7,13 @@ import { OrderServices } from './order.service';
 import { ORDER_ERROR_MESSAGES } from './order.constant';
 
 // Create Order (Customer OR Guest)
+// Create Order (Customer OR Guest)
 const createOrder = catchAsync(async (req, res) => {
   const payToken = crypto.randomBytes(24).toString("hex");
   const userId = req.user?.id || null; // Optional Auth user
   const {
     cartItemIds,
+    items, // 👈 1. ADD THIS LINE
     amount,
     isPaid,
     method,
@@ -36,14 +38,15 @@ const createOrder = catchAsync(async (req, res) => {
 
   // ✅ Build payload
   const payload = {
-    customerId: userId, // can be null for guests
-    payToken, // ✅ add
+    customerId: userId,
+    payToken,
     amount,
     isPaid: isPaid || false,
     method,
     orderSource: orderSource || 'WEBSITE',
     cartItemIds,
-    customerInfo: customerInfo || null, // for guest user data (name, phone, etc.)
+    items: items || [], // 👈 2. ADD THIS LINE
+    customerInfo: customerInfo || null,
     saleType,
     shippingCost,
     additionalNotes,
@@ -201,6 +204,18 @@ export const getWeeklySalesOverview = catchAsync(async (req, res) => {
   sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
 });
 
+const trackOrders = catchAsync(async (req, res) => {
+  const { query } = req.params;
+  const result = await OrderServices.trackOrders(query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Orders fetched successfully",
+    data: result,
+  });
+});
+
 export const OrderController = {
   createOrder,
   getAllOrders,
@@ -214,4 +229,5 @@ export const OrderController = {
   getAllCustomers,
   getDashboardMetrics,
   getWeeklySalesOverview,
+  trackOrders,
 };
