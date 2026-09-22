@@ -398,11 +398,15 @@ const deleteProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
         throw new AppError_1.default(400, product_constant_1.PRODUCT_ERROR_MESSAGES.PRODUCT_PUBLISHED_CANNOT_DELETE);
     }
     yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        // 1. Delete associated cart items to prevent orphaned references
+        yield tx.cartItem.deleteMany({ where: { productId: id } });
+        // 2. Delete other related documents
         yield tx.wishlist.deleteMany({ where: { productId: id } });
         yield tx.comboVariant.deleteMany({ where: { productId: id } });
         yield tx.review.deleteMany({ where: { productId: id } });
         yield tx.productVariant.deleteMany({ where: { productId: id } });
         yield tx.discount.deleteMany({ where: { productId: id } });
+        // 3. Delete the main product
         yield tx.product.delete({ where: { id } });
     }));
     const safeDeleteCloudinary = (url) => __awaiter(void 0, void 0, void 0, function* () {

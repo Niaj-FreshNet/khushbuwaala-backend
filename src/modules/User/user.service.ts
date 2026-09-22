@@ -43,14 +43,13 @@ const getAllUsers = async (
 
 const getUser = async (id: string) => {
   const result = await prisma.user.findUnique({
-    where: {
-      id,
-    },
+    where: { id },
     select: {
+      id: true,
       name: true,
       email: true,
       role: true,
-      // contact: true,
+      phone: true,
       imageUrl: true,
       address: true,
     },
@@ -60,14 +59,13 @@ const getUser = async (id: string) => {
 
 const getUserByID = async (id: string) => {
   const result = await prisma.user.findUnique({
-    where: {
-      id,
-    },
+    where: { id },
     select: {
+      id: true,
       name: true,
       email: true,
       role: true,
-      // contact: true,
+      phone: true,
       imageUrl: true,
       address: true,
     },
@@ -101,20 +99,32 @@ const changePassword = async (id: string, newPassword: string) => {
 };
 
 const updateUser = async (id: string, data: any) => {
+  const updateData: Record<string, any> = {};
+
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.address !== undefined) updateData.address = data.address;
+  if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+
+  // Accept either phone or contact from payload and save to prisma's `phone` field
+  const incomingPhone = data.phone !== undefined ? data.phone : data.contact;
+  if (incomingPhone !== undefined) {
+    updateData.phone = incomingPhone;
+  }
+
   const result = await prisma.user.update({
-    where: {
-      id,
-    },
-    data,
+    where: { id },
+    data: updateData,
     select: {
+      id: true,
       name: true,
       email: true,
       role: true,
-      // contact: true,
+      phone: true,
       imageUrl: true,
       address: true,
     },
   });
+
   return result;
 };
 

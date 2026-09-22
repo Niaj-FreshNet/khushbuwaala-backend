@@ -73,4 +73,15 @@ exports.CartItemController = {
             message: 'Cart item removed',
         });
     })),
+    // Append to CartItemController in src/modules/Cart/cart.controller.ts
+    getAllCarts: (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+        const result = yield cart_services_1.CartItemServices.getAllCarts(req.query);
+        (0, sendResponse_1.default)(res, {
+            statusCode: http_status_1.default.OK,
+            success: true,
+            message: 'All cart items fetched successfully',
+            meta: result.meta,
+            data: result.data,
+        });
+    })),
 };

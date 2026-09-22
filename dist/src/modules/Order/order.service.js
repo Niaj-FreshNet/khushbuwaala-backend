@@ -28,7 +28,7 @@ const client_1 = require("../../../prisma/client");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const http_status_1 = __importDefault(require("http-status"));
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
-const client_2 = require("@prisma/client"); // ✅ Get All Orders (with customer + salesman info)
+const client_2 = require("@prisma/client");
 const generateInvoice_1 = require("../../helpers/generateInvoice");
 const discount_service_1 = require("../Discount/discount.service");
 const date_fns_1 = require("date-fns");
@@ -42,7 +42,6 @@ const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function
         .buildPagination()
         .getQuery();
     const where = prismaQuery.where || {};
-    // ✅ global search (you will expand this to invoice, district, etc)
     if (searchTerm) {
         const s = String(searchTerm);
         where.OR = [
@@ -52,32 +51,26 @@ const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function
             { email: { contains: s, mode: "insensitive" } },
             { phone: { contains: s, mode: "insensitive" } },
             { method: { contains: s, mode: "insensitive" } },
-            // shipping/billing are Json -> cannot "contains" in Prisma reliably unless you store searchable fields separately
         ];
     }
     if (status)
         where.status = status;
-    // ✅ payment filter
     if (payment === "PAID")
         where.isPaid = true;
     if (payment === "DUE")
         where.isPaid = false;
-    // ✅ method filter
     if (method)
         where.method = String(method);
-    // ✅ date range filter
     if (dateFrom || dateTo) {
         where.orderTime = {};
         if (dateFrom)
             where.orderTime.gte = new Date(String(dateFrom));
         if (dateTo) {
-            // include the full day
             const end = new Date(String(dateTo));
             end.setHours(23, 59, 59, 999);
             where.orderTime.lte = end;
         }
     }
-    // ✅ product filter (this is the new one)
     if (productId) {
         where.productIds = { has: String(productId) };
     }
@@ -109,12 +102,16 @@ const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function
     });
     return { meta, data: normalizedOrders };
 });
-// ✅ Get Single Order (with full nested details)
-const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* () {
-    const order = yield client_1.prisma.order.findUnique({
-        where: { id: orderId },
+const getOrderById = (idOrInvoice) => __awaiter(void 0, void 0, void 0, function* () {
+    const param = String(idOrInvoice || "").trim();
+    // A MongoDB ObjectId must be exactly 24 hexadecimal characters
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(param);
+    const order = yield client_1.prisma.order.findFirst({
+        where: isMongoId
+            ? { OR: [{ id: param }, { invoice: param }] }
+            : { invoice: param },
         include: {
-            customer: { select: { id: true, name: true, imageUrl: true } }, // only valid fields
+            customer: { select: { id: true, name: true, imageUrl: true } },
             orderItems: {
                 include: {
                     product: { select: { id: true, name: true, primaryImage: true } },
@@ -125,7 +122,6 @@ const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* ()
     });
     if (!order)
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
-    // Normalize customer info for guest/manual orders
     const customerData = order.customer || {
         id: null,
         name: order.name || null,
@@ -138,85 +134,79 @@ const getOrderById = (orderId) => __awaiter(void 0, void 0, void 0, function* ()
 });
 // ✅ Create Order with existing CartItems
 const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const { customerId, payToken, cartItemIds, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, coupon, discountAmount, } = payload;
+    var _a;
+    const { customerId, payToken, cartItemIds, items, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, coupon, discountAmount, } = payload;
     // 1️⃣ Fetch valid cart items
-    const cartItems = yield client_1.prisma.cartItem.findMany({
+    const dbCartItems = yield client_1.prisma.cartItem.findMany({
         where: { id: { in: cartItemIds }, status: 'IN_CART' },
         include: { product: true, variant: true },
     });
-    if (cartItems.length === 0) {
+    if (dbCartItems.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'No valid cart items found.');
     }
+    // 2️⃣ Resolve quantities sent by the UI
+    const cartItems = dbCartItems.map((ci) => {
+        let resolvedQty = ci.quantity;
+        if (Array.isArray(items) && items.length > 0) {
+            const match = items.find((it) => it.cartItemId && String(it.cartItemId) === String(ci.id)) ||
+                items.find((it) => it.productId === ci.productId &&
+                    (!ci.variantId || it.variantId === ci.variantId));
+            if (match && Number(match.quantity) > 0) {
+                resolvedQty = Math.max(1, Math.floor(Number(match.quantity)));
+            }
+        }
+        return Object.assign(Object.assign({}, ci), { quantity: resolvedQty });
+    });
     const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
     const discount = Math.max(0, Number(discountAmount || 0));
     const shipping = Number(shippingCost || 0);
-    // final server truth
     const serverAmount = Math.max(0, subtotal - discount) + shipping;
     const normalizeOrGuestEmail = (email) => {
         const e = (email !== null && email !== void 0 ? email : "").trim().toLowerCase();
         if (e)
             return e;
-        // unique enough for your use case
         return `guest+${Date.now()}-${Math.random().toString(16).slice(2)}@khushbuwaala.local`;
     };
-    // 2️⃣ Start transaction with extended timeout
+    // 3️⃣ SAFE EMAIL CHECK: Prevent `users_email_unique_string` duplicate key errors
+    const rawEmail = ((_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) !== null && _a !== void 0 ? _a : "").trim().toLowerCase();
+    let resolvedCustomerId = customerId || null;
+    if (!resolvedCustomerId && rawEmail) {
+        const existingUser = yield client_1.prisma.user.findFirst({
+            where: { email: rawEmail },
+            select: { id: true },
+        });
+        if (existingUser) {
+            resolvedCustomerId = existingUser.id;
+        }
+    }
+    // 4️⃣ Start transaction
     const order = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d;
         const invoice = yield (0, generateInvoice_1.generateInvoice)();
-        // Resolve existing customer or determine connect/create logic
-        let customerConnectOrCreate;
-        const customerEmail = (_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) === null || _a === void 0 ? void 0 : _a.trim().toLowerCase();
-        if (customerId) {
-            // Logged-in user
-            customerConnectOrCreate = { connect: { id: customerId } };
-        }
-        else if (customerEmail) {
-            // Check if a user with this email already exists in DB
-            const existingUser = yield tx.user.findUnique({
-                where: { email: customerEmail },
-                select: { id: true },
-            });
-            if (existingUser) {
-                customerConnectOrCreate = { connect: { id: existingUser.id } };
-            }
-            else {
-                customerConnectOrCreate = {
-                    create: {
-                        name: (_b = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _b !== void 0 ? _b : '',
-                        phone: (_c = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _c !== void 0 ? _c : '',
-                        email: customerEmail,
-                        address: (_d = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _d !== void 0 ? _d : '',
-                    },
-                };
-            }
-        }
-        else {
-            // Fallback for anonymous guest without an email provided
-            customerConnectOrCreate = {
-                create: {
-                    name: (_e = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _e !== void 0 ? _e : 'Guest Customer',
-                    phone: (_f = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _f !== void 0 ? _f : '',
-                    email: `guest+${Date.now()}-${Math.random().toString(16).slice(2)}@khushbuwaala.local`,
-                    address: (_g = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _g !== void 0 ? _g : '',
-                },
-            };
-        }
-        // Create Order
         const newOrder = yield tx.order.create({
             data: {
                 invoice,
                 payToken: payToken || null,
                 amount: serverAmount,
                 isPaid: isPaid || false,
-                method: method || '',
+                method: method || "",
                 orderSource: orderSource || 'WEBSITE',
                 saleType: saleType || 'SINGLE',
                 shippingCost: shipping,
-                additionalNotes: additionalNotes || '',
+                additionalNotes: additionalNotes || "",
                 coupon: coupon ? String(coupon).trim().toUpperCase() : null,
                 discountAmount: Number(discountAmount || 0),
-                // ✅ Safe connection or creation
-                customer: customerConnectOrCreate,
+                // ✅ Connects existing user ID or creates a unique guest record
+                customer: resolvedCustomerId
+                    ? { connect: { id: resolvedCustomerId } }
+                    : {
+                        create: {
+                            name: (_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) !== null && _a !== void 0 ? _a : "",
+                            phone: (_b = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) !== null && _b !== void 0 ? _b : "",
+                            email: normalizeOrGuestEmail(customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email),
+                            address: (_c = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.address) !== null && _c !== void 0 ? _c : "",
+                        },
+                    },
                 shipping: {
                     name: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.name) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.name) || null,
                     phone: (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.phone) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.phone) || null,
@@ -244,18 +234,22 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                 })),
             },
         });
-        // Update CartItems as ordered
-        yield tx.cartItem.updateMany({
-            where: { id: { in: cartItems.map((i) => i.id) } },
-            data: { orderId: newOrder.id, status: 'ORDERED' },
-        });
-        // Update stock and create logs
+        // Update CartItems to ORDERED and update quantity in DB
+        yield Promise.all(cartItems.map((item) => tx.cartItem.update({
+            where: { id: item.id },
+            data: {
+                orderId: newOrder.id,
+                status: 'ORDERED',
+                quantity: item.quantity,
+                price: Number(item.price),
+            },
+        })));
+        // Update stock and create logs using resolved quantity
         for (const item of cartItems) {
             const variantId = item.variantId;
             const productId = item.productId;
             const qty = item.quantity;
-            const variantSize = ((_h = item.variant) === null || _h === void 0 ? void 0 : _h.size) || 0;
-            // Update Product stock & salesCount
+            const variantSize = ((_d = item.variant) === null || _d === void 0 ? void 0 : _d.size) || 0;
             yield tx.product.update({
                 where: { id: productId },
                 data: {
@@ -263,7 +257,6 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                     stock: { decrement: variantSize * qty },
                 },
             });
-            // Log stock change
             yield tx.stockLog.create({
                 data: {
                     productId,
@@ -273,15 +266,14 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                 },
             });
         }
-        // ✅ consume coupon usage ONLY if COD (successful order placement)
         if (coupon && method === "cashOnDelivery") {
             yield discount_service_1.DiscountServices.consumeDiscountUsageByCode(tx, coupon, newOrder.id);
         }
         return newOrder;
     }), {
-        timeout: 20000, // ✅ 20 seconds instead of default 5s
+        timeout: 20000,
     });
-    // 3️⃣ Fetch full order
+    // 5️⃣ Fetch full order
     const fullOrder = yield client_1.prisma.order.findUnique({
         where: { id: order.id },
         include: {
@@ -334,16 +326,12 @@ const cleanNumber = (v, field) => {
 };
 const updateOrder = (orderId, payload, user) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
-    // 1) ensure order exists
     const existing = yield client_1.prisma.order.findUnique({ where: { id: orderId } });
     if (!existing)
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
-    // 2) build a SAFE update object (whitelist)
     const data = {};
-    // status
     if (payload.status !== undefined)
         data.status = payload.status;
-    // payment
     if (payload.isPaid !== undefined) {
         if (typeof payload.isPaid !== 'boolean') {
             throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'isPaid must be boolean');
@@ -352,12 +340,10 @@ const updateOrder = (orderId, payload, user) => __awaiter(void 0, void 0, void 0
     }
     if (payload.method !== undefined)
         data.method = (_a = payload.method) !== null && _a !== void 0 ? _a : null;
-    // source/saleType
     if (payload.orderSource !== undefined)
         data.orderSource = payload.orderSource;
     if (payload.saleType !== undefined)
         data.saleType = payload.saleType;
-    // shippingCost / discount / coupon / notes
     if (payload.shippingCost !== undefined)
         data.shippingCost = cleanNumber(payload.shippingCost, 'shippingCost');
     if (payload.discountAmount !== undefined)
@@ -366,12 +352,10 @@ const updateOrder = (orderId, payload, user) => __awaiter(void 0, void 0, void 0
         data.coupon = payload.coupon ? String(payload.coupon).trim().toUpperCase() : null;
     if (payload.additionalNotes !== undefined)
         data.additionalNotes = (_b = payload.additionalNotes) !== null && _b !== void 0 ? _b : null;
-    // shipping/billing JSON (replace fully)
     if (payload.shipping !== undefined)
         data.shipping = payload.shipping;
     if (payload.billing !== undefined)
         data.billing = payload.billing;
-    // walk-in fields (optional)
     if (payload.name !== undefined)
         data.name = payload.name;
     if (payload.phone !== undefined)
@@ -380,15 +364,12 @@ const updateOrder = (orderId, payload, user) => __awaiter(void 0, void 0, void 0
         data.email = payload.email;
     if (payload.address !== undefined)
         data.address = payload.address;
-    // amount override (optional)
     if (payload.amount !== undefined) {
         const amt = cleanNumber(payload.amount, 'amount');
         if (amt <= 0)
             throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'amount must be > 0');
         data.amount = amt;
     }
-    // optionally: change customerId (be careful)
-    // only allow SUPER_ADMIN / ADMIN to do this
     if (payload.customerId !== undefined) {
         const role = user === null || user === void 0 ? void 0 : user.role;
         if (!['SUPER_ADMIN', 'ADMIN', 'SALESMAN'].includes(role)) {
@@ -398,22 +379,16 @@ const updateOrder = (orderId, payload, user) => __awaiter(void 0, void 0, void 0
             data.customerId = null;
         }
         else {
-            // connect via relation
             data.customer = { connect: { id: payload.customerId } };
-            // also clear walk-in fields if you want:
-            // data.name = null; data.phone = null; data.email = null; data.address = null;
         }
     }
-    // manual sales
     if (payload.salesmanId !== undefined)
         data.salesman = payload.salesmanId
             ? { connect: { id: payload.salesmanId } }
             : { disconnect: true };
-    // 3) must have at least one update
     if (Object.keys(data).length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'No valid fields provided to update');
     }
-    // 4) update
     const updated = yield client_1.prisma.order.update({
         where: { id: orderId },
         data,
@@ -427,7 +402,6 @@ const updateOrder = (orderId, payload, user) => __awaiter(void 0, void 0, void 0
             },
         },
     });
-    // normalize customer for guest/manual
     const customerData = updated.customer || {
         id: null,
         name: updated.name || null,
@@ -465,7 +439,6 @@ const getUserOrders = (userId, queryParams) => __awaiter(void 0, void 0, void 0,
         data: orders,
     };
 });
-// ✅ Get all orders for a specific user
 const getMyOrders = (userId, queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams);
@@ -493,7 +466,6 @@ const getMyOrders = (userId, queryParams) => __awaiter(void 0, void 0, void 0, f
         data: orders,
     };
 });
-// ✅ Get a single order belonging to logged-in user
 const getMyOrder = (userId, orderId) => __awaiter(void 0, void 0, void 0, function* () {
     const order = yield client_1.prisma.order.findFirst({
         where: { id: orderId, customerId: userId },
@@ -510,13 +482,12 @@ const getMyOrder = (userId, orderId) => __awaiter(void 0, void 0, void 0, functi
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
     return order;
 });
-// ✅ Get all customers who have orders (for admin)
 const getAllCustomers = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams);
     const prismaQuery = queryBuilder.buildSort().buildPagination().getQuery();
     const customers = yield client_1.prisma.user.findMany(Object.assign(Object.assign({}, prismaQuery), { where: {
             customerOrders: {
-                some: {}, // fetch users who have at least one order as a customer
+                some: {},
             },
         }, select: {
             id: true,
@@ -525,7 +496,7 @@ const getAllCustomers = (queryParams) => __awaiter(void 0, void 0, void 0, funct
             contact: true,
             address: true,
             imageUrl: true,
-            _count: { select: { customerOrders: true } }, // ✅ same here
+            _count: { select: { customerOrders: true } },
         } }));
     const meta = yield queryBuilder.getPaginationMeta({
         count: (args) => client_1.prisma.user.count({
@@ -536,34 +507,6 @@ const getAllCustomers = (queryParams) => __awaiter(void 0, void 0, void 0, funct
     });
     return { meta, data: customers };
 });
-// const getMyOrders = async (userId: string, queryParams: Record<string, unknown>) => {
-//   const queryBuilder = new PrismaQueryBuilder(queryParams, ['id']);
-//   const prismaQuery = queryBuilder.buildWhere().buildSort().buildPagination().getQuery();
-//   prismaQuery.where = { ...prismaQuery.where, customerId: userId };
-//   prismaQuery.include = { customer: { select: { id: true, name: true, imageUrl: true } } };
-//   const orders = await prisma.order.findMany(prismaQuery);
-//   const meta = await queryBuilder.getPaginationMeta(prisma.order);
-//   return { meta, data: orders };
-// };
-// const getMyOrder = async (userId: string, orderId: string) => {
-//   const order = await prisma.order.findUnique({ where: { id: orderId, customerId: userId }, include: { customer: { select: { id: true, name: true, imageUrl: true } } } });
-//   if (!order) return null;
-//   const cartItems = order.cartItems as { productId: string; quantity: number }[];
-//   const productIds = cartItems.map((item) => item.productId);
-//   const products = await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true, primaryImage: true } });
-//   const detailedCartItems = cartItems.map((item) => ({ ...item, product: products.find((p) => p.id === item.productId) }));
-//   return { ...order, cartItems: detailedCartItems };
-// };
-// const getAllCustomers = async (queryParams: Record<string, unknown>) => {
-//   const searchableFields = ['name'];
-//   const queryBuilder = new PrismaQueryBuilder(queryParams, searchableFields).buildWhere().buildSort().buildPagination().buildSelect();
-//   const prismaQuery = queryBuilder.getQuery();
-//   prismaQuery.where = { ...prismaQuery.where, role: 'USER', Order: { some: {} } };
-//   if (!prismaQuery.select) prismaQuery.select = { id: true, name: true, email: true, contact: true, address: true, imageUrl: true, createdAt: true };
-//   const customers = await prisma.user.findMany(prismaQuery);
-//   const meta = await queryBuilder.getPaginationMeta(prisma.user);
-//   return { meta, data: customers };
-// };
 const resolveOrderSourceWhere = (type) => {
     if (type === "website") {
         return { orderSource: client_2.OrderSource.WEBSITE };
@@ -571,7 +514,7 @@ const resolveOrderSourceWhere = (type) => {
     if (type === "manual") {
         return {
             orderSource: {
-                in: [client_2.OrderSource.MANUAL, client_2.OrderSource.SHOWROOM, client_2.OrderSource.WHOLESALE], // ✅ mutable array
+                in: [client_2.OrderSource.MANUAL, client_2.OrderSource.SHOWROOM, client_2.OrderSource.WHOLESALE],
             },
         };
     }
@@ -595,7 +538,6 @@ const getDashboardMetrics = (...args_1) => __awaiter(void 0, [...args_1], void 0
     const todayStartDhaka = (0, date_fns_1.startOfDay)(nowDhaka);
     const todayEndDhaka = (0, date_fns_1.endOfDay)(nowDhaka);
     const monthStartDhaka = (0, date_fns_1.startOfMonth)(nowDhaka);
-    // Convert Dhaka boundaries -> UTC dates for DB filter
     const todayStart = (0, date_fns_tz_1.fromZonedTime)(todayStartDhaka, TZ);
     const todayEnd = (0, date_fns_tz_1.fromZonedTime)(todayEndDhaka, TZ);
     const monthStart = (0, date_fns_tz_1.fromZonedTime)(monthStartDhaka, TZ);
@@ -661,6 +603,102 @@ const getWeeklySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], voi
         });
     });
 });
+const trackOrders = (queryParam) => __awaiter(void 0, void 0, void 0, function* () {
+    const param = String(queryParam || "").trim();
+    if (!param)
+        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, "Search query is required");
+    const cleanDigits = param.replace(/\D/g, "");
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(param);
+    // 1️⃣ Build MongoDB raw filter to search root fields AND nested JSON fields (shipping/billing)
+    const rawOrConditions = [
+        { invoice: { $regex: param, $options: "i" } },
+        { email: { $regex: param, $options: "i" } },
+        { "shipping.email": { $regex: param, $options: "i" } },
+        { "billing.email": { $regex: param, $options: "i" } },
+    ];
+    if (isMongoId) {
+        rawOrConditions.push({ _id: { $oid: param } });
+    }
+    // If user searched a phone number (e.g. at least 6 digits)
+    if (cleanDigits.length >= 6) {
+        rawOrConditions.push({ phone: { $regex: cleanDigits, $options: "i" } }, { "shipping.phone": { $regex: cleanDigits, $options: "i" } }, { "billing.phone": { $regex: cleanDigits, $options: "i" } });
+    }
+    // Find matching Order IDs using MongoDB's native JSON traversal
+    const matchedOrdersRaw = (yield client_1.prisma.order.findRaw({
+        filter: {
+            $or: rawOrConditions,
+        },
+        options: {
+            projection: { _id: 1 },
+        },
+    }));
+    // Extract the matching 24-char hex ObjectIDs
+    const matchedIds = (matchedOrdersRaw || [])
+        .map((doc) => (typeof doc._id === "object" ? doc._id.$oid : doc._id))
+        .filter(Boolean);
+    if (matchedIds.length === 0) {
+        return [];
+    }
+    // 2️⃣ Fetch the full relations (orderItems, products, variants, customer)
+    const orders = yield client_1.prisma.order.findMany({
+        where: {
+            id: { in: matchedIds },
+        },
+        include: {
+            customer: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                    imageUrl: true,
+                },
+            },
+            orderItems: {
+                include: {
+                    product: {
+                        select: {
+                            id: true,
+                            name: true,
+                            primaryImage: true,
+                        },
+                    },
+                    variant: true,
+                },
+            },
+        },
+        orderBy: { createdAt: "desc" },
+    });
+    // 3️⃣ Normalize customer details so UI gets consistent fields
+    return orders.map((order) => {
+        const shippingJson = order.shipping || {};
+        const billingJson = order.billing || {};
+        const customerObj = order.customer || {};
+        const resolvedName = shippingJson.name ||
+            customerObj.name ||
+            order.name ||
+            "Valued Customer";
+        const resolvedPhone = shippingJson.phone ||
+            customerObj.phone ||
+            order.phone ||
+            "";
+        const resolvedEmail = shippingJson.email ||
+            customerObj.email ||
+            order.email ||
+            "";
+        const resolvedAddress = shippingJson.address ||
+            customerObj.address ||
+            order.address ||
+            "";
+        return Object.assign(Object.assign({}, order), { name: resolvedName, phone: resolvedPhone, email: resolvedEmail, address: resolvedAddress, customer: {
+                id: customerObj.id || null,
+                name: resolvedName,
+                phone: resolvedPhone,
+                email: resolvedEmail,
+                imageUrl: customerObj.imageUrl || null,
+            } });
+    });
+});
 exports.OrderServices = {
     getAllOrders,
     getOrderById,
@@ -674,4 +712,5 @@ exports.OrderServices = {
     getAllCustomers,
     getDashboardMetrics,
     getWeeklySalesOverview,
+    trackOrders,
 };

@@ -22,7 +22,6 @@ exports.CartItemServices = {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d;
             let price;
-            // ✅ Determine price
             if (payload.variantId) {
                 const variant = yield client_1.prisma.productVariant.findUnique({
                     where: { id: payload.variantId },
@@ -37,7 +36,7 @@ exports.CartItemServices = {
             else {
                 throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'Please select a valid variant or provide a price');
             }
-            // ✅ Check if the item already exists (same user/guest + product + variant)
+            // Find existing active cart item for this user/guest
             const existingItem = yield client_1.prisma.cartItem.findFirst({
                 where: {
                     productId: payload.productId,
@@ -47,7 +46,6 @@ exports.CartItemServices = {
                 },
             });
             if (existingItem) {
-                // ✅ If exists, just update quantity
                 return client_1.prisma.cartItem.update({
                     where: { id: existingItem.id },
                     data: {
@@ -60,7 +58,6 @@ exports.CartItemServices = {
                     },
                 });
             }
-            // ✅ Create new cart item (even if userId is null)
             return client_1.prisma.cartItem.create({
                 data: {
                     userId: (_c = payload.userId) !== null && _c !== void 0 ? _c : null,
@@ -120,6 +117,83 @@ exports.CartItemServices = {
             if (!item)
                 throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Cart item not found');
             return client_1.prisma.cartItem.delete({ where: { id } });
+        });
+    },
+    // Append to CartItemServices inside src/modules/Cart/cart.services.ts
+    getAllCarts(queryParams) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const page = Math.max(1, Number(queryParams.page || 1));
+            const limit = Math.max(1, Number(queryParams.limit || 20));
+            const skip = (page - 1) * limit;
+            const where = {};
+            if (queryParams.status) {
+                where.status = queryParams.status;
+            }
+            if (queryParams.userId) {
+                where.userId = queryParams.userId;
+            }
+            if (queryParams.searchTerm) {
+                const term = String(queryParams.searchTerm).trim();
+                where.OR = [
+                    { product: { name: { contains: term, mode: 'insensitive' } } },
+                    { user: { name: { contains: term, mode: 'insensitive' } } },
+                    { user: { email: { contains: term, mode: 'insensitive' } } },
+                    { user: { phone: { contains: term, mode: 'insensitive' } } },
+                ];
+            }
+            const [items, total] = yield Promise.all([
+                client_1.prisma.cartItem.findMany({
+                    where,
+                    skip,
+                    take: limit,
+                    include: {
+                        product: {
+                            select: {
+                                id: true,
+                                name: true,
+                                primaryImage: true,
+                                slug: true,
+                            },
+                        },
+                        variant: {
+                            select: {
+                                id: true,
+                                sku: true,
+                                size: true,
+                                unit: true,
+                                price: true,
+                            },
+                        },
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                phone: true,
+                                imageUrl: true,
+                            },
+                        },
+                        order: {
+                            select: {
+                                id: true,
+                                invoice: true,
+                                status: true,
+                            },
+                        },
+                    },
+                    orderBy: { createdAt: 'desc' },
+                }),
+                client_1.prisma.cartItem.count({ where }),
+            ]);
+            return {
+                meta: {
+                    page,
+                    limit,
+                    total,
+                    totalPage: Math.ceil(total / limit),
+                },
+                data: items,
+            };
         });
     },
 };

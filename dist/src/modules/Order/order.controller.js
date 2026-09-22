@@ -21,11 +21,13 @@ const sendResponse_1 = __importDefault(require("../../utils/sendResponse"));
 const order_service_1 = require("./order.service");
 const order_constant_1 = require("./order.constant");
 // Create Order (Customer OR Guest)
+// Create Order (Customer OR Guest)
 const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const payToken = crypto_1.default.randomBytes(24).toString("hex");
     const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || null; // Optional Auth user
-    const { cartItemIds, amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo, coupon, discountAmount, } = req.body;
+    const { cartItemIds, items, // 👈 1. ADD THIS LINE
+    amount, isPaid, method, saleType, shippingCost, additionalNotes, shippingAddress, billingAddress, orderSource, customerInfo, coupon, discountAmount, } = req.body;
     // Validation
     if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, order_constant_1.ORDER_ERROR_MESSAGES.EMPTY_ORDER);
@@ -35,14 +37,15 @@ const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
     }
     // ✅ Build payload
     const payload = {
-        customerId: userId, // can be null for guests
-        payToken, // ✅ add
+        customerId: userId,
+        payToken,
         amount,
         isPaid: isPaid || false,
         method,
         orderSource: orderSource || 'WEBSITE',
         cartItemIds,
-        customerInfo: customerInfo || null, // for guest user data (name, phone, etc.)
+        items: items || [], // 👈 2. ADD THIS LINE
+        customerInfo: customerInfo || null,
         saleType,
         shippingCost,
         additionalNotes,
@@ -173,6 +176,16 @@ exports.getWeeklySalesOverview = (0, catchAsync_1.default)((req, res) => __await
     const data = yield order_service_1.OrderServices.getWeeklySalesOverview(type);
     (0, sendResponse_1.default)(res, { statusCode: 200, success: true, message: "OK", data });
 }));
+const trackOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { query } = req.params;
+    const result = yield order_service_1.OrderServices.trackOrders(query);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: "Orders fetched successfully",
+        data: result,
+    });
+}));
 exports.OrderController = {
     createOrder,
     getAllOrders,
@@ -186,4 +199,5 @@ exports.OrderController = {
     getAllCustomers,
     getDashboardMetrics: exports.getDashboardMetrics,
     getWeeklySalesOverview: exports.getWeeklySalesOverview,
+    trackOrders,
 };

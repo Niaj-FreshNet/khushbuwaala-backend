@@ -12,6 +12,8 @@ const router = (0, express_1.Router)();
 router.post('/create-order', (0, auth_1.default)('OPTIONAL'), order_controller_1.OrderController.createOrder);
 // Admin order management
 router.get('/get-all-orders', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.getAllOrders);
+// Public order tracking (by ID, invoice, phone, or email)
+router.get('/track/:query', order_controller_1.OrderController.trackOrders);
 router.get('/get-order-by-id/:id', (0, auth_1.default)('OPTIONAL'), order_controller_1.OrderController.getOrderById);
 router.patch('/update-order-status/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.updateOrderStatus);
 router.patch('/update-payment-status/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.updatePaymentStatus);

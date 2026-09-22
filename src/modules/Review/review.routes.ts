@@ -40,4 +40,11 @@ router.get('/get-user-reviews/:userId', reviewController.getUserReviews);
 // 📦 Get all reviews for a specific product
 router.get('/get-product-reviews/:productId', reviewController.getProductReviews);
 
+// 🗑️ Delete review (Admin only)
+router.delete(
+  '/delete-review/:id',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  reviewController.deleteReview
+);
+
 export const ReviewRoutes = router;

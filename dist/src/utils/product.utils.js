@@ -44,14 +44,14 @@ exports.calculatePriceRange = calculatePriceRange;
  * Calculate total stock from variants
  */
 const calculateTotalStock = (variants) => {
-    return variants.reduce((total, variant) => total + variant.stock, 0);
+    return variants.reduce((total, variant) => { var _a; return total + ((_a = variant.stock) !== null && _a !== void 0 ? _a : 0); }, 0);
 };
 exports.calculateTotalStock = calculateTotalStock;
 /**
  * Check if product is in stock
  */
 const isProductInStock = (variants) => {
-    return variants.some(variant => variant.stock > 0);
+    return variants.some(variant => { var _a; return ((_a = variant.stock) !== null && _a !== void 0 ? _a : 0) > 0; });
 };
 exports.isProductInStock = isProductInStock;
 /**
@@ -124,7 +124,8 @@ exports.generateSearchKeywords = generateSearchKeywords;
 const validateStockLevels = (variants) => {
     const errors = [];
     variants.forEach((variant, index) => {
-        if (variant.stock < 0) {
+        var _a;
+        if (((_a = variant.stock) !== null && _a !== void 0 ? _a : 0) < 0) {
             errors.push(`Variant ${index + 1}: Stock cannot be negative`);
         }
         if (variant.price <= 0) {
@@ -172,7 +173,7 @@ const filterByStock = (products, stockFilter) => {
     if (!stockFilter)
         return products;
     return products.filter(product => {
-        const hasStock = product.variants.some((v) => v.stock > 0);
+        const hasStock = product.variants.some((v) => { var _a; return ((_a = v.stock) !== null && _a !== void 0 ? _a : 0) > 0; });
         return stockFilter === 'in' ? hasStock : !hasStock;
     });
 };
@@ -182,7 +183,7 @@ exports.filterByStock = filterByStock;
  */
 const getAvailabilityStatus = (variants) => {
     const totalStock = (0, exports.calculateTotalStock)(variants);
-    const inStockVariants = variants.filter(v => v.stock > 0).length;
+    const inStockVariants = variants.filter(v => { var _a; return ((_a = v.stock) !== null && _a !== void 0 ? _a : 0) > 0; }).length;
     if (totalStock === 0) {
         return {
             status: 'out_of_stock',

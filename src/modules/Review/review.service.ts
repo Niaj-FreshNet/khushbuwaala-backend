@@ -167,6 +167,22 @@ const publishReview = async (id: string) => {
   return updatedReview;
 };
 
+const deleteReview = async (id: string) => {
+  const existingReview = await prisma.review.findUnique({
+    where: { id },
+  });
+
+  if (!existingReview) {
+    throw new AppError(404, 'Review not found');
+  }
+
+  const deletedReview = await prisma.review.delete({
+    where: { id },
+  });
+
+  return deletedReview;
+};
+
 export const ReviewServices = {
   createReview,
   getAllReviews,
@@ -176,4 +192,5 @@ export const ReviewServices = {
   getProductReviews,
   updateReview,
   publishReview,
+  deleteReview,
 };
