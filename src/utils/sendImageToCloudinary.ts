@@ -69,3 +69,52 @@ export const getPublicIdFromCloudinaryUrl = (url: string) => {
   const noVersion = afterUpload.replace(/^v\d+\//, "");
   return noVersion.replace(/\.[a-z0-9]+$/i, ""); // remove extension
 };
+
+export const uploadBase64ToCloudinary = async (
+  base64String: string,
+  folderPath: string = 'khushbuwaala_images/reviews',
+  publicIdPrefix: string = 'review',
+  convertToWebp: boolean = true
+): Promise<{ location: string }> => {
+  try {
+    // 1. Verify Cloudinary environment keys are loaded
+    if (
+      !process.env.CLOUDINARY_CLOUD_NAME ||
+      !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET
+    ) {
+      console.error("Cloudinary Configuration Error: Environment variables are missing!");
+      throw new Error("Cloudinary credentials are not configured properly.");
+    }
+
+    // 2. Perform upload
+    const uploadOptions: Record<string, any> = {
+      folder: folderPath,
+      public_id: `${publicIdPrefix}-${Date.now()}`,
+      resource_type: 'image',
+    };
+
+    if (convertToWebp) {
+      uploadOptions.transformation = [{ fetch_format: 'webp', quality: 'auto' }];
+    }
+
+    const result = await cloudinary.uploader.upload(base64String, uploadOptions);
+
+    if (!result?.secure_url) {
+      throw new Error("Cloudinary did not return a secure URL.");
+    }
+
+    return { location: result.secure_url };
+  } catch (error: any) {
+    // 3. Print the real error to console so it's never 'undefined'
+    console.error("Detailed Cloudinary Upload Error:", error);
+
+    const errorMessage =
+      error?.message ||
+      error?.error?.message ||
+      (typeof error === 'string' ? error : JSON.stringify(error)) ||
+      "Unknown upload error";
+
+    throw new Error(`Cloudinary upload failed: ${errorMessage}`);
+  }
+};

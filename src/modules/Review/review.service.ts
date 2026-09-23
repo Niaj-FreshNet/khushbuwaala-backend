@@ -2,6 +2,7 @@ import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
 import { IReview } from './review.interface';
+import { uploadBase64ToCloudinary } from '../../utils/sendImageToCloudinary';
 
 const createReview = async (userId: string | null, payload: IReview) => {
   const product = await prisma.product.findUnique({
@@ -12,7 +13,6 @@ const createReview = async (userId: string | null, payload: IReview) => {
   if (payload.rating < 0 || payload.rating > 5)
     throw new AppError(400, 'Rating must be between 0 and 5');
 
-  // ✅ Only block duplicate if user is logged in
   if (userId) {
     const existing = await prisma.review.findFirst({
       where: { userId, productId: payload.productId },
@@ -20,17 +20,38 @@ const createReview = async (userId: string | null, payload: IReview) => {
     if (existing) throw new AppError(400, 'You already reviewed this product');
   }
 
+  // Upload to Cloudinary if Base64
+  let finalImageUrl: string | null = null;
+  if (payload.imageUrl && payload.imageUrl.startsWith('data:image')) {
+    try {
+      const uploaded = await uploadBase64ToCloudinary(
+        payload.imageUrl,
+        'khushbuwaala_images/reviews',
+        `review-${payload.productId}`
+      );
+      finalImageUrl = uploaded.location;
+    } catch (uploadError) {
+      console.error("Failed to upload review image to Cloudinary:", uploadError);
+      // Fallback: continue without failing the whole review submission
+      finalImageUrl = null;
+    }
+  } else if (payload.imageUrl) {
+    finalImageUrl = payload.imageUrl;
+  }
+
   const review = await prisma.review.create({
     data: {
       rating: payload.rating,
-      title: payload.title,         // (your "name" stored here)
+      title: payload.title,
+      email: payload.email?.trim() || null, // <--- Add this
       comment: payload.comment,
+      imageUrl: finalImageUrl,             // <--- Add this
       productId: payload.productId,
-      userId: userId ?? undefined,  // ✅ allow null
+      userId: userId ?? undefined,
       isPublished: true,
     },
     include: {
-      user: { select: { name: true, imageUrl: true } },
+      user: { select: { id: true, name: true, imageUrl: true } },
     },
   });
 
