@@ -7,15 +7,15 @@ const router = Router();
 
 router.get('/get-all-users', auth('ADMIN'), UserController.getAllUsers);
 router.get('/get-user-by-id/:id', auth('ADMIN', 'SUPER_ADMIN'), UserController.getUserByID)
-router.get('/profile', auth('ADMIN', 'USER'), UserController.getUser);
+router.get('/profile', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER'), UserController.getUser);
 router.patch(
   '/change-password',
-  auth('ADMIN', 'USER'),
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER'),
   UserController.changePassword,
 );
 router.patch(
   '/update-profile/:id',
-  auth('ADMIN', 'USER'),
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER'),
   upload.single('image'),
   UserController.updateUser,
 );

@@ -511,20 +511,48 @@ const getUserOrders = async (userId: string, queryParams: Record<string, unknown
 };
 
 const getMyOrders = async (userId: string, queryParams: Record<string, unknown>) => {
-  const queryBuilder = new PrismaQueryBuilder(queryParams);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+
+  // Default limit to 200 so user orders are not truncated at 10
+  const normalizedParams = {
+    limit: "100",
+    ...queryParams,
+  };
+
+  const queryBuilder = new PrismaQueryBuilder(normalizedParams);
   const prismaQuery = queryBuilder.buildSort().buildPagination().getQuery();
 
-  const where = { customerId: userId };
+  const where: Prisma.OrderWhereInput = {
+    OR: [
+      { customerId: userId },
+      ...(user?.email ? [{ email: { equals: user.email, mode: "insensitive" as const } }] : []),
+    ],
+  };
 
   const [orders, totalOrders, totalAmount] = await Promise.all([
     prisma.order.findMany({
       ...prismaQuery,
       where,
-      include: {
+      orderBy: prismaQuery.orderBy || { createdAt: "desc" },
+      select: {
+        id: true,
+        invoice: true,
+        status: true,
+        isPaid: true,
+        amount: true,
+        shippingCost: true,
+        orderTime: true,
+        createdAt: true,
         orderItems: {
-          include: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
             product: { select: { id: true, name: true, primaryImage: true } },
-            variant: true,
+            variant: { select: { id: true, size: true, unit: true } },
           },
         },
       },

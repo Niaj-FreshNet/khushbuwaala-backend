@@ -1,69 +1,73 @@
+import { Request, Response } from 'express';
+import httpStatus from 'http-status';
 import { v2 as cloudinary } from 'cloudinary';
 import AppError from '../../errors/AppError';
-import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import catchAsync from '../../utils/catchAsync';
 import { UserServices } from './user.service';
 import { deleteFromCloudinary, uploadToCloudinary } from '../../utils/sendImageToCloudinary';
+import sendResponse from '../../utils/sendResponse';
 
-const getAllUsers = catchAsync(async (req, res) => {
-  const result = await UserServices.getAllUsers(req.user.id, req.query);
+const getAllUsers = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserServices.getAllUsers((req as any).user.id, req.query);
 
   res.status(200).json({
     statusCode: 200,
     success: true,
     message: 'Users Fetched Successfully',
-    data: result.data, // <-- return only the array
+    data: result.data,
   });
 });
 
-const getUser = catchAsync(async (req, res) => {
-  const result = await UserServices.getUser(req.user.id);
-  const isok = result ? true : false;
+const getUser = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserServices.getUser((req as any).user.id);
+  const isok = !!result;
+
   res.status(isok ? 200 : 400).json({
     statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
+    success: isok,
     message: isok ? 'User Fetched Successfully' : 'User Fetching Failed',
-    data: isok ? result : [],
+    data: isok ? result : null,
   });
 });
 
-const getUserByID = catchAsync(async (req, res) => {
-  const result = await UserServices.getUserByID(req.user.id);
-  const isok = result ? true : false;
+const getUserByID = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserServices.getUserByID((req as any).user.id);
+  const isok = !!result;
+
   res.status(isok ? 200 : 400).json({
     statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
+    success: isok,
     message: isok ? 'User Fetched Successfully' : 'User Fetching Failed',
-    data: isok ? result : [],
+    data: isok ? result : null,
   });
 });
 
-const changePassword = catchAsync(async (req, res) => {
-  const userId = req.user.id;
-  const { newPassword } = req.body;
-  const result = await UserServices.changePassword(userId, newPassword);
-  const isok = result ? true : false;
-  res.status(isok ? 200 : 400).json({
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Password Changed Successfully' : 'Password Change Failed',
-    data: isok ? result : [],
+const changePassword = catchAsync(async (req: Request, res: Response) => {
+  const userId = (req as any).user.id;
+  await UserServices.changePassword(userId, req.body);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Password changed successfully',
+    data: null,
   });
 });
 
-const updateUser = catchAsync(async (req, res) => {
+const updateUser = catchAsync(async (req: Request, res: Response) => {
   const userId = req.params.id;
   const user = await prisma.user.findUnique({
     where: { id: userId },
   });
 
-  if (!user) throw new AppError(404, 'User not found');
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, 'User not found');
 
-  const { name, phone, contact, address } = req.body;
+  // ✅ Destructure email and district alongside other fields
+  const { name, email, phone, contact, address, district } = req.body;
   let imageUrl = user.imageUrl;
 
-  // 1. If file uploaded via Multer Memory Storage (Passing 3 arguments: file, folder, prefix)
+  // 1. If file uploaded via Multer Memory Storage
   if (req.file) {
     if (user.imageUrl && user.imageUrl.includes('cloudinary.com')) {
       await deleteFromCloudinary(user.imageUrl).catch(() => { });
@@ -98,11 +102,14 @@ const updateUser = catchAsync(async (req, res) => {
     imageUrl = null;
   }
 
+  // ✅ Pass email, district, and all updated fields to UserServices
   const updatedData = {
     name,
+    email,
     phone: phone || contact,
     contact: phone || contact,
     address,
+    district,
     imageUrl,
     role: req.body.role,
   };
