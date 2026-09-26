@@ -1,3 +1,7 @@
+const BRAND_COLOR = '#1A1A1A';
+const ACCENT_GOLD = '#C59A45';
+const BG_COLOR = '#F9F7F4';
+
 export const VERIFICATION_EMAIL_TEMPLATE = `
 <!DOCTYPE html>
 <html lang="en">
@@ -6,59 +10,27 @@ export const VERIFICATION_EMAIL_TEMPLATE = `
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Verify Your Email</title>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(to right, #4CAF50, #45a049); padding: 20px; text-align: center;">
-    <h1 style="color: white; margin: 0;">Verify Your Email</h1>
-  </div>
-  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <p>Hello,</p>
-    <p>Thank you for signing up! Your verification code is:</p>
-    <div style="text-align: center; margin: 30px 0;">
-      <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #4CAF50;">{verificationCode}</span>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 30px; text-align: center;">
+      <h1 style="color: ${ACCENT_GOLD}; margin: 0; font-size: 26px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+      <p style="color: #ECE5D8; margin: 6px 0 0 0; font-size: 13px; letter-spacing: 1px;">PURE & ARTISANAL FRAGRANCES</p>
     </div>
-    <p>Enter this code on the verification page to complete your registration.</p>
-    <p>This code will expire in 15 minutes for security reasons.</p>
-    <p>If you didn't create an account with us, please ignore this email.</p>
-    <p>Best regards,<br>JudySeide Team</p>
-  </div>
-  <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
-    <p>This is an automated message, please do not reply to this email.</p>
-  </div>
-</body>
-</html>
-`;
-
-export const PASSWORD_RESET_SUCCESS_TEMPLATE = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Password Reset Successful</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(to right, #4CAF50, #45a049); padding: 20px; text-align: center;">
-    <h1 style="color: white; margin: 0;">Password Reset Successful</h1>
-  </div>
-  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <p>Hello,</p>
-    <p>We're writing to confirm that your password has been successfully reset.</p>
-    <div style="text-align: center; margin: 30px 0;">
-      <div style="background-color: #4CAF50; color: white; width: 50px; height: 50px; line-height: 50px; border-radius: 50%; display: inline-block; font-size: 30px;">
-        ✓
+    <div style="padding: 35px 30px;">
+      <h2 style="margin: 0 0 16px; font-size: 20px; color: #111;">Verify Your Account</h2>
+      <p style="margin: 0 0 20px; color: #555;">Welcome to Khushbuwaala. To begin exploring our artisanal attars and fragrance oils, please confirm your email address using the one-time code below:</p>
+      
+      <div style="text-align: center; margin: 30px 0; background: ${BG_COLOR}; border: 1px dashed ${ACCENT_GOLD}; border-radius: 6px; padding: 20px;">
+        <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${BRAND_COLOR}; font-family: monospace;">{verificationCode}</span>
       </div>
+      
+      <p style="font-size: 13px; color: #777; margin: 0 0 20px;">This security code will expire in <strong>15 minutes</strong>.</p>
+      <p style="font-size: 13px; color: #999; margin: 0;">If you did not initiate this registration with Khushbuwaala, you can safely disregard this message.</p>
     </div>
-    <p>If you did not initiate this password reset, please contact our support team immediately.</p>
-    <p>For security reasons, we recommend that you:</p>
-    <ul>
-      <li>Use a strong, unique password</li>
-      <li>Avoid using the same password across multiple sites</li>
-    </ul>
-    <p>Thank you for helping us keep your account secure.</p>
-    <p>Best regards,<br>Your JudySeide Team</p>
-  </div>
-  <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
-    <p>This is an automated message, please do not reply to this email.</p>
+    <div style="border-top: 1px solid #EAE5DE; padding: 20px; text-align: center; font-size: 12px; color: #888;">
+      <p style="margin: 0 0 4px;">&copy; ${new Date().getFullYear()} Khushbuwaala. All rights reserved.</p>
+      <p style="margin: 0;"><a href="https://khushbuwaala.com" style="color: ${ACCENT_GOLD}; text-decoration: none;">khushbuwaala.com</a></p>
+    </div>
   </div>
 </body>
 </html>
@@ -72,22 +44,61 @@ export const PASSWORD_RESET_REQUEST_TEMPLATE = `
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reset Your Password</title>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(to right, #4CAF50, #45a049); padding: 20px; text-align: center;">
-    <h1 style="color: white; margin: 0;">Password Reset</h1>
-  </div>
-  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <p>Hello,</p>
-    <p>We received a request to reset your password. If you didn't make this request, please ignore this email.</p>
-    <p>To reset your password, click the button below:</p>
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="{resetURL}" style="background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 30px; text-align: center;">
+      <h1 style="color: ${ACCENT_GOLD}; margin: 0; font-size: 26px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+      <p style="color: #ECE5D8; margin: 6px 0 0 0; font-size: 13px; letter-spacing: 1px;">ACCOUNT SECURITY</p>
     </div>
-    <p>This link will expire in 15 minutes for security reasons.</p>
-    <p>Best regards,<br>Your Ruebzj Team</p>
+    <div style="padding: 35px 30px;">
+      <h2 style="margin: 0 0 16px; font-size: 20px; color: #111;">Password Reset Request</h2>
+      <p style="margin: 0 0 24px; color: #555;">We received a request to reset the password associated with your Khushbuwaala account. Select the button below to establish a new password:</p>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="{resetURL}" style="background-color: ${BRAND_COLOR}; color: #ffffff; border: 1px solid ${ACCENT_GOLD}; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 14px; letter-spacing: 1px; display: inline-block;">RESET MY PASSWORD</a>
+      </div>
+      
+      <p style="font-size: 13px; color: #777; margin: 0 0 10px;">This link will expire in <strong>15 minutes</strong> for account integrity.</p>
+      <p style="font-size: 12px; color: #999; margin: 0; word-break: break-all;">If the button does not work, paste this URL into your browser:<br><a href="{resetURL}" style="color: #666;">{resetURL}</a></p>
+    </div>
+    <div style="border-top: 1px solid #EAE5DE; padding: 20px; text-align: center; font-size: 12px; color: #888;">
+      <p style="margin: 0 0 4px;">&copy; ${new Date().getFullYear()} Khushbuwaala. All rights reserved.</p>
+      <p style="margin: 0;"><a href="https://khushbuwaala.com" style="color: ${ACCENT_GOLD}; text-decoration: none;">khushbuwaala.com</a></p>
+    </div>
   </div>
-  <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
-    <p>This is an automated message, please do not reply to this email.</p>
+</body>
+</html>
+`;
+
+export const PASSWORD_RESET_SUCCESS_TEMPLATE = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Reset Successful</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 30px; text-align: center;">
+      <h1 style="color: ${ACCENT_GOLD}; margin: 0; font-size: 26px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+      <p style="color: #ECE5D8; margin: 6px 0 0 0; font-size: 13px; letter-spacing: 1px;">ACCOUNT STATUS</p>
+    </div>
+    <div style="padding: 35px 30px; text-align: center;">
+      <div style="background-color: #F3ECE1; color: ${ACCENT_GOLD}; width: 60px; height: 60px; line-height: 60px; border-radius: 50%; display: inline-block; font-size: 28px; margin-bottom: 20px; border: 1px solid ${ACCENT_GOLD};">
+        ✓
+      </div>
+      <h2 style="margin: 0 0 16px; font-size: 20px; color: #111;">Password Successfully Updated</h2>
+      <p style="margin: 0 0 24px; color: #555; text-align: left;">Your Khushbuwaala account credentials have been successfully updated. You may now log in securely using your new password.</p>
+      
+      <div style="margin: 25px 0 0; padding: 15px; background-color: #FAF8F5; border-left: 3px solid ${ACCENT_GOLD}; text-align: left; font-size: 13px; color: #666;">
+        If you did not make this change, please reach out to our team immediately at <a href="mailto:support@khushbuwaala.com" style="color: ${ACCENT_GOLD};">support@khushbuwaala.com</a>.
+      </div>
+    </div>
+    <div style="border-top: 1px solid #EAE5DE; padding: 20px; text-align: center; font-size: 12px; color: #888;">
+      <p style="margin: 0 0 4px;">&copy; ${new Date().getFullYear()} Khushbuwaala. All rights reserved.</p>
+      <p style="margin: 0;"><a href="https://khushbuwaala.com" style="color: ${ACCENT_GOLD}; text-decoration: none;">khushbuwaala.com</a></p>
+    </div>
   </div>
 </body>
 </html>
@@ -99,23 +110,29 @@ export const WELCOME_EMAIL_TEMPLATE = `
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome Aboard</title>
+  <title>Welcome to Khushbuwaala</title>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(to right, #4CAF50, #45a049); padding: 20px; text-align: center;">
-    <h1 style="color: white; margin: 0;">Welcome to Our Community</h1>
-  </div>
-  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <p>Hi {name},</p>
-    <p>We're thrilled to have you on board! 🎉</p>
-    <p>Thanks for verifying your email and joining us. You’re now officially part of our awesome community.</p>
-    <p>Feel free to explore, engage, and make the most of what we have to offer.</p>
-    <p>If you ever have any questions, our team is here to help.</p>
-    <p>Once again, welcome aboard!</p>
-    <p>Best regards,<br>The JudySeide Team</p>
-  </div>
-  <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
-    <p>This is an automated message, please do not reply to this email.</p>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 30px; text-align: center;">
+      <h1 style="color: ${ACCENT_GOLD}; margin: 0; font-size: 26px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+      <p style="color: #ECE5D8; margin: 6px 0 0 0; font-size: 13px; letter-spacing: 1px;">THE ESSENCE OF PURITY</p>
+    </div>
+    <div style="padding: 35px 30px;">
+      <h2 style="margin: 0 0 16px; font-size: 20px; color: #111;">Greetings, {name}</h2>
+      <p style="margin: 0 0 16px; color: #555;">Welcome to <strong>Khushbuwaala</strong>. Your email is verified, and your account is confirmed.</p>
+      <p style="margin: 0 0 20px; color: #555;">From rare single-origin attars to precision fragrance oils, our blends are crafted for enduring character, projection, and depth.</p>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="https://khushbuwaala.com" style="background-color: ${BRAND_COLOR}; color: #ffffff; border: 1px solid ${ACCENT_GOLD}; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 14px; letter-spacing: 1px; display: inline-block;">EXPLORE THE COLLECTION</a>
+      </div>
+      
+      <p style="font-size: 13px; color: #777; margin: 0;">May every fragrance you discover leave a memorable trail.</p>
+    </div>
+    <div style="border-top: 1px solid #EAE5DE; padding: 20px; text-align: center; font-size: 12px; color: #888;">
+      <p style="margin: 0 0 4px;">&copy; ${new Date().getFullYear()} Khushbuwaala. All rights reserved.</p>
+      <p style="margin: 0;"><a href="https://khushbuwaala.com" style="color: ${ACCENT_GOLD}; text-decoration: none;">khushbuwaala.com</a></p>
+    </div>
   </div>
 </body>
 </html>
@@ -127,21 +144,37 @@ export const CONTACT_FORM_TEMPLATE = `
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>New Contact Form Submission</title>
+  <title>Khushbuwaala - Contact Query</title>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(to right, #2196F3, #0b7dda); padding: 20px; text-align: center;">
-    <h1 style="color: white; margin: 0;">New Contact Message</h1>
-  </div>
-  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <p><strong>Name:</strong> {name}</p>
-    <p><strong>Email:</strong> <a href="mailto:{email}">{email}</a></p>
-    <p><strong>Subject:</strong> {subject}</p>
-    <p><strong>Message:</strong></p>
-    <p style="white-space: pre-line;">{message}</p>
-  </div>
-  <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
-    <p>This message was sent via the contact form on your website.</p>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 25px; text-align: center;">
+      <h2 style="color: ${ACCENT_GOLD}; margin: 0; font-size: 20px; letter-spacing: 1.5px; text-transform: uppercase;">Customer Inquiry</h2>
+      <p style="color: #ECE5D8; margin: 4px 0 0 0; font-size: 12px;">KHUSHBUWAALA CONCIERGE</p>
+    </div>
+    <div style="padding: 30px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+        <tr>
+          <td style="padding: 8px 0; color: #888; width: 100px;">Sender:</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #111;">{name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #888;">Email:</td>
+          <td style="padding: 8px 0;"><a href="mailto:{email}" style="color: ${ACCENT_GOLD}; text-decoration: none;">{email}</a></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #888;">Subject:</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #111;">{subject}</td>
+        </tr>
+      </table>
+      
+      <div style="background-color: ${BG_COLOR}; border: 1px solid #EAE5DE; border-radius: 6px; padding: 18px; margin-top: 10px;">
+        <p style="margin: 0; font-size: 14px; color: #333; white-space: pre-line;">{message}</p>
+      </div>
+    </div>
+    <div style="border-top: 1px solid #EAE5DE; padding: 16px; text-align: center; font-size: 12px; color: #888;">
+      Inquiry received via Khushbuwaala storefront.
+    </div>
   </div>
 </body>
 </html>
@@ -155,34 +188,50 @@ export const ORDER_CONFIRMATION_TEMPLATE = `
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Order Confirmation</title>
 </head>
-<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
-    <header style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #eee;">
-      <h1 style="color: #4CAF50; margin: 0;">Thank You for Your Purchase!</h1>
-      <p style="margin: 5px 0; color: #777;">Order Confirmation</p>
-    </header>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 30px; text-align: center;">
+      <h1 style="color: ${ACCENT_GOLD}; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+      <p style="color: #ECE5D8; margin: 6px 0 0 0; font-size: 13px; letter-spacing: 1px;">ORDER CONFIRMATION</p>
+    </div>
+    
+    <div style="padding: 30px;">
+      <h2 style="font-size: 18px; margin: 0 0 8px; color: #111;">Thank you for your order</h2>
+      <p style="margin: 0 0 24px; font-size: 14px; color: #555;">Our team is preparing your fragrances for packaging. You will find your order details below:</p>
+      
+      <div style="background-color: ${BG_COLOR}; border: 1px solid #EAE5DE; border-radius: 6px; padding: 16px; margin-bottom: 25px; font-size: 13px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 0; color: #777;">Customer Email:</td>
+            <td style="padding: 4px 0; font-weight: 500; text-align: right;">{email}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #777;">Shipping Destination:</td>
+            <td style="padding: 4px 0; font-weight: 500; text-align: right;">{address}, {zipcode}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #777;">Contact:</td>
+            <td style="padding: 4px 0; font-weight: 500; text-align: right;">{phone}</td>
+          </tr>
+          <tr style="border-top: 1px solid #DDD6C8;">
+            <td style="padding: 10px 0 4px; font-weight: 600; color: #111;">Total Amount:</td>
+            <td style="padding: 10px 0 4px; font-weight: 700; font-size: 16px; color: ${ACCENT_GOLD}; text-align: right;">$ {amount}</td>
+          </tr>
+        </table>
+      </div>
 
-    <section style="padding: 20px 0;">
-      <h2 style="font-size: 1.2em; margin-bottom: 10px;">Order Details:</h2>
-      <p><strong>Email:</strong> <a href="mailto:{email}">{email}</a></p>
-      <p><strong>Shipping Address:</strong> {address}</p>
-      <p><strong>Shipping Zip Code:</strong> {zipcode}</p>
-      <p><strong>Phone:</strong> {phone}</p>
-      <p><strong>Payment Method:</strong> Stripe</p>
-      <p><strong>Total Paid:</strong> $ {amount}</p>
-    </section>
-
-    <section style="padding: 20px 0;">
-      <h2 style="font-size: 1.2em; margin-bottom: 10px;">Items Ordered:</h2>
-      <ul style="list-style: none; padding: 0;">
+      <h3 style="font-size: 15px; letter-spacing: 0.5px; text-transform: uppercase; margin: 0 0 12px; color: #333; border-bottom: 1px solid #EAE5DE; padding-bottom: 8px;">Selections</h3>
+      <ul style="list-style: none; padding: 0; margin: 0;">
         {items}
       </ul>
-    </section>
+      
+      <p style="font-size: 13px; color: #777; margin: 25px 0 0; text-align: center;">Have inquiries about your selection? Simply reply directly to this email.</p>
+    </div>
 
-    <footer style="text-align: center; font-size: 0.9em; color: #888; padding-top: 20px; border-top: 1px solid #eee;">
-      <p>If you have any questions about your order, feel free to reply to this email.</p>
-      <p>&copy; ${new Date().getFullYear()} Judy Seide. All rights reserved.</p>
-    </footer>
+    <div style="border-top: 1px solid #EAE5DE; padding: 20px; text-align: center; font-size: 12px; color: #888;">
+      <p style="margin: 0 0 4px;">&copy; ${new Date().getFullYear()} Khushbuwaala. All rights reserved.</p>
+      <p style="margin: 0;"><a href="https://khushbuwaala.com" style="color: ${ACCENT_GOLD}; text-decoration: none;">khushbuwaala.com</a></p>
+    </div>
   </div>
 </body>
 </html>
@@ -193,33 +242,52 @@ export const ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE = `
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>New Order Notification</title>
+  <title>Khushbuwaala - New Order Dispatch</title>
 </head>
-<body style="font-family: Arial, sans-serif;">
-  <div style="max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 6px;">
-    <h2 style="color: #d9534f;">New Order Received</h2>
-    <p><strong>Order ID:</strong> {orderId}</p>
-    <p><strong>Order Date:</strong> {date}</p>
-    <p><strong>Customer Email:</strong> {email}</p>
-    <p><strong>Shipping Address:</strong> {address}</p>
-    <p><strong>Shipping Zip Code:</strong> {zipcode}</p>
-    <p><strong>Phone:</strong> {phone}</p>
-    <p><strong>Customer Note:</strong> {note}</p>
-    <p><strong>Total Amount:</strong> $ {amount}</p>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 30px 10px;">
+  <div style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #EAE5DE;">
+    <div style="background-color: ${BRAND_COLOR}; padding: 25px 30px; border-bottom: 2px solid ${ACCENT_GOLD};">
+      <h2 style="color: #ffffff; margin: 0; font-size: 18px; letter-spacing: 1px; text-transform: uppercase;">[Dispatch Alert] New Order Received</h2>
+      <p style="color: ${ACCENT_GOLD}; margin: 4px 0 0 0; font-size: 12px;">Order ID: {orderId}</p>
+    </div>
+    
+    <div style="padding: 30px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+        <tr>
+          <td style="padding: 6px 0; color: #777; width: 130px;">Order Date:</td>
+          <td style="padding: 6px 0; font-weight: 500;">{date}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #777;">Customer Email:</td>
+          <td style="padding: 6px 0; font-weight: 500;"><a href="mailto:{email}" style="color: ${ACCENT_GOLD};">{email}</a></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #777;">Shipping Address:</td>
+          <td style="padding: 6px 0; font-weight: 500;">{address}, Zip: {zipcode}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #777;">Phone:</td>
+          <td style="padding: 6px 0; font-weight: 500;">{phone}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #777;">Customer Note:</td>
+          <td style="padding: 6px 0; font-weight: 500;">{note}</td>
+        </tr>
+        <tr style="border-top: 1px solid #EAE5DE;">
+          <td style="padding: 10px 0; font-weight: 700; color: #111;">Order Total:</td>
+          <td style="padding: 10px 0; font-weight: 700; font-size: 16px; color: #111;">$ {amount}</td>
+        </tr>
+      </table>
 
-    <section style="padding: 20px 0;">
-      <h2 style="font-size: 1.2em; margin-bottom: 10px;">Items Ordered:</h2>
-      <ul style="list-style: none; padding: 0;">
+      <h3 style="font-size: 14px; letter-spacing: 0.5px; text-transform: uppercase; margin: 20px 0 10px; color: #333; border-bottom: 1px solid #EAE5DE; padding-bottom: 6px;">Items to Pack:</h3>
+      <ul style="list-style: none; padding: 0; margin: 0;">
         {items}
       </ul>
-    </section>
-
-    <p style="margin-top: 30px; color: #888;">Please log in to the admin panel to process this order.</p>
-
-    <footer style="text-align: center; font-size: 0.9em; color: #888; padding-top: 20px; border-top: 1px solid #eee;">
-      <p>If you have any questions about your order, feel free to reply to this email.</p>
-      <p>&copy; ${new Date().getFullYear()} Judy Seide. All rights reserved.</p>
-    </footer>
+      
+      <div style="margin-top: 25px; padding: 12px; background-color: ${BG_COLOR}; border-radius: 4px; text-align: center; font-size: 12px; color: #666;">
+        Review inventory levels and update shipment status in the Khushbuwaala Admin Panel.
+      </div>
+    </div>
   </div>
 </body>
 </html>

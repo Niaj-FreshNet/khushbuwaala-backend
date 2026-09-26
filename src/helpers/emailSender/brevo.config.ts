@@ -1,39 +1,32 @@
 import axios from 'axios';
 
-import { response } from 'express';
-
-// Brevo API key from config
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 
 if (!BREVO_API_KEY) {
   throw new Error('Missing Brevo API Key in .env');
 }
 
-// ======== Types ========
 interface EmailContact {
   email: string;
   name?: string;
 }
 
-/**
- * Send a dynamic email using Brevo SMTP API
- * @param to - Array of recipients (email + name)
- * @param subject - Email subject
- * @param htmlContent - HTML content of the email
- * @param textContent - Optional plain text fallback
- */
 export async function sendEmail(
   to: EmailContact[],
   subject: string,
   htmlContent: string,
   textContent?: string,
-): Promise<void> {
+): Promise<any> {
   const endpoint = 'https://api.brevo.com/v3/smtp/email';
 
   const payload = {
     sender: {
-      name: 'Judy Seide',
-      email: 'azizultushar98@gmail.com',
+      name: 'Khushbuwaala Perfumes',
+      email: 'khushbuwaala@gmail.com', 
+    },
+    replyTo: {
+      name: 'Khushbuwaala Support',
+      email: 'khushbuwaala@gmail.com',
     },
     to,
     subject,
@@ -44,20 +37,14 @@ export async function sendEmail(
   try {
     const response = await axios.post(endpoint, payload, {
       headers: {
-        'api-key': BREVO_API_KEY,
+        'api-key': process.env.BREVO_API_KEY,
         'Content-Type': 'application/json',
+        'accept': 'application/json',
       },
     });
     return response.data;
   } catch (error: any) {
-    if (error.response) {
-    } else {
-    }
+    console.error('Brevo API Error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to send email via Brevo');
   }
 }
-
-//documentation
-
-//? first -1 email with object name and email  in a array
-//? second  - subject
-//? third - htmlContent

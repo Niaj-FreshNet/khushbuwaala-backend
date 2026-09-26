@@ -49,7 +49,7 @@ const register = async (payload: IUser) => {
   const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
   // (optional) await if you want to catch failures
-  sendVerificationEmail(normalizedPayload.email, verificationToken);
+  await sendVerificationEmail(normalizedPayload.email, verificationToken);
 
   const result = await prisma.user.create({
     data: {
