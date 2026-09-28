@@ -129,8 +129,14 @@ const createOrderWithCartItems = async (payload: {
   customerId?: string | null;
   payToken?: string;
   cartItemIds: string[];
-  items?: Array<{ cartItemId?: string; productId?: string; variantId?: string; quantity: number }>;
-  amount: number;
+  items?: Array<{
+    cartItemId?: string;
+    productId?: string;
+    variantId?: string;
+    quantity: number;
+    price?: number;
+    originalPrice?: number;
+  }>; amount: number;
   isPaid?: boolean;
   method: string;
   orderSource?: OrderSource;
@@ -172,34 +178,50 @@ const createOrderWithCartItems = async (payload: {
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
   }
 
-  // 2️⃣ Resolve quantities sent by the UI
+  // 2️⃣ Resolve quantities and prices sent by the UI
   const cartItems = dbCartItems.map((ci) => {
     let resolvedQty = ci.quantity;
+    let resolvedPrice = Number(ci.price);
+    let resolvedOriginalPrice = Number(ci.variant?.price ?? ci.price);
 
     if (Array.isArray(items) && items.length > 0) {
       const match =
-        items.find((it) => it.cartItemId && String(it.cartItemId) === String(ci.id)) ||
+        items.find((it: any) => it.cartItemId && String(it.cartItemId) === String(ci.id)) ||
         items.find(
-          (it) =>
+          (it: any) =>
             it.productId === ci.productId &&
             (!ci.variantId || it.variantId === ci.variantId)
         );
 
-      if (match && Number(match.quantity) > 0) {
-        resolvedQty = Math.max(1, Math.floor(Number(match.quantity)));
+      if (match) {
+        if (Number(match.quantity) > 0) {
+          resolvedQty = Math.max(1, Math.floor(Number(match.quantity)));
+        }
+        if (match.price !== undefined && Number(match.price) >= 0) {
+          resolvedPrice = Number(match.price);
+        }
+        if (match.originalPrice !== undefined && Number(match.originalPrice) >= 0) {
+          resolvedOriginalPrice = Number(match.originalPrice);
+        }
       }
     }
+
+    const unitDiscount = Math.max(0, resolvedOriginalPrice - resolvedPrice);
 
     return {
       ...ci,
       quantity: resolvedQty,
+      price: resolvedPrice,
+      originalPrice: resolvedOriginalPrice,
+      discount: unitDiscount,
     };
   });
 
   const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
   const discount = Math.max(0, Number(discountAmount || 0));
   const shipping = Number(shippingCost || 0);
-  const serverAmount = Math.max(0, subtotal - discount) + shipping;
+  // Total payable should match the discounted items sum + shipping
+  const serverAmount = Math.max(0, subtotal) + shipping;
 
   const normalizeOrGuestEmail = (email?: string | null) => {
     const e = (email ?? "").trim().toLowerCase();
@@ -281,7 +303,7 @@ const createOrderWithCartItems = async (payload: {
         },
       });
 
-      // Update CartItems to ORDERED and update quantity in DB
+      // Update CartItems to ORDERED and persist true snapshot prices
       await Promise.all(
         cartItems.map((item) =>
           tx.cartItem.update({
@@ -291,6 +313,8 @@ const createOrderWithCartItems = async (payload: {
               status: 'ORDERED',
               quantity: item.quantity,
               price: Number(item.price),
+              originalPrice: Number(item.originalPrice),
+              discount: Number(item.discount),
             },
           })
         )
@@ -869,6 +893,29 @@ const trackOrders = async (queryParam: string) => {
   });
 };
 
+const deleteOrder = async (orderId: string) => {
+  const existing = await prisma.order.findUnique({
+    where: { id: orderId },
+  });
+
+  if (!existing) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Delete or unlink associated cart items / order items if referenced
+    await tx.cartItem.deleteMany({
+      where: { orderId },
+    });
+
+    return await tx.order.delete({
+      where: { id: orderId },
+    });
+  });
+
+  return result;
+};
+
 export const OrderServices = {
   getAllOrders,
   getOrderById,
@@ -883,4 +930,5 @@ export const OrderServices = {
   getDashboardMetrics,
   getWeeklySalesOverview,
   trackOrders,
+  deleteOrder,
 };

@@ -43,4 +43,10 @@ router.get('/get-user-orders/:id', OrderController.getUserOrders);
 router.get('/my-orders', auth("USER", "SUPER_ADMIN", "ADMIN", "SALESMAN"), OrderController.getMyOrders);
 router.get('/my-orders/:id', auth('USER'), OrderController.getMyOrderByID);
 
+router.delete(
+  '/delete-order/:id',
+  auth('SUPER_ADMIN', 'ADMIN'),
+  OrderController.deleteOrder
+);
+
 export const OrderRoutes = router;

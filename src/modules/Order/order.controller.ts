@@ -216,6 +216,18 @@ const trackOrders = catchAsync(async (req, res) => {
   });
 });
 
+const deleteOrder = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await OrderServices.deleteOrder(id);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Order deleted successfully',
+    data: result,
+  });
+});
+
 export const OrderController = {
   createOrder,
   getAllOrders,
@@ -230,4 +242,5 @@ export const OrderController = {
   getDashboardMetrics,
   getWeeklySalesOverview,
   trackOrders,
+  deleteOrder,
 };

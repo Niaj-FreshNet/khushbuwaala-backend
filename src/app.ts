@@ -12,13 +12,15 @@ const allowedOrigins = [
   'http://localhost:5000',
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://khushbuwaala.com',
   'https://khushbuwaala.vercel.app',
   'https://khushbuwaala.com',
   'https://www.khushbuwaala.com',
-  'http://khushbuwaala.com',
   'http://www.khushbuwaala.com',
   'http://sgtm.khushbuwaala.com',
   'https://sgtm.khushbuwaala.com',
+  'http://admin.khushbuwaala.com',
+  'https://admin.khushbuwaala.com',
 ];
 
 // 1️⃣ Dedicated CORS & Preflight Interceptor (MUST BE FIRST)

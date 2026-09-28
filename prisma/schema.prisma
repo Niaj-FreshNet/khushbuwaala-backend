@@ -341,14 +341,16 @@ model Order {
 }
 
 model CartItem {
-  id        String  @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String? @db.ObjectId // optional, for guest carts
-  productId String  @db.ObjectId
-  variantId String? @db.ObjectId
-  size      Int?
-  unit      String?
-  quantity  Int
-  price     Float
+  id            String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String? @db.ObjectId // optional, for guest carts
+  productId     String  @db.ObjectId
+  variantId     String? @db.ObjectId
+  size          Int?
+  unit          String?
+  quantity      Int
+  price         Float
+  originalPrice Float?
+  discount      Float?
 
   status CartItemStatus @default(IN_CART) // IN_CART, ORDERED, SOLD
 
