@@ -1,4 +1,4 @@
-import { sendEmail } from './brevo.config';
+import { sendEmail } from './email.config';
 import {
   VERIFICATION_EMAIL_TEMPLATE,
   PASSWORD_RESET_REQUEST_TEMPLATE,
@@ -60,6 +60,23 @@ export const sendPasswordResetSuccessEmail = async (to: string) => {
   return response;
 };
 
+export const sendPasswordChangeNotificationEmail = async (to: string, name?: string) => {
+  if (!to) return;
+
+  const template = PASSWORD_RESET_SUCCESS_TEMPLATE;
+
+  try {
+    return await sendEmail(
+      [{ email: to }],
+      'Security Alert: Your Password Was Changed',
+      template,
+    );
+  } catch (error: any) {
+    // Non-blocking: log so an email transport failure doesn't roll back the DB transaction
+    console.error('Failed to send password change alert email:', error.message);
+  }
+};
+
 export const sendFeedbackEmail = async (
   name: string,
   email: string,
@@ -83,84 +100,121 @@ export const sendFeedbackEmail = async (
 };
 
 export const sendOrderConfirmationEmail = async (to: string, order: any) => {
-  const { email, address, zipcode, phone, amount, cartItems } = order;
+  const email =
+    to ||
+    order?.shipping?.email ||
+    order?.billing?.email ||
+    order?.customerInfo?.email ||
+    order?.email;
 
-  // Build item list with updated fields
-  const itemsHTML = cartItems
-    .map(
-      (item: any) => `
-        <li style="display: flex; align-items: center; margin-bottom: 15px;">
-          <img src="${item.productImageUrls?.[0] || ''}" alt="${item.productName}" 
-               style="width: 60px; height: 60px; object-fit: cover; border-radius: 5px; margin-right: 15px;" />
-          <div>
-            <p style="margin: 0 0 5px 0; font-weight: bold;">${item.productName}</p>
-            <p style="margin: 0;">Size: ${item.size} | Color: ${item.color}</p>
-            <p style="margin: 0;">Quantity: ${item.quantity}</p>
-            ${
-              item.price
-                ? `<p style="margin: 0;">Unit Price: $${item.price.toFixed(2)}</p>`
-                : ''
-            }
+  if (!email) return;
+
+  const address =
+    order?.shipping?.address ||
+    order?.billing?.address ||
+    order?.customerInfo?.address ||
+    order?.address ||
+    'N/A';
+
+  const district =
+    order?.shipping?.district ||
+    order?.customerInfo?.district ||
+    order?.district ||
+    '';
+
+  const phone =
+    order?.shipping?.phone ||
+    order?.billing?.phone ||
+    order?.customerInfo?.phone ||
+    order?.phone ||
+    'N/A';
+
+  const amount = Number(order?.amount || 0);
+  const invoice = String(order?.invoice || 'N/A');
+  const orderId = String(order?.id || order?._id || 'N/A');
+
+  // Accommodate both raw cartItems and populated Prisma orderItems
+  const rawItems = order?.orderItems || order?.cartItems || [];
+
+  const itemsHTML = rawItems
+    .map((item: any) => {
+      const img =
+        item.product?.primaryImage ||
+        item.productImageUrls?.[0] ||
+        item.primaryImage ||
+        '';
+
+      const name = item.product?.name || item.productName || item.name || 'Product';
+      const size = item.size ? `${item.size} ${item.unit || ''}`.trim() : item.selectedSize || 'Standard';
+      const qty = item.quantity || 1;
+      const price = Number(item.price || item.selectedPrice || 0);
+
+      return `
+        <li style="display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #f0f0f0; padding-bottom: 10px;">
+          ${img ? `<img src="${img}" alt="${name}" style="width: 55px; height: 55px; object-fit: cover; border-radius: 6px; margin-right: 12px; border: 1px solid #eee;" />` : ''}
+          <div style="flex: 1;">
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #111;">${name}</p>
+            <p style="margin: 0; font-size: 12px; color: #666;">Size: ${size}</p>
+            <p style="margin: 0; font-size: 12px; color: #666;">Qty: ${qty} &times; ৳${price.toFixed(2)}</p>
           </div>
-        </li>`,
-    )
+          <div style="font-weight: 700; color: #111; font-size: 13px;">
+            ৳${(price * qty).toFixed(2)}
+          </div>
+        </li>`;
+    })
     .join('');
 
-  // Inject values into the email template
-  const template = ORDER_CONFIRMATION_TEMPLATE.replace(/{email}/g, email)
-    .replace(/{address}/g, address || 'N/A')
-    .replace(/{zipcode}/g, zipcode || 'N/A')
-    .replace(/{phone}/g, phone || 'N/A')
-    .replace(/{amount}/g, (amount || 0).toFixed(2))
-    .replace(/{items}/g, itemsHTML);
-
-  // Send the email
-  const response = await sendEmail(
-    [{ email: to }],
-    'Your Order Confirmation',
-    template,
-  );
-
-  return response;
-};
-
-export const sendOrderNotificationToAdmin = async (to: string, order: any) => {
-  const { email, address, zipcode, phone, amount, cartItems, id, date, note } =
-    order;
-
-  // Build item list with updated fields
-  const itemsHTML = cartItems
-    .map(
-      (item: any) => `
-        <li style="display: flex; align-items: center; margin-bottom: 15px;">
-          <img src="${item.productImageUrls?.[0] || ''}" alt="${item.productName}" 
-               style="width: 60px; height: 60px; object-fit: cover; border-radius: 5px; margin-right: 15px;" />
-          <div>
-            <p style="margin: 0 0 5px 0; font-weight: bold;">${item.productName}</p>
-            <p style="margin: 0;">Size: ${item.size} | Color: ${item.color}</p>
-            <p style="margin: 0;">Quantity: ${item.quantity}</p>
-            ${
-              item.price
-                ? `<p style="margin: 0;">Unit Price: $${item.price.toFixed(2)}</p>`
-                : ''
-            }
-          </div>
-        </li>`,
-    )
-    .join('');
-
-  const template = ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE.replace(
-    /{orderId}/g,
-    id,
-  )
+  // Replace placeholders including invoice and orderId
+  const template = ORDER_CONFIRMATION_TEMPLATE
+    .replace(/{invoice}/g, invoice)
+    .replace(/{orderId}/g, orderId)
     .replace(/{email}/g, email)
-    .replace(/{address}/g, address || 'N/A')
-    .replace(/{zipcode}/g, zipcode || 'N/A')
-    .replace(/{phone}/g, phone || 'N/A')
-    .replace(/{date}/g, date || '')
-    .replace(/{note}/g, note || 'N/A')
-    .replace(/{amount}/g, (amount || 0).toFixed(2))
+    .replace(/{address}/g, address)
+    .replace(/{district}/g, district)
+    .replace(/{phone}/g, phone)
+    .replace(/{amount}/g, amount.toFixed(2))
     .replace(/{items}/g, itemsHTML);
 
-  return await sendEmail([{ email: to }], 'New Order Received', template);
+  try {
+    return await sendEmail(
+      [{ email }],
+      `Order Confirmation - #${invoice}`,
+      template,
+    );
+  } catch (err: any) {
+    console.error('Failed to dispatch order confirmation email:', err.message);
+  }
+};
+export const sendOrderNotificationToAdmin = async (to: string, order: any) => {
+  const { email, address, district, phone, amount, cartItems, date, note } = order;
+
+  const orderId = String(order.invoice ? `${order.invoice} (${order.id || order._id})` : order.id || 'N/A');
+
+  const itemsHTML = (cartItems || [])
+    .map(
+      (item: any) => `
+        <li style="display: flex; align-items: center; margin-bottom: 15px;">
+          ${item.productImageUrls?.[0] ? `<img src="${item.productImageUrls[0]}" alt="${item.productName}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 5px; margin-right: 15px;" />` : ''}
+          <div>
+            <p style="margin: 0 0 5px 0; font-weight: bold;">${item.productName}</p>
+            <p style="margin: 0; font-size: 12px;">Size: ${item.size}</p>
+            <p style="margin: 0; font-size: 12px;">Quantity: ${item.quantity}</p>
+            <p style="margin: 0; font-size: 12px;">Unit Price: ৳${Number(item.price || 0).toFixed(2)}</p>
+          </div>
+        </li>`,
+    )
+    .join('');
+
+  const template = ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE
+    .replace(/{orderId}/g, orderId)
+    .replace(/{email}/g, email || 'N/A')
+    .replace(/{address}/g, address || 'N/A')
+    .replace(/{district}/g, district || 'N/A')
+    .replace(/{phone}/g, phone || 'N/A')
+    .replace(/{date}/g, date || new Date().toLocaleDateString('en-GB'))
+    .replace(/{note}/g, note || 'N/A')
+    .replace(/{amount}/g, Number(amount || 0).toFixed(2))
+    .replace(/{items}/g, itemsHTML);
+
+  return await sendEmail([{ email: to }], `New Order Received - #${order.invoice || order.id}`, template);
 };

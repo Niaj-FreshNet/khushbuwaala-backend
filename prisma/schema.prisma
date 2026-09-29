@@ -48,6 +48,7 @@ enum CartItemStatus {
 }
 
 enum PaymentProvider {
+  DGEPAY
   BKASH
   NAGAD
   ROCKET

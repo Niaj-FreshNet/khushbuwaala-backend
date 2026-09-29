@@ -4,6 +4,7 @@ import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
+import { sendPasswordChangeNotificationEmail } from '../../helpers/emailSender/emails';
 
 const getAllUsers = async (
   id: string,
@@ -24,10 +25,11 @@ const getAllUsers = async (
       name: true,
       email: true,
       role: true,
-      contact: true,
+      phone: true,
       imageUrl: true,
       address: true,
       district: true,
+      createdAt: true,
     };
   }
 
@@ -69,6 +71,7 @@ const getUserByID = async (id: string) => {
       imageUrl: true,
       address: true,
       district: true,
+      createdAt: true,
     },
   });
   return result;
@@ -84,16 +87,22 @@ const changePassword = async (
     throw new AppError(httpStatus.BAD_REQUEST, 'Both current and new passwords are required');
   }
 
-  // 1. Fetch user including their existing hashed password
+  // 1. Fetch user including their existing hashed password and email
   const user = await prisma.user.findUnique({
     where: { id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      password: true,
+    },
   });
 
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
-  // ✅ Guard check: Ensure user actually has an existing password set
+  // Guard check: Ensure user actually has an existing password set
   if (!user.password) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -101,7 +110,7 @@ const changePassword = async (
     );
   }
 
-  // 2. TypeScript now narrows user.password to type 'string'
+  // 2. Verify current password
   const isPasswordMatched = await bcrypt.compare(oldPassword, user.password);
   if (!isPasswordMatched) {
     throw new AppError(httpStatus.UNAUTHORIZED, 'Current password is incorrect');
@@ -125,6 +134,13 @@ const changePassword = async (
       password: hashedPassword,
     },
   });
+
+  // 5. Fire email alert asynchronously (non-blocking)
+  if (user.email) {
+    sendPasswordChangeNotificationEmail(user.email, user.name).catch((err) => {
+      console.error('Password change email error:', err);
+    });
+  }
 
   return true;
 };

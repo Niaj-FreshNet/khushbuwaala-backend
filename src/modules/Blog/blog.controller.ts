@@ -1,51 +1,46 @@
+import { Request, Response } from 'express';
 import AppError from '../../errors/AppError';
 import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import catchAsync from '../../utils/catchAsync';
-// import {
-//   deleteFromDigitalOceanAWS,
-//   uploadToDigitalOceanAWS,
-// } from '../../utils/sendImageToCloudinary';
 import sendResponse from '../../utils/sendResponse';
 import { IBlog } from './blog.interface';
 import { BlogServices } from './blog.service';
 
-const createBlog = catchAsync(async (req, res) => {
-  const user = req.user;
+const createBlog = catchAsync(async (req: Request, res: Response) => {
+  const user = (req as any).user;
   let imageUrl = '';
 
   if (!req.file?.filename) {
-    throw new AppError(400, 'At least one image is required');
+    throw new AppError(400, 'Image is required for blog creation');
   }
 
-  if (req.file.filename) {
-    imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
-  }
+  imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
 
-  if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-    req.body.isPublish = req.body.isPublish === 'true';
-  }
+  const isPublish =
+    req.body.isPublish === 'true' || req.body.isPublish === true;
 
   const blogdata: IBlog = {
     ...req.body,
     userId: user.id,
     imageUrl,
-    metaTitle: req.body.metaTitle,
-    metaDescription: req.body.metaDescription,
-    keywords: req.body.keywords,
+    isPublish,
+    metaTitle: req.body.metaTitle || req.body.title,
+    metaDescription: req.body.metaDescription || '',
+    keywords: req.body.keywords || '',
   };
 
   const result = await BlogServices.createBlog(blogdata);
-  const isok = result ? true : false;
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blog Created Successfully' : 'Blog Creation Failed',
-    data: isok ? result : [],
+    statusCode: 201,
+    success: true,
+    message: 'Blog Created Successfully',
+    data: result,
   });
 });
 
-const updateBlog = catchAsync(async (req, res) => {
+const updateBlog = catchAsync(async (req: Request, res: Response) => {
   const blogId = req.params.id;
 
   const existingBlog = await prisma.blog.findUnique({
@@ -56,72 +51,76 @@ const updateBlog = catchAsync(async (req, res) => {
     throw new AppError(404, 'Blog not found');
   }
 
-  if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-    req.body.isPublish = req.body.isPublish === 'true';
+  const updateddata: Partial<IBlog> = { ...req.body };
+
+  if (req.body.isPublish !== undefined) {
+    updateddata.isPublish =
+      req.body.isPublish === 'true' || req.body.isPublish === true;
   }
 
-  let updateddata = { ...req.body };
-
   if (req.file?.filename) {
-    if (existingBlog?.imageUrl) {
+    if (existingBlog.imageUrl) {
       await deleteFile(existingBlog.imageUrl);
     }
     updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
   }
 
   const result = await BlogServices.updateBlog(blogId, updateddata);
-  const isok = result ? true : false;
 
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Blog Updated Successfully',
+    data: result,
   });
 });
 
-const getAllBlogs = catchAsync(async (req, res) => {
+const getAllBlogs = catchAsync(async (req: Request, res: Response) => {
   const result = await BlogServices.getAllBlogs(req.query);
-  const isok = result ? true : false;
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blogs Fetched Successfully' : 'Blogs Fetching Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Blogs Fetched Successfully',
+    data: result,
   });
 });
 
-const getAllBlogsAdmin = catchAsync(async (req, res) => {
+const getAllBlogsAdmin = catchAsync(async (req: Request, res: Response) => {
   const result = await BlogServices.getAllBlogsAdmin(req.query);
-  const isok = result ? true : false;
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blogs Fetched Successfully' : 'Blogs Fetching Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Admin Blogs Fetched Successfully',
+    data: result,
   });
 });
 
-const getBlog = catchAsync(async (req, res) => {
-  console.log(req.params.id);
-  const result = await BlogServices.getBlog(req.params.id);
-  const isok = result ? true : false;
+const getBlog = catchAsync(async (req: Request, res: Response) => {
+  const { slug } = req.params; // FIXED: reading 'slug' rather than nonexistent 'id'
+  const result = await BlogServices.getBlog(slug);
+
+  if (!result) {
+    throw new AppError(404, 'Blog not found');
+  }
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blog Fetched Successfully' : 'Blog Fetching Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Blog Fetched Successfully',
+    data: result,
   });
 });
 
-const deleteBlog = catchAsync(async (req, res) => {
+const deleteBlog = catchAsync(async (req: Request, res: Response) => {
   const result = await BlogServices.deleteBlog(req.params.id);
-  const isok = result ? true : false;
+
   sendResponse(res, {
-    statusCode: isok ? 200 : 400,
-    success: isok ? true : false,
-    message: isok ? 'Blog Deleted Successfully' : 'Blog Deletion Failed',
-    data: isok ? result : [],
+    statusCode: 200,
+    success: true,
+    message: 'Blog Deleted Successfully',
+    data: result,
   });
 });
 

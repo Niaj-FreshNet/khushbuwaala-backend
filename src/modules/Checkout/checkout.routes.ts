@@ -4,13 +4,8 @@ import { CheckoutController } from "./checkout.controller";
 
 const router = Router();
 
-// Start payment
-router.post("/bkash/create", auth("OPTIONAL"), CheckoutController.create);
-
-// Callback must be public (bKash redirects back)
-router.get("/bkash/callback", CheckoutController.callback);
-
-// Refund (admin)
-router.post("/bkash/refund/:trxID", auth("ADMIN", "SUPER_ADMIN"), CheckoutController.refund);
+// DGePay Gateway Routes
+router.post("/dgepay/create", auth("OPTIONAL"), CheckoutController.createDgepay);
+router.all("/dgepay/callback", CheckoutController.callbackDgepay);
 
 export const CheckoutRoutes = router;

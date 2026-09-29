@@ -5,13 +5,23 @@ import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import { IBlog } from './blog.interface';
 
+const generateUniqueSlug = async (title: string, currentId?: string): Promise<string> => {
+  let baseSlug = slugify(title, { lower: true, strict: true, trim: true });
+  let slug = baseSlug;
+  let counter = 1;
+
+  while (true) {
+    const existing = await prisma.blog.findUnique({ where: { slug } });
+    if (!existing || (currentId && existing.id === currentId)) {
+      return slug;
+    }
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+};
 
 const createBlog = async (payload: IBlog) => {
-  const slug = slugify(payload.title, { lower: true, strict: true });
-  const existingSlug = await prisma.blog.findUnique({ where: { slug } });
-  if (existingSlug) {
-    throw new AppError(400, 'Blog title must be unique for slug generation');
-  }
+  const slug = await generateUniqueSlug(payload.title);
 
   const result = await prisma.blog.create({
     data: {
@@ -20,7 +30,7 @@ const createBlog = async (payload: IBlog) => {
       content: payload.content,
       imageUrl: payload.imageUrl,
       others: payload.others,
-      isPublish: payload.isPublish,
+      isPublish: payload.isPublish ?? false,
       metaTitle: payload.metaTitle,
       metaDescription: payload.metaDescription,
       keywords: payload.keywords,
@@ -30,42 +40,27 @@ const createBlog = async (payload: IBlog) => {
   return result;
 };
 
-const updateBlog = async (id: string, payload: IBlog) => {
-  let slug = payload.slug;
-  if (payload.title && (!slug || slugify(payload.title, { lower: true, strict: true }) !== slug)) {
-    slug = slugify(payload.title, { lower: true, strict: true });
-    const existingSlug = await prisma.blog.findUnique({ where: { slug } });
-    if (existingSlug && existingSlug.id !== id) {
-      throw new AppError(400, 'Blog title must be unique for slug generation');
-    }
+const updateBlog = async (id: string, payload: Partial<IBlog>) => {
+  const updateData: any = { ...payload };
+
+  if (payload.title) {
+    updateData.slug = await generateUniqueSlug(payload.title, id);
   }
 
   const result = await prisma.blog.update({
     where: { id },
-    data: {
-      title: payload.title,
-      content: payload.content,
-      imageUrl: payload.imageUrl,
-      others: payload.others,
-      isPublish: payload.isPublish,
-      metaTitle: payload.metaTitle,
-      metaDescription: payload.metaDescription,
-      keywords: payload.keywords,
-      slug,
-    },
+    data: updateData,
   });
   return result;
 };
 
-// Get all blog for normal user
 const getAllBlogs = async (queryParams: Record<string, unknown>) => {
-  const queryBuilder = new PrismaQueryBuilder(queryParams, [
+  const filterParams = { ...queryParams, isPublish: true };
+
+  const queryBuilder = new PrismaQueryBuilder(filterParams, [
     'title',
     'content',
   ]);
-
-  // Add isPublish filter to queryParams before building the query
-  queryParams.isPublish = true;
 
   const prismaQuery = queryBuilder
     .buildWhere()
@@ -76,6 +71,10 @@ const getAllBlogs = async (queryParams: Record<string, unknown>) => {
 
   const blogs = await prisma.blog.findMany({
     ...prismaQuery,
+    where: {
+      ...prismaQuery.where,
+      isPublish: true,
+    },
     include: {
       user: {
         select: {
@@ -85,22 +84,20 @@ const getAllBlogs = async (queryParams: Record<string, unknown>) => {
         },
       },
     },
+    orderBy: { createdAt: 'desc' },
   });
 
   const meta = await queryBuilder.getPaginationMeta(prisma.blog);
 
-  return {
-    meta,
-    data: blogs,
-  };
+  return { meta, data: blogs };
 };
 
-// --- Admin --- Get All Blogs with ispublished = false and isdeleted = true
 const getAllBlogsAdmin = async (queryParams: Record<string, unknown>) => {
   const queryBuilder = new PrismaQueryBuilder(queryParams, [
     'title',
     'content',
   ]);
+
   const prismaQuery = queryBuilder
     .buildWhere()
     .buildSort()
@@ -119,14 +116,12 @@ const getAllBlogsAdmin = async (queryParams: Record<string, unknown>) => {
         },
       },
     },
+    orderBy: { createdAt: 'desc' },
   });
 
   const meta = await queryBuilder.getPaginationMeta(prisma.blog);
 
-  return {
-    meta,
-    data: blogs,
-  };
+  return { meta, data: blogs };
 };
 
 const getBlog = async (slug: string) => {
@@ -141,7 +136,6 @@ const getBlog = async (slug: string) => {
 
   const relatedBlogs = await prisma.blog.findMany({
     where: {
-      userId: blog.userId,
       NOT: { slug },
       isPublish: true,
     },
@@ -154,25 +148,17 @@ const getBlog = async (slug: string) => {
       metaTitle: true,
       metaDescription: true,
       keywords: true,
+      createdAt: true,
     },
-    take: 8,
-    orderBy: {
-      createdAt: 'desc',
-    },
+    take: 4,
+    orderBy: { createdAt: 'desc' },
   });
 
-  return {
-    blog,
-    relatedBlogs,
-  };
+  return { blog, relatedBlogs };
 };
 
 const deleteBlog = async (id: string) => {
-  const blog = await prisma.blog.findUnique({
-    where: {
-      id,
-    },
-  });
+  const blog = await prisma.blog.findUnique({ where: { id } });
 
   if (!blog) throw new AppError(404, 'Blog not found');
 
@@ -180,12 +166,7 @@ const deleteBlog = async (id: string) => {
     await deleteFile(blog.imageUrl);
   }
 
-  const result = await prisma.blog.delete({
-    where: {
-      id,
-    },
-  });
-  return result;
+  return await prisma.blog.delete({ where: { id } });
 };
 
 export const BlogServices = {

@@ -8,6 +8,7 @@ import { DiscountServices } from '../Discount/discount.service';
 import { DashboardType, UpdateOrderPayload } from './order.interface';
 import { subDays, startOfDay, endOfDay, startOfMonth, format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
+import { sendOrderConfirmationEmail, sendOrderNotificationToAdmin } from '../../helpers/emailSender/emails';
 
 const getAllOrders = async (queryParams: Record<string, unknown>) => {
   const { searchTerm, status, payment, method, dateFrom, dateTo, productId, ...rest } = queryParams;
@@ -360,7 +361,7 @@ const createOrderWithCartItems = async (payload: {
   const fullOrder = await prisma.order.findUnique({
     where: { id: order.id },
     include: {
-      customer: { select: { id: true, name: true, imageUrl: true } },
+      customer: { select: { id: true, name: true, email: true, imageUrl: true } },
       orderItems: {
         include: {
           product: { select: { id: true, name: true, primaryImage: true } },
@@ -381,7 +382,50 @@ const createOrderWithCartItems = async (payload: {
     imageUrl: null,
   };
 
-  return { ...fullOrder, customer: customerData };
+  const finalOrder = { ...fullOrder, customer: customerData };
+
+  // ========================================================
+  // 📧 Send Emails for Cash on Delivery Orders
+  // ========================================================
+  if (finalOrder.method === 'cashOnDelivery') {
+    const customerEmail =
+      (finalOrder.shipping as any)?.email ||
+      (finalOrder.billing as any)?.email ||
+      finalOrder.customer?.email ||
+      finalOrder.email;
+
+    if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
+      sendOrderConfirmationEmail(customerEmail, finalOrder).catch((err: any) =>
+        console.error('❌ Failed to send COD confirmation email to customer:', err.message),
+      );
+    }
+
+    // Admin Dispatch Alert
+    const adminEmail = process.env.ADMIN_EMAIL || 'khushbuwaala@gmail.com';
+    if (adminEmail) {
+      sendOrderNotificationToAdmin(adminEmail, {
+        ...finalOrder,
+        email: customerEmail || 'N/A',
+        address: (finalOrder.shipping as any)?.address || finalOrder.address || 'N/A',
+        district: (finalOrder.shipping as any)?.district || '',
+        phone: (finalOrder.shipping as any)?.phone || finalOrder.phone || 'N/A',
+        date: new Date().toLocaleDateString('en-GB'),
+        note: finalOrder.additionalNotes || 'N/A',
+        cartItems: (finalOrder.orderItems || []).map((oi: any) => ({
+          productName: oi.product?.name || 'Product',
+          productImageUrls: [oi.product?.primaryImage || ''],
+          size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
+          // color: 'N/A',
+          quantity: oi.quantity,
+          price: Number(oi.price || 0),
+        })),
+      }).catch((err: any) =>
+        console.error('❌ Failed to send COD notification email to admin:', err.message),
+      );
+    }
+  }
+
+  return finalOrder;
 };
 
 const updateOrderStatus = async (orderId: string, payload: Record<string, unknown>) => {

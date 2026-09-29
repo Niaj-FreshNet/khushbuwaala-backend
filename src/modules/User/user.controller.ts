@@ -8,13 +8,17 @@ import { UserServices } from './user.service';
 import { deleteFromCloudinary, uploadToCloudinary } from '../../utils/sendImageToCloudinary';
 import sendResponse from '../../utils/sendResponse';
 
-const getAllUsers = catchAsync(async (req: Request, res: Response) => {
-  const result = await UserServices.getAllUsers((req as any).user.id, req.query);
+const getAllUsers = catchAsync(async (req, res) => {
+  const userId = req.user?.id; // Current user ID (omitted from listing)
 
-  res.status(200).json({
-    statusCode: 200,
+  // Pass req.query into getAllUsers
+  const result = await UserServices.getAllUsers(userId, req.query);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
     success: true,
     message: 'Users Fetched Successfully',
+    meta: result.meta,
     data: result.data,
   });
 });
@@ -31,15 +35,17 @@ const getUser = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const getUserByID = catchAsync(async (req: Request, res: Response) => {
-  const result = await UserServices.getUserByID((req as any).user.id);
-  const isok = !!result;
+const getUserByID = catchAsync(async (req, res) => {
+  // ✅ CORRECT: Read the ID from the route path parameter (:id)
+  const { id } = req.params;
 
-  res.status(isok ? 200 : 400).json({
-    statusCode: isok ? 200 : 400,
-    success: isok,
-    message: isok ? 'User Fetched Successfully' : 'User Fetching Failed',
-    data: isok ? result : null,
+  const result = await UserServices.getUserByID(id);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'User Fetched Successfully',
+    data: result,
   });
 });
 

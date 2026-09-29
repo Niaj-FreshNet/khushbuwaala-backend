@@ -1,158 +1,230 @@
 import axios, { AxiosInstance } from "axios";
+import CryptoJS from "crypto-js";
 
-type TokenCache = {
-  idToken: string | null;
-  refreshToken: string | null;
+type DgePayTokenCache = {
+  accessToken: string | null;
   expiresAtMs: number;
 };
 
-class BkashGatewayService {
+class DgePayGatewayService {
   private http: AxiosInstance;
-  private token: TokenCache = { idToken: null, refreshToken: null, expiresAtMs: 0 };
+  private token: DgePayTokenCache = { accessToken: null, expiresAtMs: 0 };
 
   constructor() {
-    const baseURL = process.env.BKASH_BASE_URL;
-    if (!baseURL) throw new Error("BKASH_BASE_URL missing");
+    const baseURL = process.env.DGEPAY_BASE_URL;
+    if (!baseURL) throw new Error("DGEPAY_BASE_URL missing");
 
     this.http = axios.create({
-      baseURL,
-      timeout: 30000, // bKash recommends default 30s timeout :contentReference[oaicite:9]{index=9}
+      baseURL: baseURL.replace(/\/+$/, ""),
+      timeout: 30000,
     });
   }
 
-  private credsHeaders() {
-    return {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      username: process.env.BKASH_USERNAME!,
-      password: process.env.BKASH_PASSWORD!,
-    };
-  }
+  // --- Authentication ---
+  private async authenticate(): Promise<string> {
+    const clientId = process.env.DGEPAY_CLIENT_ID!;
+    const clientSecret = process.env.DGEPAY_CLIENT_SECRET!;
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  private async grantToken() {
-    const { data } = await this.http.post(
-      "/tokenized/checkout/token/grant",
+    const response = await this.http.post(
+      "/authenticate",
+      {},
       {
-        app_key: process.env.BKASH_API_KEY,
-        app_secret: process.env.BKASH_SECRET_KEY,
-      },
-      { headers: this.credsHeaders() }
+        headers: { Authorization: `Basic ${basicAuth}` },
+      }
     );
 
-    // docs: expires_in default 3600s :contentReference[oaicite:10]{index=10}
-    const expiresInSec = Number(data.expires_in ?? 3600);
-    this.token.idToken = data.id_token;
-    this.token.refreshToken = data.refresh_token?.toString?.() ?? null;
-    this.token.expiresAtMs = Date.now() + expiresInSec * 1000;
+    const data = response.data?.data || response.data;
+    const token = data?.access_token;
+    if (!token) throw new Error("Failed to retrieve DGePay access token");
 
-    return this.token.idToken!;
+    this.token.accessToken = token;
+    this.token.expiresAtMs = Date.now() + 55 * 60 * 1000;
+    return token;
   }
 
-  private async refreshToken() {
-    const { data } = await this.http.post(
-      "/tokenized/checkout/token/refresh",
-      {
-        app_key: process.env.BKASH_API_KEY,
-        app_secret: process.env.BKASH_SECRET_KEY,
-        refresh_token: this.token.refreshToken,
-      },
-      { headers: this.credsHeaders() }
-    );
-
-    const expiresInSec = Number(data.expires_in ?? 3600);
-    this.token.idToken = data.id_token;
-    this.token.refreshToken = data.refresh_token?.toString?.() ?? this.token.refreshToken;
-    this.token.expiresAtMs = Date.now() + expiresInSec * 1000;
-
-    return this.token.idToken!;
-  }
-
-  private async getIdToken() {
-    // 60s safety
-    if (this.token.idToken && Date.now() < this.token.expiresAtMs - 60_000) {
-      return this.token.idToken;
+  private async getAccessToken(): Promise<string> {
+    if (this.token.accessToken && Date.now() < this.token.expiresAtMs) {
+      return this.token.accessToken;
     }
-    if (this.token.refreshToken) {
+    return await this.authenticate();
+  }
+
+  // --- Checksum & Crypto Algorithms ---
+  private normalizeAmount(value: any): string {
+    if (typeof value === "number") {
+      if (Number.isInteger(value)) return `${value}.0`;
+      return value.toString();
+    }
+    return String(value);
+  }
+
+  private createCheckSum(payload: Record<string, any>): string {
+    const checksumParts: string[] = [];
+
+    const buildChecksumString = (obj: Record<string, any>) => {
+      const sortedKeys = Object.keys(obj).sort();
+      for (const key of sortedKeys) {
+        const value = obj[key];
+        checksumParts.push(key);
+
+        if (value === null || value === undefined) {
+          checksumParts.push("null");
+        } else if (typeof value === "object" && !Array.isArray(value)) {
+          buildChecksumString(value);
+        } else {
+          let strVal = key === "amount" ? this.normalizeAmount(value) : String(value);
+          strVal = strVal.replace(/\s+/g, "").replace(/:/g, "");
+          checksumParts.push(strVal);
+        }
+      }
+    };
+
+    buildChecksumString(payload);
+    return checksumParts.join("");
+  }
+
+  private generateHMACSignature(apiKey: string, bodyText: string): string {
+    const hash = CryptoJS.HmacSHA256(bodyText, apiKey);
+    return CryptoJS.enc.Base64.stringify(hash);
+  }
+
+  private encryptPayload(rawJsonBody: string, secretKey: string): string {
+    const key16 = CryptoJS.enc.Utf8.parse(secretKey.substring(0, 16));
+    const encrypted = CryptoJS.AES.encrypt(rawJsonBody, key16, {
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7,
+    });
+    return encrypted.toString();
+  }
+
+  public decryptPayload(encryptedBase64: string): any {
+    try {
+      const secretKey = process.env.DGEPAY_SECRET_KEY!;
+      const key16 = CryptoJS.enc.Utf8.parse(secretKey.substring(0, 16));
+
+      // Clean leading/trailing quotes if Axios improperly parsed it as a string literal
+      const cleanBase64 = encryptedBase64.replace(/^"|"$/g, "").trim();
+
+      const decrypted = CryptoJS.AES.decrypt(cleanBase64, key16, {
+        mode: CryptoJS.mode.ECB,
+        padding: CryptoJS.pad.Pkcs7,
+      });
+
+      const decryptedText = decrypted.toString(CryptoJS.enc.Utf8);
+      if (!decryptedText) return { _raw: encryptedBase64, _error: "Decryption resulted in empty string" };
+
+      // Strip invisible control characters generated by PKCS7 padding parsing
+      const cleanText = decryptedText.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+      return JSON.parse(cleanText);
+    } catch (error: any) {
+      console.error("❌ DGePay Decryption Failed:", error.message);
+      return { _raw_encrypted: encryptedBase64, _decryption_error: error.message };
+    }
+  }
+
+  // --- API Calls ---
+  async initiatePayment(payload: {
+    amount: number;
+    redirect_url: string;
+    unique_txn_id: string;
+    note: string;
+    payee_information: {
+      dial_code: string;
+      phone_number: string;
+    };
+    meta_data?: {
+      custom_field_1?: string;
+      custom_field_2?: string;
+      custom_field_3?: string;
+    };
+  }) {
+    const token = await this.getAccessToken();
+    const apiKey = process.env.DGEPAY_API_KEY!;
+    const secretKey = process.env.DGEPAY_SECRET_KEY!;
+
+    const payloadObj = {
+      amount: payload.amount,
+      customer_token: null,
+      note: payload.note,
+      payee_information: payload.payee_information,
+      payment_method: null,
+      redirect_url: payload.redirect_url,
+      unique_txn_id: payload.unique_txn_id,
+      meta_data: {
+        custom_field_1: payload.meta_data?.custom_field_1 || "",
+        custom_field_2: payload.meta_data?.custom_field_2 || "",
+        custom_field_3: payload.meta_data?.custom_field_3 || "",
+      },
+    };
+
+    const rawJsonBody = JSON.stringify(payloadObj);
+    const checksumString = this.createCheckSum(payloadObj);
+    const signature = this.generateHMACSignature(apiKey, checksumString);
+    const encryptedPayload = this.encryptPayload(rawJsonBody, secretKey);
+
+    const { data } = await this.http.post("/initiate_payment", encryptedPayload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Signature: signature,
+        "Content-Type": "text/plain",
+      },
+      responseType: "text", // 👈 CRITICAL: Prevents Axios from messing up the raw text response
+    });
+
+    // console.log("📥 Raw DGePay Success Response:", data);
+
+    let parsedData: any = data;
+
+    if (typeof data === "string") {
       try {
-        return await this.refreshToken(); // refresh endpoint :contentReference[oaicite:11]{index=11}
+        parsedData = JSON.parse(data);
       } catch {
-        return await this.grantToken(); // grant endpoint :contentReference[oaicite:12]{index=12}
+        // Not a JSON string -> try decrypting
+        parsedData = this.decryptPayload(data);
       }
     }
-    return await this.grantToken();
+
+    if (parsedData?.data && typeof parsedData.data === "string" && parsedData.data.length > 20) {
+      try {
+        parsedData.data = this.decryptPayload(parsedData.data);
+      } catch (err) {
+        // keep as is if not decryptable
+      }
+    }
+
+    return parsedData;
   }
 
-  private async authHeaders() {
-    const idToken = await this.getIdToken();
-    return {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Authorization: idToken, // id_token used as Authorization :contentReference[oaicite:13]{index=13}
-      "X-App-Key": process.env.BKASH_API_KEY!,
-    };
-  }
+  async checkTransactionStatus(unique_txn_id: string) {
+    const token = await this.getAccessToken();
+    const apiKey = process.env.DGEPAY_API_KEY!;
+    const secretKey = process.env.DGEPAY_SECRET_KEY!;
 
-  async createPayment(payload: {
-    amount: number;
-    callbackURL: string;
-    payerReference: string;
-    invoice: string;
-  }) {
-    const { data } = await this.http.post(
-      "/tokenized/checkout/create",
-      {
-        mode: "0011", // URL checkout requires 0011 :contentReference[oaicite:14]{index=14}
-        payerReference: payload.payerReference,
-        callbackURL: payload.callbackURL, // base URL :contentReference[oaicite:15]{index=15}
-        amount: payload.amount.toFixed(2),
-        currency: "BDT",
-        intent: "sale", // required :contentReference[oaicite:16]{index=16}
-        merchantInvoiceNumber: payload.invoice,
+    const payloadObj = { unique_txn_id };
+    const rawJsonBody = JSON.stringify(payloadObj);
+    const checksumString = this.createCheckSum(payloadObj);
+    const signature = this.generateHMACSignature(apiKey, checksumString);
+    const encryptedPayload = this.encryptPayload(rawJsonBody, secretKey);
+
+    const { data } = await this.http.post("/check_transaction_status", encryptedPayload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Signature: signature,
+        "Content-Type": "text/plain",
       },
-      { headers: await this.authHeaders() }
-    );
+      responseType: "text",
+    });
 
-    return data;
-  }
+    let parsedData = data;
+    if (typeof data === "string" && data.length > 10) {
+      parsedData = this.decryptPayload(data);
+    } else if (data?.data && typeof data.data === "string") {
+      parsedData = this.decryptPayload(data.data);
+    }
 
-  async executePayment(paymentID: string) {
-    const { data } = await this.http.post(
-      "/tokenized/checkout/execute",
-      { paymentID }, // required :contentReference[oaicite:17]{index=17}
-      { headers: await this.authHeaders() }
-    );
-    return data;
-  }
-
-  async queryPayment(paymentID: string) {
-    const { data } = await this.http.post(
-      "/tokenized/checkout/payment/status",
-      { paymentID },
-      { headers: await this.authHeaders() }
-    );
-    return data;
-  }
-
-  async refundTransaction(payload: {
-    paymentId: string;
-    trxId: string;
-    refundAmount: number;
-    sku: string;
-    reason: string;
-  }) {
-    const { data } = await this.http.post(
-      "/v2/tokenized-checkout/refund/payment/transaction", // refund URL :contentReference[oaicite:18]{index=18}
-      {
-        paymentId: payload.paymentId,
-        trxId: payload.trxId,
-        refundAmount: payload.refundAmount.toFixed(2),
-        sku: payload.sku,
-        reason: payload.reason,
-      },
-      { headers: await this.authHeaders() }
-    );
-    return data;
+    return parsedData;
   }
 }
 
-export const bkashGateway = new BkashGatewayService();
+export const dgepayGateway = new DgePayGatewayService();
