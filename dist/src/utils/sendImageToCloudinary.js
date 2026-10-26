@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPublicIdFromCloudinaryUrl = exports.deleteFromCloudinaryByPublicId = exports.deleteFromCloudinary = exports.uploadToCloudinary = exports.upload = void 0;
+exports.uploadBase64ToCloudinary = exports.getPublicIdFromCloudinaryUrl = exports.deleteFromCloudinaryByPublicId = exports.deleteFromCloudinary = exports.uploadToCloudinary = exports.upload = void 0;
 const multer_1 = __importDefault(require("multer"));
 const cloudinary_1 = require("cloudinary");
 // ✅ Multer memory storage for in-memory buffer
@@ -79,3 +79,39 @@ const getPublicIdFromCloudinaryUrl = (url) => {
     return noVersion.replace(/\.[a-z0-9]+$/i, ""); // remove extension
 };
 exports.getPublicIdFromCloudinaryUrl = getPublicIdFromCloudinaryUrl;
+const uploadBase64ToCloudinary = (base64String_1, ...args_1) => __awaiter(void 0, [base64String_1, ...args_1], void 0, function* (base64String, folderPath = 'khushbuwaala_images/reviews', publicIdPrefix = 'review', convertToWebp = true) {
+    var _a;
+    try {
+        // 1. Verify Cloudinary environment keys are loaded
+        if (!process.env.CLOUDINARY_CLOUD_NAME ||
+            !process.env.CLOUDINARY_API_KEY ||
+            !process.env.CLOUDINARY_API_SECRET) {
+            console.error("Cloudinary Configuration Error: Environment variables are missing!");
+            throw new Error("Cloudinary credentials are not configured properly.");
+        }
+        // 2. Perform upload
+        const uploadOptions = {
+            folder: folderPath,
+            public_id: `${publicIdPrefix}-${Date.now()}`,
+            resource_type: 'image',
+        };
+        if (convertToWebp) {
+            uploadOptions.transformation = [{ fetch_format: 'webp', quality: 'auto' }];
+        }
+        const result = yield cloudinary_1.v2.uploader.upload(base64String, uploadOptions);
+        if (!(result === null || result === void 0 ? void 0 : result.secure_url)) {
+            throw new Error("Cloudinary did not return a secure URL.");
+        }
+        return { location: result.secure_url };
+    }
+    catch (error) {
+        // 3. Print the real error to console so it's never 'undefined'
+        console.error("Detailed Cloudinary Upload Error:", error);
+        const errorMessage = (error === null || error === void 0 ? void 0 : error.message) ||
+            ((_a = error === null || error === void 0 ? void 0 : error.error) === null || _a === void 0 ? void 0 : _a.message) ||
+            (typeof error === 'string' ? error : JSON.stringify(error)) ||
+            "Unknown upload error";
+        throw new Error(`Cloudinary upload failed: ${errorMessage}`);
+    }
+});
+exports.uploadBase64ToCloudinary = uploadBase64ToCloudinary;

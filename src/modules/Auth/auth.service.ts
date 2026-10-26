@@ -15,50 +15,63 @@ import AppError from '../../errors/AppError';
 const register = async (payload: IUser) => {
   const email = (payload.email ?? "").trim().toLowerCase();
 
-  // ✅ Prisma requires email (String @unique)
   if (!email) {
     throw new AppError(400, "Email is required");
   }
 
-  const normalizedPayload: IUser = {
-    ...payload,
-    email, // ✅ always string
-  };
-
-  // check duplicate
-  const existingUser = await prisma.user.findUnique({
-    where: { email: normalizedPayload.email },
-    select: { id: true },
-  });
-
-  if (existingUser) {
-    throw new AppError(400, "User already exists with this email");
-  }
-
-  if (!normalizedPayload.password) {
+  if (!payload.password) {
     throw new AppError(400, "Password is required");
   }
 
-  normalizedPayload.password = await bcrypt.hash(
-    normalizedPayload.password,
+  const hashedPassword = await bcrypt.hash(
+    payload.password,
     Number(config.salt_round)
   );
 
-  // ✅ always generate + send verification (email is guaranteed)
   const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
   const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
-  // (optional) await if you want to catch failures
-  await sendVerificationEmail(normalizedPayload.email, verificationToken);
-
-  const result = await prisma.user.create({
-    data: {
-      ...normalizedPayload,
-      role: normalizedPayload.role as Role,
-      verificationToken,
-      verificationTokenExpiry,
-    },
+  // Check if user already exists
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
   });
+
+  let result;
+
+  if (existingUser) {
+    // If user already exists but has no password (created via guest checkout)
+    if (existingUser.password && existingUser.isVerified) {
+      throw new AppError(400, "User already exists with this email. Please log in.");
+    }
+
+    // Update the guest-created user with credentials & verification token
+    result = await prisma.user.update({
+      where: { email },
+      data: {
+        name: payload.name || existingUser.name,
+        password: hashedPassword,
+        verificationToken,
+        verificationTokenExpiry,
+        isVerified: false, // Force verification
+      },
+    });
+  } else {
+    // Brand new user creation
+    result = await prisma.user.create({
+      data: {
+        ...payload,
+        email,
+        password: hashedPassword,
+        role: (payload.role as Role) || Role.USER,
+        verificationToken,
+        verificationTokenExpiry,
+        isVerified: false,
+      },
+    });
+  }
+
+  // Send verification email
+  await sendVerificationEmail(email, verificationToken);
 
   return result;
 };

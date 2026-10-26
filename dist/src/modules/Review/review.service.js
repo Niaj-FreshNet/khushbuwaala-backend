@@ -16,7 +16,9 @@ exports.ReviewServices = void 0;
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const client_1 = require("../../../prisma/client");
+const sendImageToCloudinary_1 = require("../../utils/sendImageToCloudinary");
 const createReview = (userId, payload) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     const product = yield client_1.prisma.product.findUnique({
         where: { id: payload.productId },
     });
@@ -24,7 +26,6 @@ const createReview = (userId, payload) => __awaiter(void 0, void 0, void 0, func
         throw new AppError_1.default(404, 'Product not found');
     if (payload.rating < 0 || payload.rating > 5)
         throw new AppError_1.default(400, 'Rating must be between 0 and 5');
-    // ✅ Only block duplicate if user is logged in
     if (userId) {
         const existing = yield client_1.prisma.review.findFirst({
             where: { userId, productId: payload.productId },
@@ -32,17 +33,35 @@ const createReview = (userId, payload) => __awaiter(void 0, void 0, void 0, func
         if (existing)
             throw new AppError_1.default(400, 'You already reviewed this product');
     }
+    // Upload to Cloudinary if Base64
+    let finalImageUrl = null;
+    if (payload.imageUrl && payload.imageUrl.startsWith('data:image')) {
+        try {
+            const uploaded = yield (0, sendImageToCloudinary_1.uploadBase64ToCloudinary)(payload.imageUrl, 'khushbuwaala_images/reviews', `review-${payload.productId}`);
+            finalImageUrl = uploaded.location;
+        }
+        catch (uploadError) {
+            console.error("Failed to upload review image to Cloudinary:", uploadError);
+            // Fallback: continue without failing the whole review submission
+            finalImageUrl = null;
+        }
+    }
+    else if (payload.imageUrl) {
+        finalImageUrl = payload.imageUrl;
+    }
     const review = yield client_1.prisma.review.create({
         data: {
             rating: payload.rating,
-            title: payload.title, // (your "name" stored here)
+            title: payload.title,
+            email: ((_a = payload.email) === null || _a === void 0 ? void 0 : _a.trim()) || null, // <--- Add this
             comment: payload.comment,
+            imageUrl: finalImageUrl, // <--- Add this
             productId: payload.productId,
-            userId: userId !== null && userId !== void 0 ? userId : undefined, // ✅ allow null
+            userId: userId !== null && userId !== void 0 ? userId : undefined,
             isPublished: true,
         },
         include: {
-            user: { select: { name: true, imageUrl: true } },
+            user: { select: { id: true, name: true, imageUrl: true } },
         },
     });
     return review;
@@ -149,6 +168,18 @@ const publishReview = (id) => __awaiter(void 0, void 0, void 0, function* () {
     });
     return updatedReview;
 });
+const deleteReview = (id) => __awaiter(void 0, void 0, void 0, function* () {
+    const existingReview = yield client_1.prisma.review.findUnique({
+        where: { id },
+    });
+    if (!existingReview) {
+        throw new AppError_1.default(404, 'Review not found');
+    }
+    const deletedReview = yield client_1.prisma.review.delete({
+        where: { id },
+    });
+    return deletedReview;
+});
 exports.ReviewServices = {
     createReview,
     getAllReviews,
@@ -158,4 +189,5 @@ exports.ReviewServices = {
     getProductReviews,
     updateReview,
     publishReview,
+    deleteReview,
 };

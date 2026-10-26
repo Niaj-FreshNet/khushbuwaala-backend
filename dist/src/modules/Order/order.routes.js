@@ -26,4 +26,5 @@ router.get('/get-all-customers', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN'), or
 router.get('/get-user-orders/:id', order_controller_1.OrderController.getUserOrders);
 router.get('/my-orders', (0, auth_1.default)("USER", "SUPER_ADMIN", "ADMIN", "SALESMAN"), order_controller_1.OrderController.getMyOrders);
 router.get('/my-orders/:id', (0, auth_1.default)('USER'), order_controller_1.OrderController.getMyOrderByID);
+router.delete('/delete-order/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN'), order_controller_1.OrderController.deleteOrder);
 exports.OrderRoutes = router;

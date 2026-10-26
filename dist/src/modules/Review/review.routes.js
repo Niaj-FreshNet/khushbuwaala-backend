@@ -25,4 +25,6 @@ router.get('/get-review/:id', review_controller_1.reviewController.getReviewById
 router.get('/get-user-reviews/:userId', review_controller_1.reviewController.getUserReviews);
 // 📦 Get all reviews for a specific product
 router.get('/get-product-reviews/:productId', review_controller_1.reviewController.getProductReviews);
+// 🗑️ Delete review (Admin only)
+router.delete('/delete-review/:id', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), review_controller_1.reviewController.deleteReview);
 exports.ReviewRoutes = router;

@@ -109,6 +109,14 @@ export const sendOrderConfirmationEmail = async (to: string, order: any) => {
 
   if (!email) return;
 
+  const customerName =
+    order?.shipping?.name ||
+    order?.billing?.name ||
+    order?.customer?.name ||
+    order?.customerInfo?.name ||
+    order?.name ||
+    'Valued Customer';
+
   const address =
     order?.shipping?.address ||
     order?.billing?.address ||
@@ -131,7 +139,6 @@ export const sendOrderConfirmationEmail = async (to: string, order: any) => {
 
   const amount = Number(order?.amount || 0);
   const invoice = String(order?.invoice || 'N/A');
-  const orderId = String(order?.id || order?._id || 'N/A');
 
   // Accommodate both raw cartItems and populated Prisma orderItems
   const rawItems = order?.orderItems || order?.cartItems || [];
@@ -164,10 +171,10 @@ export const sendOrderConfirmationEmail = async (to: string, order: any) => {
     })
     .join('');
 
-  // Replace placeholders including invoice and orderId
+  // Replace placeholders including customer name and invoice number only
   const template = ORDER_CONFIRMATION_TEMPLATE
+    .replace(/{name}/g, customerName)
     .replace(/{invoice}/g, invoice)
-    .replace(/{orderId}/g, orderId)
     .replace(/{email}/g, email)
     .replace(/{address}/g, address)
     .replace(/{district}/g, district)
@@ -185,10 +192,17 @@ export const sendOrderConfirmationEmail = async (to: string, order: any) => {
     console.error('Failed to dispatch order confirmation email:', err.message);
   }
 };
+
 export const sendOrderNotificationToAdmin = async (to: string, order: any) => {
   const { email, address, district, phone, amount, cartItems, date, note } = order;
 
-  const orderId = String(order.invoice ? `${order.invoice} (${order.id || order._id})` : order.id || 'N/A');
+  const customerName =
+    order?.name ||
+    order?.shipping?.name ||
+    order?.customer?.name ||
+    'Valued Customer';
+
+  const invoice = String(order?.invoice || 'N/A');
 
   const itemsHTML = (cartItems || [])
     .map(
@@ -206,7 +220,8 @@ export const sendOrderNotificationToAdmin = async (to: string, order: any) => {
     .join('');
 
   const template = ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE
-    .replace(/{orderId}/g, orderId)
+    .replace(/{invoice}/g, invoice)
+    .replace(/{name}/g, customerName)
     .replace(/{email}/g, email || 'N/A')
     .replace(/{address}/g, address || 'N/A')
     .replace(/{district}/g, district || 'N/A')
@@ -216,5 +231,5 @@ export const sendOrderNotificationToAdmin = async (to: string, order: any) => {
     .replace(/{amount}/g, Number(amount || 0).toFixed(2))
     .replace(/{items}/g, itemsHTML);
 
-  return await sendEmail([{ email: to }], `New Order Received - #${order.invoice || order.id}`, template);
+  return await sendEmail([{ email: to }], `New Order Received - #${invoice}`, template);
 };

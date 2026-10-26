@@ -1,6 +1,7 @@
 import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { OrderSource, Prisma, SaleType } from '@prisma/client';
 import { generateInvoice } from '../../helpers/generateInvoice';
@@ -206,48 +207,44 @@ const createOrderWithCartItems = async (payload: {
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
   }
 
-  const resolvedCustomerId = customerId || existingUser?.id || null;
+  // 2️⃣ Resolve quantities and prices strictly from frontend payload with DB fallback
+  const cartItems = items && items.length > 0 ? items.map((it) => {
+    const dbItem = dbCartItems.find((ci) => String(ci.id) === String(it.cartItemId) || ci.productId === it.productId);
 
-  // 2️⃣ Resolve quantities and prices in memory
-  const cartItems = dbCartItems.map((ci) => {
-    let resolvedQty = ci.quantity;
-    let resolvedPrice = Number(ci.price);
-    let resolvedOriginalPrice = Number(ci.variant?.price ?? ci.price);
-
-    if (Array.isArray(items) && items.length > 0) {
-      const match =
-        items.find((it: any) => it.cartItemId && String(it.cartItemId) === String(ci.id)) ||
-        items.find(
-          (it: any) =>
-            it.productId === ci.productId &&
-            (!ci.variantId || it.variantId === ci.variantId)
-        );
-
-      if (match) {
-        if (Number(match.quantity) > 0) {
-          resolvedQty = Math.max(1, Math.floor(Number(match.quantity)));
-        }
-        if (match.price !== undefined && Number(match.price) >= 0) {
-          resolvedPrice = Number(match.price);
-        }
-        if (match.originalPrice !== undefined && Number(match.originalPrice) >= 0) {
-          resolvedOriginalPrice = Number(match.originalPrice);
-        }
-      }
-    }
-
+    const resolvedQty = Math.max(1, Math.floor(Number(it.quantity || dbItem?.quantity || 1)));
+    const resolvedPrice = Number(it.price ?? dbItem?.price ?? 0);
+    const resolvedOriginalPrice = Number(it.originalPrice ?? dbItem?.originalPrice ?? resolvedPrice);
     const unitDiscount = Math.max(0, resolvedOriginalPrice - resolvedPrice);
 
     return {
-      ...ci,
+      id: dbItem?.id || it.cartItemId || "",
+      productId: String(it.productId || dbItem?.productId || ""),
+      variantId: it.variantId || dbItem?.variantId || null,
+      size: dbItem?.size || dbItem?.variant?.size || null,
+      unit: dbItem?.unit || dbItem?.variant?.unit || null,
       quantity: resolvedQty,
       price: resolvedPrice,
       originalPrice: resolvedOriginalPrice,
       discount: unitDiscount,
+      product: dbItem?.product,
+      variant: dbItem?.variant,
     };
-  });
+  }) : dbCartItems.map((ci) => ({
+    id: ci.id,
+    productId: ci.productId,
+    variantId: ci.variantId,
+    size: ci.size || ci.variant?.size || null,
+    unit: ci.unit || ci.variant?.unit || null,
+    quantity: ci.quantity,
+    price: Number(ci.price),
+    originalPrice: Number(ci.originalPrice ?? ci.price),
+    discount: Math.max(0, Number(ci.originalPrice ?? ci.price) - Number(ci.price)),
+    product: ci.product,
+    variant: ci.variant,
+  }));
 
   const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
+  const discount = Math.max(0, Number(discountAmount || 0));
   const shipping = Number(shippingCost || 0);
   const serverAmount = Math.max(0, subtotal) + shipping;
 
@@ -257,12 +254,24 @@ const createOrderWithCartItems = async (payload: {
     return `guest+${Date.now()}-${Math.random().toString(16).slice(2)}@khushbuwaala.local`;
   };
 
-  const invoice = await generateInvoice();
+  // 3️⃣ SAFE EMAIL CHECK
+  let resolvedCustomerId = customerId || null;
+
+  if (!resolvedCustomerId && rawEmail) {
+    const existingUser = await prisma.user.findFirst({
+      where: { email: rawEmail },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      resolvedCustomerId = existingUser.id;
+    }
+  }
 
   // 3️⃣ Database Transaction (Batch queries with Promise.all)
   const order = await prisma.$transaction(
     async (tx) => {
-      // Clean up previous aborted online checkout attempts if retrying
+      // 🔄 ONLY revert items from aborted ONLINE checkout attempts
       const failedOnlineOrderIds = [
         ...new Set(
           dbCartItems
@@ -291,7 +300,14 @@ const createOrderWithCartItems = async (payload: {
         ]);
       }
 
-      // Create Order
+      const invoice = await generateInvoice();
+
+      // Ensure productIds array contains only valid strings
+      const safeProductIds = cartItems.map((ci) => ci.productId).filter(Boolean) as string[];
+
+      // Create Order:
+      // - If method === 'cashOnDelivery', isPaid remains false, status is PENDING / PROCESSING
+      // - If method === 'online', isPaid remains false until gateway callback marks COMPLETED
       const newOrder = await tx.order.create({
         data: {
           invoice,
@@ -333,10 +349,10 @@ const createOrderWithCartItems = async (payload: {
             district: billingAddress?.district || shippingAddress?.district || customerInfo?.district || null,
             thana: billingAddress?.thana || shippingAddress?.thana || customerInfo?.thana || null,
           },
-          productIds: cartItems.map((ci) => ci.productId),
+          productIds: safeProductIds,
           cartItems: cartItems.map((item) => ({
             productId: item.productId,
-            variantId: item.variantId,
+            variantId: item.variantId || undefined,
             size: item.size || null,
             unit: item.unit || null,
             quantity: item.quantity,
@@ -345,9 +361,9 @@ const createOrderWithCartItems = async (payload: {
         },
       });
 
-      // Update CartItems to ORDERED & deduct inventory concurrently
-      await Promise.all([
-        ...cartItems.map((item) =>
+      // Update CartItems to ORDERED
+      await Promise.all(
+        cartItems.map((item) =>
           tx.cartItem.update({
             where: { id: item.id },
             data: {
@@ -359,36 +375,47 @@ const createOrderWithCartItems = async (payload: {
               discount: Number(item.discount),
             },
           })
-        ),
+        )
+      );
+
+      // Decrement product inventory and create stock logs concurrently in parallel
+      await Promise.all([
         ...cartItems.map((item) => {
           const variantSize = item.variant?.size || 0;
+          const qty = item.quantity;
           return tx.product.update({
             where: { id: item.productId },
             data: {
-              salesCount: { increment: item.quantity },
-              stock: { decrement: variantSize * item.quantity },
+              salesCount: { increment: qty },
+              stock: { decrement: variantSize * qty },
             },
           });
         }),
-        tx.stockLog.createMany({
-          data: cartItems.map((item) => ({
-            productId: item.productId,
-            variantId: item.variantId || '',
-            change: -((item.variant?.size || 0) * item.quantity),
-            reason: 'SALE',
-          })),
+        ...cartItems.map((item) => {
+          const variantSize = item.variant?.size || 0;
+          const qty = item.quantity;
+          return tx.stockLog.create({
+            data: {
+              productId: item.productId,
+              variantId: item.variantId || '',
+              change: -(variantSize * qty),
+              reason: 'SALE',
+            },
+          });
         }),
-        coupon && method === "cashOnDelivery"
-          ? DiscountServices.consumeDiscountUsageByCode(tx, coupon, newOrder.id)
-          : Promise.resolve(),
       ]);
+
+      // If Cash on Delivery, consume coupon immediately
+      if (coupon && method === "cashOnDelivery") {
+        await DiscountServices.consumeDiscountUsageByCode(tx, coupon, newOrder.id);
+      }
 
       return newOrder;
     },
     { timeout: 15000 }
   );
 
-  // 4️⃣ Fetch the fully populated order (essential for ThankYouPage & Meta Pixel payload)
+  // 5️⃣ Fetch populated order for frontend response and background processing
   const fullOrder = await prisma.order.findUnique({
     where: { id: order.id },
     include: {
@@ -415,45 +442,30 @@ const createOrderWithCartItems = async (payload: {
 
   const finalOrder = { ...fullOrder, customer: customerData };
 
-  // 5️⃣ Asynchronous Non-Blocking Emails (setImmediate ensures HTTP 201 returns in <400ms)
-  if (finalOrder.method === 'cashOnDelivery') {
-    setImmediate(() => {
-      const customerEmail =
-        (finalOrder.shipping as any)?.email ||
-        (finalOrder.billing as any)?.email ||
-        finalOrder.customer?.email ||
-        finalOrder.email;
+  // 🚀 BACKGROUND TASKS (Non-blocking: emails and CAPI fire after response is sent)
+  setImmediate(() => {
+    const customerEmail =
+      (finalOrder.shipping as any)?.email ||
+      (finalOrder.billing as any)?.email ||
+      (finalOrder.customer as any)?.email ||
+      finalOrder.email;
 
-      if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
-        sendOrderConfirmationEmail(customerEmail, finalOrder).catch((err: any) =>
-          console.error('❌ Async Customer Email Error:', err.message)
-        );
-      }
+    const customerPhone =
+      (finalOrder.shipping as any)?.phone ||
+      (finalOrder.billing as any)?.phone ||
+      (finalOrder.customer as any)?.phone ||
+      finalOrder.phone;
 
-      const adminEmail = process.env.ADMIN_EMAIL || 'khushbuwaala@gmail.com';
-      if (adminEmail) {
-        sendOrderNotificationToAdmin(adminEmail, {
-          ...finalOrder,
-          email: customerEmail || 'N/A',
-          address: (finalOrder.shipping as any)?.address || finalOrder.address || 'N/A',
-          district: (finalOrder.shipping as any)?.district || '',
-          phone: (finalOrder.shipping as any)?.phone || finalOrder.phone || 'N/A',
-          date: new Date().toLocaleDateString('en-GB'),
-          note: finalOrder.additionalNotes || 'N/A',
-          cartItems: (finalOrder.orderItems || []).map((oi: any) => ({
-            productName: oi.product?.name || 'Product',
-            productImageUrls: [oi.product?.primaryImage || ''],
-            size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
-            quantity: oi.quantity,
-            price: Number(oi.price || 0),
-          })),
-        }).catch((err: any) =>
-          console.error('❌ Async Admin Email Error:', err.message)
-        );
-      }
-    });
-  }
+    if (finalOrder.method === 'cashOnDelivery') {
+      dispatchOrderEmails(finalOrder).catch((err) =>
+        console.error('❌ Failed to dispatch order emails:', err)
+      );
+    }
 
+    sendMetaCapiPurchase(finalOrder, customerEmail, customerPhone);
+  });
+
+  // ✅ Return full order so frontend & Redux store populate the Thank You page correctly
   return finalOrder;
 };
 
@@ -988,6 +1000,107 @@ const deleteOrder = async (orderId: string) => {
 
   return result;
 };
+
+// Helper function to send CAPI Purchase asynchronously (Zero impact on response speed)
+async function sendMetaCapiPurchase(order: any, customerEmail?: string, customerPhone?: string) {
+  try {
+    const pixelId = process.env.META_PIXEL_ID;
+    const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
+    if (!pixelId || !accessToken) return;
+
+    const eventId = `kw_${order.id}`;
+    const value = Number(order.amount || 0);
+    const shipping = Number(order.shippingCost || 0);
+
+    const items = (order.orderItems || []).map((it: any) => ({
+      id: String(it.productId || it.product?.id || ""),
+      quantity: Math.max(1, Number(it.quantity || 1)),
+      item_price: Number(it.price || 0),
+    }));
+
+    const shippingInfo = (order.shipping as any) || {};
+
+    const payload = {
+      data: [
+        {
+          event_name: "Purchase",
+          event_time: Math.floor(Date.now() / 1000),
+          event_id: eventId,
+          event_source_url: "https://khushbuwaala.com/thank-you",
+          action_source: "website",
+          user_data: {
+            em: customerEmail ? [crypto.createHash("sha256").update(customerEmail.trim().toLowerCase()).digest("hex")] : undefined,
+            ph: customerPhone ? [crypto.createHash("sha256").update(customerPhone.replace(/\D/g, "")).digest("hex")] : undefined,
+            fn: shippingInfo.name ? [crypto.createHash("sha256").update(shippingInfo.name.trim().toLowerCase()).digest("hex")] : undefined,
+            ct: shippingInfo.district ? [crypto.createHash("sha256").update(shippingInfo.district.trim().toLowerCase()).digest("hex")] : undefined,
+            country: ["bd"],
+            fbp: shippingInfo.fbp || undefined,
+            fbc: shippingInfo.fbc || undefined,
+          },
+          custom_data: {
+            currency: "BDT",
+            value: value,
+            shipping: shipping,
+            order_id: order.id,
+            contents: items,
+            content_type: "product",
+          },
+        },
+      ],
+    };
+
+    // 🚀 Async Fire-and-Forget: Never blocks order placement response time
+    fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch((err) => console.error("❌ CAPI Background Dispatch Error:", err));
+  } catch (e) {
+    console.error("❌ CAPI Build Error:", e);
+  }
+}
+
+async function dispatchOrderEmails(fullOrder: any) {
+  const customerEmail =
+    (fullOrder.shipping as any)?.email ||
+    (fullOrder.billing as any)?.email ||
+    fullOrder.customer?.email ||
+    fullOrder.email;
+
+  const customerPhone =
+    (fullOrder.shipping as any)?.phone ||
+    (fullOrder.billing as any)?.phone ||
+    fullOrder.customer?.phone ||
+    fullOrder.phone;
+
+  if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
+    sendOrderConfirmationEmail(customerEmail, fullOrder).catch((err: any) =>
+      console.error('❌ Failed to send order confirmation email to customer:', err.message)
+    );
+  }
+
+  const adminEmail = process.env.ADMIN_EMAIL || 'khushbuwaala@gmail.com';
+  if (adminEmail) {
+    sendOrderNotificationToAdmin(adminEmail, {
+      ...fullOrder,
+      email: customerEmail || 'N/A',
+      address: (fullOrder.shipping as any)?.address || fullOrder.address || 'N/A',
+      district: (fullOrder.shipping as any)?.district || '',
+      phone: customerPhone || 'N/A',
+      date: new Date().toLocaleDateString('en-GB'),
+      note: fullOrder.additionalNotes || 'N/A',
+      cartItems: (fullOrder.orderItems || []).map((oi: any) => ({
+        productName: oi.product?.name || 'Product',
+        productImageUrls: [oi.product?.primaryImage || ''],
+        size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
+        quantity: oi.quantity,
+        price: Number(oi.price || 0),
+      })),
+    }).catch((err: any) =>
+      console.error('❌ Failed to send order notification email to admin:', err.message)
+    );
+  }
+}
 
 export const OrderServices = {
   getAllOrders,

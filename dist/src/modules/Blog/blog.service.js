@@ -18,12 +18,22 @@ const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const fileDelete_1 = require("../../helpers/fileDelete");
 const client_1 = require("../../../prisma/client");
-const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const slug = (0, slugify_1.default)(payload.title, { lower: true, strict: true });
-    const existingSlug = yield client_1.prisma.blog.findUnique({ where: { slug } });
-    if (existingSlug) {
-        throw new AppError_1.default(400, 'Blog title must be unique for slug generation');
+const generateUniqueSlug = (title, currentId) => __awaiter(void 0, void 0, void 0, function* () {
+    let baseSlug = (0, slugify_1.default)(title, { lower: true, strict: true, trim: true });
+    let slug = baseSlug;
+    let counter = 1;
+    while (true) {
+        const existing = yield client_1.prisma.blog.findUnique({ where: { slug } });
+        if (!existing || (currentId && existing.id === currentId)) {
+            return slug;
+        }
+        slug = `${baseSlug}-${counter}`;
+        counter++;
     }
+});
+const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const slug = yield generateUniqueSlug(payload.title);
     const result = yield client_1.prisma.blog.create({
         data: {
             userId: payload.userId,
@@ -31,7 +41,7 @@ const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
             content: payload.content,
             imageUrl: payload.imageUrl,
             others: payload.others,
-            isPublish: payload.isPublish,
+            isPublish: (_a = payload.isPublish) !== null && _a !== void 0 ? _a : false,
             metaTitle: payload.metaTitle,
             metaDescription: payload.metaDescription,
             keywords: payload.keywords,
@@ -41,45 +51,29 @@ const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     return result;
 });
 const updateBlog = (id, payload) => __awaiter(void 0, void 0, void 0, function* () {
-    let slug = payload.slug;
-    if (payload.title && (!slug || (0, slugify_1.default)(payload.title, { lower: true, strict: true }) !== slug)) {
-        slug = (0, slugify_1.default)(payload.title, { lower: true, strict: true });
-        const existingSlug = yield client_1.prisma.blog.findUnique({ where: { slug } });
-        if (existingSlug && existingSlug.id !== id) {
-            throw new AppError_1.default(400, 'Blog title must be unique for slug generation');
-        }
+    const updateData = Object.assign({}, payload);
+    if (payload.title) {
+        updateData.slug = yield generateUniqueSlug(payload.title, id);
     }
     const result = yield client_1.prisma.blog.update({
         where: { id },
-        data: {
-            title: payload.title,
-            content: payload.content,
-            imageUrl: payload.imageUrl,
-            others: payload.others,
-            isPublish: payload.isPublish,
-            metaTitle: payload.metaTitle,
-            metaDescription: payload.metaDescription,
-            keywords: payload.keywords,
-            slug,
-        },
+        data: updateData,
     });
     return result;
 });
-// Get all blog for normal user
 const getAllBlogs = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
-    const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams, [
+    const filterParams = Object.assign(Object.assign({}, queryParams), { isPublish: true });
+    const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(filterParams, [
         'title',
         'content',
     ]);
-    // Add isPublish filter to queryParams before building the query
-    queryParams.isPublish = true;
     const prismaQuery = queryBuilder
         .buildWhere()
         .buildSort()
         .buildPagination()
         .buildSelect()
         .getQuery();
-    const blogs = yield client_1.prisma.blog.findMany(Object.assign(Object.assign({}, prismaQuery), { include: {
+    const blogs = yield client_1.prisma.blog.findMany(Object.assign(Object.assign({}, prismaQuery), { where: Object.assign(Object.assign({}, prismaQuery.where), { isPublish: true }), include: {
             user: {
                 select: {
                     id: true,
@@ -87,14 +81,10 @@ const getAllBlogs = (queryParams) => __awaiter(void 0, void 0, void 0, function*
                     imageUrl: true,
                 },
             },
-        } }));
+        }, orderBy: { createdAt: 'desc' } }));
     const meta = yield queryBuilder.getPaginationMeta(client_1.prisma.blog);
-    return {
-        meta,
-        data: blogs,
-    };
+    return { meta, data: blogs };
 });
-// --- Admin --- Get All Blogs with ispublished = false and isdeleted = true
 const getAllBlogsAdmin = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams, [
         'title',
@@ -114,12 +104,9 @@ const getAllBlogsAdmin = (queryParams) => __awaiter(void 0, void 0, void 0, func
                     imageUrl: true,
                 },
             },
-        } }));
+        }, orderBy: { createdAt: 'desc' } }));
     const meta = yield queryBuilder.getPaginationMeta(client_1.prisma.blog);
-    return {
-        meta,
-        data: blogs,
-    };
+    return { meta, data: blogs };
 });
 const getBlog = (slug) => __awaiter(void 0, void 0, void 0, function* () {
     const blog = yield client_1.prisma.blog.findUnique({
@@ -132,7 +119,6 @@ const getBlog = (slug) => __awaiter(void 0, void 0, void 0, function* () {
         return null;
     const relatedBlogs = yield client_1.prisma.blog.findMany({
         where: {
-            userId: blog.userId,
             NOT: { slug },
             isPublish: true,
         },
@@ -145,34 +131,21 @@ const getBlog = (slug) => __awaiter(void 0, void 0, void 0, function* () {
             metaTitle: true,
             metaDescription: true,
             keywords: true,
+            createdAt: true,
         },
-        take: 8,
-        orderBy: {
-            createdAt: 'desc',
-        },
+        take: 4,
+        orderBy: { createdAt: 'desc' },
     });
-    return {
-        blog,
-        relatedBlogs,
-    };
+    return { blog, relatedBlogs };
 });
 const deleteBlog = (id) => __awaiter(void 0, void 0, void 0, function* () {
-    const blog = yield client_1.prisma.blog.findUnique({
-        where: {
-            id,
-        },
-    });
+    const blog = yield client_1.prisma.blog.findUnique({ where: { id } });
     if (!blog)
         throw new AppError_1.default(404, 'Blog not found');
     if (blog.imageUrl) {
         yield (0, fileDelete_1.deleteFile)(blog.imageUrl);
     }
-    const result = yield client_1.prisma.blog.delete({
-        where: {
-            id,
-        },
-    });
-    return result;
+    return yield client_1.prisma.blog.delete({ where: { id } });
 });
 exports.BlogServices = {
     createBlog,

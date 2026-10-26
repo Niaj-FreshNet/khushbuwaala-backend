@@ -8,10 +8,7 @@ const express_1 = require("express");
 const auth_1 = __importDefault(require("../../middlewares/auth"));
 const checkout_controller_1 = require("./checkout.controller");
 const router = (0, express_1.Router)();
-// Start payment
-router.post("/bkash/create", (0, auth_1.default)("OPTIONAL"), checkout_controller_1.CheckoutController.create);
-// Callback must be public (bKash redirects back)
-router.get("/bkash/callback", checkout_controller_1.CheckoutController.callback);
-// Refund (admin)
-router.post("/bkash/refund/:trxID", (0, auth_1.default)("ADMIN", "SUPER_ADMIN"), checkout_controller_1.CheckoutController.refund);
+// DGePay Gateway Routes
+router.post("/dgepay/create", (0, auth_1.default)("OPTIONAL"), checkout_controller_1.CheckoutController.createDgepay);
+router.all("/dgepay/callback", checkout_controller_1.CheckoutController.callbackDgepay);
 exports.CheckoutRoutes = router;

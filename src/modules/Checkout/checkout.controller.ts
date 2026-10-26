@@ -200,6 +200,7 @@ export const CheckoutController = {
             where: { id: payment.orderId },
             data: { isPaid: true, method: "DGEPAY", status: "PROCESSING" },
             include: {
+              customer: { select: { id: true, name: true, email: true, phone: true } },
               orderItems: {
                 include: { product: true, variant: true },
               },
@@ -211,37 +212,44 @@ export const CheckoutController = {
           }
         });
 
-        // ✅ Send Customer Confirmation Email for Online Payment
+        // Resolve customer name properly across fields
+        const customerName =
+          completedOrder?.shipping?.name ||
+          completedOrder?.customer?.name ||
+          completedOrder?.name ||
+          "Valued Customer";
+
         const customerEmail =
           completedOrder?.shipping?.email ||
           completedOrder?.billing?.email ||
-          completedOrder?.customerInfo?.email ||
+          completedOrder?.customer?.email ||
           completedOrder?.email;
 
+        // ✅ Send Customer Confirmation Email for Online Payment
         if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
           sendOrderConfirmationEmail(customerEmail, completedOrder).catch((e) =>
             console.error("DGePay confirmation email error:", e.message)
           );
         }
 
-        // ✅ Send Admin Alert for Online Payment
+        // ✅ Send Admin Alert for Online Payment (with customer name)
         const adminEmail = process.env.ADMIN_EMAIL || "khushbuwaala@gmail.com";
         if (adminEmail) {
           sendOrderNotificationToAdmin(adminEmail, {
             ...completedOrder,
+            name: customerName, // 👈 Included customer name
             email: customerEmail || 'N/A',
             address: (completedOrder.shipping as any)?.address || completedOrder.address,
-            zipcode: (completedOrder.shipping as any)?.district || '',
+            district: (completedOrder.shipping as any)?.district || '',
             phone: (completedOrder.shipping as any)?.phone || completedOrder.phone,
             date: new Date().toLocaleDateString('en-GB'),
             note: completedOrder.additionalNotes,
             cartItems: (completedOrder.orderItems || []).map((oi: any) => ({
               productName: oi.product?.name || 'Product',
               productImageUrls: [oi.product?.primaryImage],
-              size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit}` : 'Standard',
-              color: 'N/A',
+              size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
               quantity: oi.quantity,
-              price: oi.price,
+              price: Number(oi.price || 0),
             })),
           }).catch((e) =>
             console.error("Admin notification email error:", e.message)

@@ -1,6 +1,6 @@
 const BRAND_COLOR = '#1b382b'; // Deep botanical emerald
 const ACCENT_COLOR = '#4a7c59'; // Soft laurel / sage accent
-const BG_COLOR = '#F6F8F6';     // Cool clean background
+const BG_COLOR = '#F6F8F6';    // Cool clean background
 const BORDER_COLOR = '#E2E8E4'; // Subtle border tone
 
 export const VERIFICATION_EMAIL_TEMPLATE = `
@@ -15,11 +15,10 @@ export const VERIFICATION_EMAIL_TEMPLATE = `
   <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid ${BORDER_COLOR}; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
     <div style="background-color: ${BRAND_COLOR}; padding: 32px; text-align: center;">
       <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
-      <p style="color: #A3C9A8; margin: 6px 0 0 0; font-size: 12px; letter-spacing: 1.5px; font-weight: 500;">PURE & ARTISANAL FRAGRANCES</p>
     </div>
     <div style="padding: 36px 30px;">
       <h2 style="margin: 0 0 14px; font-size: 19px; color: #111827; font-weight: 600;">Verify Your Account</h2>
-      <p style="margin: 0 0 20px; color: #4B5563; font-size: 14px;">Welcome to Khushbuwaala. To begin exploring our artisanal attars and fragrance oils, please confirm your email address using the verification code below:</p>
+      <p style="margin: 0 0 20px; color: #4B5563; font-size: 14px;">Welcome to Khushbuwaala. Please confirm your email address using the verification code below:</p>
       
       <div style="text-align: center; margin: 28px 0; background: ${BG_COLOR}; border: 1px dashed ${ACCENT_COLOR}; border-radius: 8px; padding: 22px;">
         <span style="font-size: 34px; font-weight: 700; letter-spacing: 8px; color: ${BRAND_COLOR}; font-family: monospace;">{verificationCode}</span>
@@ -117,7 +116,6 @@ export const WELCOME_EMAIL_TEMPLATE = `
   <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid ${BORDER_COLOR}; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
     <div style="background-color: ${BRAND_COLOR}; padding: 32px; text-align: center;">
       <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
-      <p style="color: #A3C9A8; margin: 6px 0 0 0; font-size: 12px; letter-spacing: 1.5px; font-weight: 500;">THE ART OF SCENT</p>
     </div>
     <div style="padding: 36px 30px;">
       <h2 style="margin: 0 0 14px; font-size: 19px; color: #111827; font-weight: 600;">Greetings, {name}</h2>
@@ -194,11 +192,11 @@ export const ORDER_CONFIRMATION_TEMPLATE = `
     <div style="background-color: ${BRAND_COLOR}; padding: 30px; text-align: center;">
       <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
       <p style="color: #A3C9A8; margin: 6px 0 0 0; font-size: 12px; letter-spacing: 1.5px; font-weight: 500;">ORDER CONFIRMATION</p>
-      <p style="color: #F3F4F6; margin: 8px 0 0 0; font-size: 13px; font-weight: 500;">Invoice: #{invoice} | Order Ref: #{orderId}</p>
+      <p style="color: #F3F4F6; margin: 8px 0 0 0; font-size: 13px; font-weight: 500;">Invoice: #{invoice}</p>
     </div>
     
     <div style="padding: 30px;">
-      <h2 style="font-size: 18px; margin: 0 0 8px; color: #111827; font-weight: 600;">Thank you for your order</h2>
+      <h2 style="font-size: 18px; margin: 0 0 8px; color: #111827; font-weight: 600;">Dear {name}, thank you for your order</h2>
       <p style="margin: 0 0 22px; font-size: 14px; color: #4B5563;">Your fragrances are being prepared for dispatch. Here are the details of your purchase:</p>
       
       <div style="background-color: ${BG_COLOR}; border: 1px solid ${BORDER_COLOR}; border-radius: 8px; padding: 18px; margin-bottom: 24px; font-size: 13px;">
@@ -208,8 +206,8 @@ export const ORDER_CONFIRMATION_TEMPLATE = `
             <td style="padding: 4px 0; font-weight: 600; text-align: right; color: #111827;">#{invoice}</td>
           </tr>
           <tr>
-            <td style="padding: 4px 0; color: #6B7280;">Order ID:</td>
-            <td style="padding: 4px 0; font-weight: 500; text-align: right; font-family: monospace; font-size: 12px; color: #374151;">{orderId}</td>
+            <td style="padding: 4px 0; color: #6B7280;">Customer Name:</td>
+            <td style="padding: 4px 0; font-weight: 600; text-align: right; color: #111827;">{name}</td>
           </tr>
           <tr>
             <td style="padding: 4px 0; color: #6B7280;">Customer Email:</td>
@@ -258,7 +256,7 @@ export const ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE = `
   <div style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid ${BORDER_COLOR}; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
     <div style="background-color: ${BRAND_COLOR}; padding: 24px 28px;">
       <h2 style="color: #ffffff; margin: 0; font-size: 17px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600;">New Order Received</h2>
-      <p style="color: #A3C9A8; margin: 4px 0 0 0; font-size: 12px;">Order ID: {orderId}</p>
+      <p style="color: #A3C9A8; margin: 4px 0 0 0; font-size: 12px;">Invoice: #{invoice}</p>
     </div>
     
     <div style="padding: 28px;">
@@ -269,6 +267,10 @@ export const ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE = `
         </tr>
         <tr>
           <td style="padding: 6px 0; color: #6B7280;">Customer:</td>
+          <td style="padding: 6px 0; font-weight: 600; color: #111827;">{name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #6B7280;">Email:</td>
           <td style="padding: 6px 0; font-weight: 500;"><a href="mailto:{email}" style="color: ${ACCENT_COLOR}; text-decoration: none;">{email}</a></td>
         </tr>
         <tr>

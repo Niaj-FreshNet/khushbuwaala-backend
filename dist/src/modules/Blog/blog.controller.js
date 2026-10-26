@@ -17,10 +17,6 @@ const AppError_1 = __importDefault(require("../../errors/AppError"));
 const fileDelete_1 = require("../../helpers/fileDelete");
 const client_1 = require("../../../prisma/client");
 const catchAsync_1 = __importDefault(require("../../utils/catchAsync"));
-// import {
-//   deleteFromDigitalOceanAWS,
-//   uploadToDigitalOceanAWS,
-// } from '../../utils/sendImageToCloudinary';
 const sendResponse_1 = __importDefault(require("../../utils/sendResponse"));
 const blog_service_1 = require("./blog.service");
 const createBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -28,22 +24,18 @@ const createBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
     const user = req.user;
     let imageUrl = '';
     if (!((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename)) {
-        throw new AppError_1.default(400, 'At least one image is required');
+        throw new AppError_1.default(400, 'Image is required for blog creation');
     }
-    if (req.file.filename) {
-        imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
-    }
-    if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-        req.body.isPublish = req.body.isPublish === 'true';
-    }
-    const blogdata = Object.assign(Object.assign({}, req.body), { userId: user.id, imageUrl, metaTitle: req.body.metaTitle, metaDescription: req.body.metaDescription, keywords: req.body.keywords });
+    imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
+    const isPublish = req.body.isPublish === 'true' || req.body.isPublish === true;
+    const blogdata = Object.assign(Object.assign({}, req.body), { userId: user.id, imageUrl,
+        isPublish, metaTitle: req.body.metaTitle || req.body.title, metaDescription: req.body.metaDescription || '', keywords: req.body.keywords || '' });
     const result = yield blog_service_1.BlogServices.createBlog(blogdata);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blog Created Successfully' : 'Blog Creation Failed',
-        data: isok ? result : [],
+        statusCode: 201,
+        success: true,
+        message: 'Blog Created Successfully',
+        data: result,
     });
 }));
 const updateBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -55,64 +47,63 @@ const updateBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
     if (!existingBlog) {
         throw new AppError_1.default(404, 'Blog not found');
     }
-    if (req.body.isPublish && typeof req.body.isPublish === 'string') {
-        req.body.isPublish = req.body.isPublish === 'true';
+    const updateddata = Object.assign({}, req.body);
+    if (req.body.isPublish !== undefined) {
+        updateddata.isPublish =
+            req.body.isPublish === 'true' || req.body.isPublish === true;
     }
-    let updateddata = Object.assign({}, req.body);
     if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename) {
-        if (existingBlog === null || existingBlog === void 0 ? void 0 : existingBlog.imageUrl) {
+        if (existingBlog.imageUrl) {
             yield (0, fileDelete_1.deleteFile)(existingBlog.imageUrl);
         }
         updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
     }
     const result = yield blog_service_1.BlogServices.updateBlog(blogId, updateddata);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blog Updated Successfully' : 'Blog Updation Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Blog Updated Successfully',
+        data: result,
     });
 }));
 const getAllBlogs = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield blog_service_1.BlogServices.getAllBlogs(req.query);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blogs Fetched Successfully' : 'Blogs Fetching Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Blogs Fetched Successfully',
+        data: result,
     });
 }));
 const getAllBlogsAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield blog_service_1.BlogServices.getAllBlogsAdmin(req.query);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blogs Fetched Successfully' : 'Blogs Fetching Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Admin Blogs Fetched Successfully',
+        data: result,
     });
 }));
 const getBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    console.log(req.params.id);
-    const result = yield blog_service_1.BlogServices.getBlog(req.params.id);
-    const isok = result ? true : false;
+    const { slug } = req.params; // FIXED: reading 'slug' rather than nonexistent 'id'
+    const result = yield blog_service_1.BlogServices.getBlog(slug);
+    if (!result) {
+        throw new AppError_1.default(404, 'Blog not found');
+    }
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blog Fetched Successfully' : 'Blog Fetching Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Blog Fetched Successfully',
+        data: result,
     });
 }));
 const deleteBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield blog_service_1.BlogServices.deleteBlog(req.params.id);
-    const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
-        statusCode: isok ? 200 : 400,
-        success: isok ? true : false,
-        message: isok ? 'Blog Deleted Successfully' : 'Blog Deletion Failed',
-        data: isok ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Blog Deleted Successfully',
+        data: result,
     });
 }));
 exports.BlogController = {

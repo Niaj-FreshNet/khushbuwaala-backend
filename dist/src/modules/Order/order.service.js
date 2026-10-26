@@ -27,12 +27,14 @@ exports.OrderServices = void 0;
 const client_1 = require("../../../prisma/client");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
 const http_status_1 = __importDefault(require("http-status"));
+const crypto_1 = __importDefault(require("crypto"));
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const client_2 = require("@prisma/client");
 const generateInvoice_1 = require("../../helpers/generateInvoice");
 const discount_service_1 = require("../Discount/discount.service");
 const date_fns_1 = require("date-fns");
 const date_fns_tz_1 = require("date-fns-tz");
+const emails_1 = require("../../helpers/emailSender/emails");
 const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     const { searchTerm, status, payment, method, dateFrom, dateTo, productId } = queryParams, rest = __rest(queryParams, ["searchTerm", "status", "payment", "method", "dateFrom", "dateTo", "productId"]);
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(rest, ['id', 'customer.name']);
@@ -136,39 +138,87 @@ const getOrderById = (idOrInvoice) => __awaiter(void 0, void 0, void 0, function
 const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const { customerId, payToken, cartItemIds, items, amount, isPaid, method, orderSource, saleType, shippingCost, additionalNotes, customerInfo, shippingAddress, billingAddress, coupon, discountAmount, } = payload;
-    // 1️⃣ Fetch valid cart items
-    const dbCartItems = yield client_1.prisma.cartItem.findMany({
-        where: { id: { in: cartItemIds }, status: 'IN_CART' },
-        include: { product: true, variant: true },
-    });
+    const rawEmail = ((_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) !== null && _a !== void 0 ? _a : "").trim().toLowerCase();
+    // 1️⃣ Parallelize Cart Item fetching and user resolution
+    const [dbCartItems, existingUser] = yield Promise.all([
+        client_1.prisma.cartItem.findMany({
+            where: {
+                id: { in: cartItemIds },
+                OR: [
+                    { status: 'IN_CART' },
+                    {
+                        status: 'ORDERED',
+                        order: {
+                            isPaid: false,
+                            method: { not: 'cashOnDelivery' }, // Never recycle or touch legitimate COD orders
+                        },
+                    },
+                ],
+            },
+            include: {
+                product: true,
+                variant: true,
+                order: { select: { id: true, isPaid: true, method: true } },
+            },
+        }),
+        !customerId && rawEmail
+            ? client_1.prisma.user.findFirst({
+                where: { email: rawEmail },
+                select: { id: true },
+            })
+            : null,
+    ]);
     if (dbCartItems.length === 0) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'No valid cart items found.');
     }
-    // 2️⃣ Resolve quantities sent by the UI
-    const cartItems = dbCartItems.map((ci) => {
-        let resolvedQty = ci.quantity;
-        if (Array.isArray(items) && items.length > 0) {
-            const match = items.find((it) => it.cartItemId && String(it.cartItemId) === String(ci.id)) ||
-                items.find((it) => it.productId === ci.productId &&
-                    (!ci.variantId || it.variantId === ci.variantId));
-            if (match && Number(match.quantity) > 0) {
-                resolvedQty = Math.max(1, Math.floor(Number(match.quantity)));
-            }
-        }
-        return Object.assign(Object.assign({}, ci), { quantity: resolvedQty });
+    // 2️⃣ Resolve quantities and prices strictly from frontend payload with DB fallback
+    const cartItems = items && items.length > 0 ? items.map((it) => {
+        var _a, _b, _c, _d, _e, _f;
+        const dbItem = dbCartItems.find((ci) => String(ci.id) === String(it.cartItemId) || ci.productId === it.productId);
+        const resolvedQty = Math.max(1, Math.floor(Number(it.quantity || (dbItem === null || dbItem === void 0 ? void 0 : dbItem.quantity) || 1)));
+        const resolvedPrice = Number((_b = (_a = it.price) !== null && _a !== void 0 ? _a : dbItem === null || dbItem === void 0 ? void 0 : dbItem.price) !== null && _b !== void 0 ? _b : 0);
+        const resolvedOriginalPrice = Number((_d = (_c = it.originalPrice) !== null && _c !== void 0 ? _c : dbItem === null || dbItem === void 0 ? void 0 : dbItem.originalPrice) !== null && _d !== void 0 ? _d : resolvedPrice);
+        const unitDiscount = Math.max(0, resolvedOriginalPrice - resolvedPrice);
+        return {
+            id: (dbItem === null || dbItem === void 0 ? void 0 : dbItem.id) || it.cartItemId || "",
+            productId: String(it.productId || (dbItem === null || dbItem === void 0 ? void 0 : dbItem.productId) || ""),
+            variantId: it.variantId || (dbItem === null || dbItem === void 0 ? void 0 : dbItem.variantId) || null,
+            size: (dbItem === null || dbItem === void 0 ? void 0 : dbItem.size) || ((_e = dbItem === null || dbItem === void 0 ? void 0 : dbItem.variant) === null || _e === void 0 ? void 0 : _e.size) || null,
+            unit: (dbItem === null || dbItem === void 0 ? void 0 : dbItem.unit) || ((_f = dbItem === null || dbItem === void 0 ? void 0 : dbItem.variant) === null || _f === void 0 ? void 0 : _f.unit) || null,
+            quantity: resolvedQty,
+            price: resolvedPrice,
+            originalPrice: resolvedOriginalPrice,
+            discount: unitDiscount,
+            product: dbItem === null || dbItem === void 0 ? void 0 : dbItem.product,
+            variant: dbItem === null || dbItem === void 0 ? void 0 : dbItem.variant,
+        };
+    }) : dbCartItems.map((ci) => {
+        var _a, _b, _c, _d;
+        return ({
+            id: ci.id,
+            productId: ci.productId,
+            variantId: ci.variantId,
+            size: ci.size || ((_a = ci.variant) === null || _a === void 0 ? void 0 : _a.size) || null,
+            unit: ci.unit || ((_b = ci.variant) === null || _b === void 0 ? void 0 : _b.unit) || null,
+            quantity: ci.quantity,
+            price: Number(ci.price),
+            originalPrice: Number((_c = ci.originalPrice) !== null && _c !== void 0 ? _c : ci.price),
+            discount: Math.max(0, Number((_d = ci.originalPrice) !== null && _d !== void 0 ? _d : ci.price) - Number(ci.price)),
+            product: ci.product,
+            variant: ci.variant,
+        });
     });
     const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
     const discount = Math.max(0, Number(discountAmount || 0));
     const shipping = Number(shippingCost || 0);
-    const serverAmount = Math.max(0, subtotal - discount) + shipping;
+    const serverAmount = Math.max(0, subtotal) + shipping;
     const normalizeOrGuestEmail = (email) => {
         const e = (email !== null && email !== void 0 ? email : "").trim().toLowerCase();
         if (e)
             return e;
         return `guest+${Date.now()}-${Math.random().toString(16).slice(2)}@khushbuwaala.local`;
     };
-    // 3️⃣ SAFE EMAIL CHECK: Prevent `users_email_unique_string` duplicate key errors
-    const rawEmail = ((_a = customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.email) !== null && _a !== void 0 ? _a : "").trim().toLowerCase();
+    // 3️⃣ SAFE EMAIL CHECK
     let resolvedCustomerId = customerId || null;
     if (!resolvedCustomerId && rawEmail) {
         const existingUser = yield client_1.prisma.user.findFirst({
@@ -179,16 +229,47 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
             resolvedCustomerId = existingUser.id;
         }
     }
-    // 4️⃣ Start transaction
+    // 3️⃣ Database Transaction (Batch queries with Promise.all)
     const order = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        var _a, _b, _c, _d;
+        var _a, _b, _c;
+        // 🔄 ONLY revert items from aborted ONLINE checkout attempts
+        const failedOnlineOrderIds = [
+            ...new Set(dbCartItems
+                .filter((ci) => ci.order && !ci.order.isPaid && ci.order.method !== 'cashOnDelivery')
+                .map((ci) => ci.order.id)),
+        ];
+        if (failedOnlineOrderIds.length > 0) {
+            yield Promise.all([
+                ...dbCartItems
+                    .filter((ci) => ci.order && !ci.order.isPaid && ci.order.method !== 'cashOnDelivery')
+                    .map((ci) => {
+                    var _a;
+                    return tx.product.update({
+                        where: { id: ci.productId },
+                        data: {
+                            salesCount: { decrement: ci.quantity || 1 },
+                            stock: { increment: (((_a = ci.variant) === null || _a === void 0 ? void 0 : _a.size) || 0) * (ci.quantity || 1) },
+                        },
+                    });
+                }),
+                tx.order.updateMany({
+                    where: { id: { in: failedOnlineOrderIds }, isPaid: false },
+                    data: { status: 'CANCELED' },
+                }),
+            ]);
+        }
         const invoice = yield (0, generateInvoice_1.generateInvoice)();
+        // Ensure productIds array contains only valid strings
+        const safeProductIds = cartItems.map((ci) => ci.productId).filter(Boolean);
+        // Create Order:
+        // - If method === 'cashOnDelivery', isPaid remains false, status is PENDING / PROCESSING
+        // - If method === 'online', isPaid remains false until gateway callback marks COMPLETED
         const newOrder = yield tx.order.create({
             data: {
                 invoice,
                 payToken: payToken || null,
                 amount: serverAmount,
-                isPaid: isPaid || false,
+                isPaid: false,
                 method: method || "",
                 orderSource: orderSource || 'WEBSITE',
                 saleType: saleType || 'SINGLE',
@@ -196,7 +277,6 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                 additionalNotes: additionalNotes || "",
                 coupon: coupon ? String(coupon).trim().toUpperCase() : null,
                 discountAmount: Number(discountAmount || 0),
-                // ✅ Connects existing user ID or creates a unique guest record
                 customer: resolvedCustomerId
                     ? { connect: { id: resolvedCustomerId } }
                     : {
@@ -223,10 +303,10 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                     district: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.district) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.district) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.district) || null,
                     thana: (billingAddress === null || billingAddress === void 0 ? void 0 : billingAddress.thana) || (shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.thana) || (customerInfo === null || customerInfo === void 0 ? void 0 : customerInfo.thana) || null,
                 },
-                productIds: cartItems.map((ci) => ci.productId),
+                productIds: safeProductIds,
                 cartItems: cartItems.map((item) => ({
                     productId: item.productId,
-                    variantId: item.variantId,
+                    variantId: item.variantId || undefined,
                     size: item.size || null,
                     unit: item.unit || null,
                     quantity: item.quantity,
@@ -234,7 +314,7 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                 })),
             },
         });
-        // Update CartItems to ORDERED and update quantity in DB
+        // Update CartItems to ORDERED
         yield Promise.all(cartItems.map((item) => tx.cartItem.update({
             where: { id: item.id },
             data: {
@@ -242,42 +322,49 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
                 status: 'ORDERED',
                 quantity: item.quantity,
                 price: Number(item.price),
+                originalPrice: Number(item.originalPrice),
+                discount: Number(item.discount),
             },
         })));
-        // Update stock and create logs using resolved quantity
-        for (const item of cartItems) {
-            const variantId = item.variantId;
-            const productId = item.productId;
-            const qty = item.quantity;
-            const variantSize = ((_d = item.variant) === null || _d === void 0 ? void 0 : _d.size) || 0;
-            yield tx.product.update({
-                where: { id: productId },
-                data: {
-                    salesCount: { increment: qty },
-                    stock: { decrement: variantSize * qty },
-                },
-            });
-            yield tx.stockLog.create({
-                data: {
-                    productId,
-                    variantId: variantId || '',
-                    change: -(variantSize * qty),
-                    reason: 'SALE',
-                },
-            });
-        }
+        // Decrement product inventory and create stock logs concurrently in parallel
+        yield Promise.all([
+            ...cartItems.map((item) => {
+                var _a;
+                const variantSize = ((_a = item.variant) === null || _a === void 0 ? void 0 : _a.size) || 0;
+                const qty = item.quantity;
+                return tx.product.update({
+                    where: { id: item.productId },
+                    data: {
+                        salesCount: { increment: qty },
+                        stock: { decrement: variantSize * qty },
+                    },
+                });
+            }),
+            ...cartItems.map((item) => {
+                var _a;
+                const variantSize = ((_a = item.variant) === null || _a === void 0 ? void 0 : _a.size) || 0;
+                const qty = item.quantity;
+                return tx.stockLog.create({
+                    data: {
+                        productId: item.productId,
+                        variantId: item.variantId || '',
+                        change: -(variantSize * qty),
+                        reason: 'SALE',
+                    },
+                });
+            }),
+        ]);
+        // If Cash on Delivery, consume coupon immediately
         if (coupon && method === "cashOnDelivery") {
             yield discount_service_1.DiscountServices.consumeDiscountUsageByCode(tx, coupon, newOrder.id);
         }
         return newOrder;
-    }), {
-        timeout: 20000,
-    });
-    // 5️⃣ Fetch full order
+    }), { timeout: 15000 });
+    // 5️⃣ Fetch populated order for frontend response and background processing
     const fullOrder = yield client_1.prisma.order.findUnique({
         where: { id: order.id },
         include: {
-            customer: { select: { id: true, name: true, imageUrl: true } },
+            customer: { select: { id: true, name: true, email: true, imageUrl: true } },
             orderItems: {
                 include: {
                     product: { select: { id: true, name: true, primaryImage: true } },
@@ -296,7 +383,25 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
         address: fullOrder.address || null,
         imageUrl: null,
     };
-    return Object.assign(Object.assign({}, fullOrder), { customer: customerData });
+    const finalOrder = Object.assign(Object.assign({}, fullOrder), { customer: customerData });
+    // 🚀 BACKGROUND TASKS (Non-blocking: emails and CAPI fire after response is sent)
+    setImmediate(() => {
+        var _a, _b, _c, _d, _e, _f;
+        const customerEmail = ((_a = finalOrder.shipping) === null || _a === void 0 ? void 0 : _a.email) ||
+            ((_b = finalOrder.billing) === null || _b === void 0 ? void 0 : _b.email) ||
+            ((_c = finalOrder.customer) === null || _c === void 0 ? void 0 : _c.email) ||
+            finalOrder.email;
+        const customerPhone = ((_d = finalOrder.shipping) === null || _d === void 0 ? void 0 : _d.phone) ||
+            ((_e = finalOrder.billing) === null || _e === void 0 ? void 0 : _e.phone) ||
+            ((_f = finalOrder.customer) === null || _f === void 0 ? void 0 : _f.phone) ||
+            finalOrder.phone;
+        if (finalOrder.method === 'cashOnDelivery') {
+            dispatchOrderEmails(finalOrder).catch((err) => console.error('❌ Failed to dispatch order emails:', err));
+        }
+        sendMetaCapiPurchase(finalOrder, customerEmail, customerPhone);
+    });
+    // ✅ Return full order so frontend & Redux store populate the Thank You page correctly
+    return finalOrder;
 });
 const updateOrderStatus = (orderId, payload) => __awaiter(void 0, void 0, void 0, function* () {
     const order = yield client_1.prisma.order.update({
@@ -441,15 +546,37 @@ const getUserOrders = (userId, queryParams) => __awaiter(void 0, void 0, void 0,
 });
 const getMyOrders = (userId, queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
-    const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams);
+    const user = yield client_1.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+    });
+    // Default limit to 200 so user orders are not truncated at 10
+    const normalizedParams = Object.assign({ limit: "100" }, queryParams);
+    const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(normalizedParams);
     const prismaQuery = queryBuilder.buildSort().buildPagination().getQuery();
-    const where = { customerId: userId };
+    const where = {
+        OR: [
+            { customerId: userId },
+            ...((user === null || user === void 0 ? void 0 : user.email) ? [{ email: { equals: user.email, mode: "insensitive" } }] : []),
+        ],
+    };
     const [orders, totalOrders, totalAmount] = yield Promise.all([
-        client_1.prisma.order.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
+        client_1.prisma.order.findMany(Object.assign(Object.assign({}, prismaQuery), { where, orderBy: prismaQuery.orderBy || { createdAt: "desc" }, select: {
+                id: true,
+                invoice: true,
+                status: true,
+                isPaid: true,
+                amount: true,
+                shippingCost: true,
+                orderTime: true,
+                createdAt: true,
                 orderItems: {
-                    include: {
+                    select: {
+                        id: true,
+                        quantity: true,
+                        price: true,
                         product: { select: { id: true, name: true, primaryImage: true } },
-                        variant: true,
+                        variant: { select: { id: true, size: true, unit: true } },
                     },
                 },
             } })),
@@ -699,6 +826,113 @@ const trackOrders = (queryParam) => __awaiter(void 0, void 0, void 0, function* 
             } });
     });
 });
+const deleteOrder = (orderId) => __awaiter(void 0, void 0, void 0, function* () {
+    const existing = yield client_1.prisma.order.findUnique({
+        where: { id: orderId },
+    });
+    if (!existing) {
+        throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
+    }
+    const result = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        // Delete or unlink associated cart items / order items if referenced
+        yield tx.cartItem.deleteMany({
+            where: { orderId },
+        });
+        return yield tx.order.delete({
+            where: { id: orderId },
+        });
+    }));
+    return result;
+});
+// Helper function to send CAPI Purchase asynchronously (Zero impact on response speed)
+function sendMetaCapiPurchase(order, customerEmail, customerPhone) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const pixelId = process.env.META_PIXEL_ID;
+            const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
+            if (!pixelId || !accessToken)
+                return;
+            const eventId = `kw_${order.id}`;
+            const value = Number(order.amount || 0);
+            const shipping = Number(order.shippingCost || 0);
+            const items = (order.orderItems || []).map((it) => {
+                var _a;
+                return ({
+                    id: String(it.productId || ((_a = it.product) === null || _a === void 0 ? void 0 : _a.id) || ""),
+                    quantity: Math.max(1, Number(it.quantity || 1)),
+                    item_price: Number(it.price || 0),
+                });
+            });
+            const shippingInfo = order.shipping || {};
+            const payload = {
+                data: [
+                    {
+                        event_name: "Purchase",
+                        event_time: Math.floor(Date.now() / 1000),
+                        event_id: eventId,
+                        event_source_url: "https://khushbuwaala.com/thank-you",
+                        action_source: "website",
+                        user_data: {
+                            em: customerEmail ? [crypto_1.default.createHash("sha256").update(customerEmail.trim().toLowerCase()).digest("hex")] : undefined,
+                            ph: customerPhone ? [crypto_1.default.createHash("sha256").update(customerPhone.replace(/\D/g, "")).digest("hex")] : undefined,
+                            fn: shippingInfo.name ? [crypto_1.default.createHash("sha256").update(shippingInfo.name.trim().toLowerCase()).digest("hex")] : undefined,
+                            ct: shippingInfo.district ? [crypto_1.default.createHash("sha256").update(shippingInfo.district.trim().toLowerCase()).digest("hex")] : undefined,
+                            country: ["bd"],
+                            fbp: shippingInfo.fbp || undefined,
+                            fbc: shippingInfo.fbc || undefined,
+                        },
+                        custom_data: {
+                            currency: "BDT",
+                            value: value,
+                            shipping: shipping,
+                            order_id: order.id,
+                            contents: items,
+                            content_type: "product",
+                        },
+                    },
+                ],
+            };
+            // 🚀 Async Fire-and-Forget: Never blocks order placement response time
+            fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            }).catch((err) => console.error("❌ CAPI Background Dispatch Error:", err));
+        }
+        catch (e) {
+            console.error("❌ CAPI Build Error:", e);
+        }
+    });
+}
+function dispatchOrderEmails(fullOrder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        const customerEmail = ((_a = fullOrder.shipping) === null || _a === void 0 ? void 0 : _a.email) ||
+            ((_b = fullOrder.billing) === null || _b === void 0 ? void 0 : _b.email) ||
+            ((_c = fullOrder.customer) === null || _c === void 0 ? void 0 : _c.email) ||
+            fullOrder.email;
+        const customerPhone = ((_d = fullOrder.shipping) === null || _d === void 0 ? void 0 : _d.phone) ||
+            ((_e = fullOrder.billing) === null || _e === void 0 ? void 0 : _e.phone) ||
+            ((_f = fullOrder.customer) === null || _f === void 0 ? void 0 : _f.phone) ||
+            fullOrder.phone;
+        if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
+            (0, emails_1.sendOrderConfirmationEmail)(customerEmail, fullOrder).catch((err) => console.error('❌ Failed to send order confirmation email to customer:', err.message));
+        }
+        const adminEmail = process.env.ADMIN_EMAIL || 'khushbuwaala@gmail.com';
+        if (adminEmail) {
+            (0, emails_1.sendOrderNotificationToAdmin)(adminEmail, Object.assign(Object.assign({}, fullOrder), { email: customerEmail || 'N/A', address: ((_g = fullOrder.shipping) === null || _g === void 0 ? void 0 : _g.address) || fullOrder.address || 'N/A', district: ((_h = fullOrder.shipping) === null || _h === void 0 ? void 0 : _h.district) || '', phone: customerPhone || 'N/A', date: new Date().toLocaleDateString('en-GB'), note: fullOrder.additionalNotes || 'N/A', cartItems: (fullOrder.orderItems || []).map((oi) => {
+                    var _a, _b, _c;
+                    return ({
+                        productName: ((_a = oi.product) === null || _a === void 0 ? void 0 : _a.name) || 'Product',
+                        productImageUrls: [((_b = oi.product) === null || _b === void 0 ? void 0 : _b.primaryImage) || ''],
+                        size: ((_c = oi.variant) === null || _c === void 0 ? void 0 : _c.size) ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
+                        quantity: oi.quantity,
+                        price: Number(oi.price || 0),
+                    });
+                }) })).catch((err) => console.error('❌ Failed to send order notification email to admin:', err.message));
+        }
+    });
+}
 exports.OrderServices = {
     getAllOrders,
     getOrderById,
@@ -713,4 +947,5 @@ exports.OrderServices = {
     getDashboardMetrics,
     getWeeklySalesOverview,
     trackOrders,
+    deleteOrder,
 };

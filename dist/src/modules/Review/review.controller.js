@@ -91,6 +91,16 @@ const publishReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
         data: result,
     });
 }));
+const deleteReview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const result = yield review_service_1.ReviewServices.deleteReview(id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: 'Review deleted successfully',
+        data: result,
+    });
+}));
 exports.reviewController = {
     createReview,
     getAllReviews,
@@ -100,4 +110,5 @@ exports.reviewController = {
     getProductReviews,
     updateReview,
     publishReview,
+    deleteReview,
 };
