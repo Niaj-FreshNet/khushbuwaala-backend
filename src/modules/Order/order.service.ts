@@ -1021,7 +1021,7 @@ async function sendMetaCapiPurchase(order: any, customerEmail?: string, customer
     const shippingInfo = (order.shipping as any) || {};
 
     const payload = {
-      test_event_code: "TEST89772",
+      test_event_code: "TEST40281",
       data: [
         {
           event_name: "Purchase",
