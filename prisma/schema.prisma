@@ -29,9 +29,11 @@ enum SaleType {
 enum OrderStatus {
   PENDING
   PROCESSING
+  SHIPPED
   DELIVERED
   COMPLETED
   CANCELED
+  RETURNED
 }
 
 enum ExpenseStatus {
@@ -382,21 +384,9 @@ model StockLog {
   @@map("stock_logs")
 }
 
-// model Payment {
-//   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-//   orderId   String   @db.ObjectId
-//   amount    Float
-//   method    String
-//   status    String
-//   createdAt DateTime @default(now())
-//   order     Order    @relation(fields: [orderId], references: [id])
-
-//   @@map("payments")
-// }
-
 model Payment {
-  id      String @id @default(auto()) @map("_id") @db.ObjectId
-  orderId String @db.ObjectId
+  id      String  @id @default(auto()) @map("_id") @db.ObjectId
+  orderId String? @db.ObjectId
 
   amount   Float
   provider PaymentProvider
@@ -419,7 +409,7 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
 
   @@map("payments")
 }

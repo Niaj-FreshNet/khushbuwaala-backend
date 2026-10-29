@@ -1,18 +1,13 @@
 import { Router } from 'express';
 import { PaymentController } from './payment.controller';
 import auth from '../../middlewares/auth';
+
 const router = Router();
 
-router.post(
-  '/create-checkout-session',
-  auth('ADMIN', 'USER'),
-  PaymentController.createCheckoutSession,
-);
-
-router.post(
+router.get(
   '/get-all-payment-history',
-  auth('ADMIN'),
-  PaymentController.getAllPaymentHistory,
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  PaymentController.getAllPaymentHistory
 );
 
 export const PaymentRoutes = router;

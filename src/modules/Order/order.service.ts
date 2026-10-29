@@ -993,11 +993,17 @@ const deleteOrder = async (orderId: string) => {
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    // Delete or unlink associated cart items / order items if referenced
+    // 1️⃣ Delete associated cart items tied to this order
     await tx.cartItem.deleteMany({
       where: { orderId },
     });
 
+    // 2️⃣ Delete associated payment records to satisfy the 'OrderToPayment' relation constraint
+    await tx.payment.deleteMany({
+      where: { orderId },
+    });
+
+    // 3️⃣ Now safely delete the order
     return await tx.order.delete({
       where: { id: orderId },
     });
