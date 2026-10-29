@@ -839,10 +839,15 @@ const deleteOrder = (orderId) => __awaiter(void 0, void 0, void 0, function* () 
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
     }
     const result = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        // Delete or unlink associated cart items / order items if referenced
+        // 1️⃣ Delete associated cart items tied to this order
         yield tx.cartItem.deleteMany({
             where: { orderId },
         });
+        // 2️⃣ Delete associated payment records to satisfy the 'OrderToPayment' relation constraint
+        yield tx.payment.deleteMany({
+            where: { orderId },
+        });
+        // 3️⃣ Now safely delete the order
         return yield tx.order.delete({
             where: { id: orderId },
         });

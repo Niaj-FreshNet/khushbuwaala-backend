@@ -198,7 +198,7 @@ export const CheckoutController = {
           });
 
           completedOrder = await tx.order.update({
-            where: { id: payment.orderId },
+            where: { id: payment.orderId as string },
             data: { isPaid: true, method: "DGEPAY", status: "PROCESSING" },
             include: {
               customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -268,7 +268,7 @@ export const CheckoutController = {
         });
 
         await tx.order.update({
-          where: { id: payment.orderId },
+          where: { id: payment.orderId as string },
           data: { status: "CANCELED" },
         });
       });
@@ -283,7 +283,7 @@ export const CheckoutController = {
         });
 
         await tx.order.update({
-          where: { id: payment.orderId },
+          where: { id: payment.orderId as string },
           data: { status: "CANCELED" },
         });
       });

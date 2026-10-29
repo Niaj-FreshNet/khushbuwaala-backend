@@ -216,21 +216,34 @@ exports.CheckoutController = {
                         }) })).catch((e) => console.error("Admin notification email error:", e.message));
                 }
                 // ✅ Fire Server-Side Meta CAPI Purchase with the exact same order ID / event_id (`kw_${orderId}`)
-                // This matches the browser-side event_id on the Thank You page for flawless deduplication.
                 (0, order_service_1.sendMetaCapiPurchase)(completedOrder, customerEmail, customerPhone).catch((err) => console.error("❌ Gateway CAPI Dispatch Error:", err));
                 return res.redirect(`${successUrl}?order=${payment.orderId}`);
             }
-            yield client_1.prisma.payment.update({
-                where: { id: payment.id },
-                data: { status: "FAILED", gatewayResponse: txnData },
-            });
+            // 🔴 AUTO-CANCEL ON FAILED PAYMENT STATUS
+            yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+                yield tx.payment.update({
+                    where: { id: payment.id },
+                    data: { status: "FAILED", gatewayResponse: txnData },
+                });
+                yield tx.order.update({
+                    where: { id: payment.orderId },
+                    data: { status: "CANCELED" },
+                });
+            }));
             return res.redirect(`${failUrl}?message=payment_failed`);
         }
         catch (err) {
-            yield client_1.prisma.payment.update({
-                where: { id: payment.id },
-                data: { status: "FAILED", gatewayResponse: err === null || err === void 0 ? void 0 : err.message },
-            });
+            // 🔴 AUTO-CANCEL ON VERIFICATION EXCEPTION/ERROR
+            yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+                yield tx.payment.update({
+                    where: { id: payment.id },
+                    data: { status: "FAILED", gatewayResponse: err === null || err === void 0 ? void 0 : err.message },
+                });
+                yield tx.order.update({
+                    where: { id: payment.orderId },
+                    data: { status: "CANCELED" },
+                });
+            }));
             return res.redirect(`${failUrl}?message=verification_error`);
         }
     })),
