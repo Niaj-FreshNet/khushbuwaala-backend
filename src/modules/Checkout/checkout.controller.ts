@@ -253,7 +253,6 @@ export const CheckoutController = {
         }
 
         // ✅ Fire Server-Side Meta CAPI Purchase with the exact same order ID / event_id (`kw_${orderId}`)
-        // This matches the browser-side event_id on the Thank You page for flawless deduplication.
         sendMetaCapiPurchase(completedOrder, customerEmail, customerPhone).catch((err) =>
           console.error("❌ Gateway CAPI Dispatch Error:", err)
         );
@@ -261,17 +260,34 @@ export const CheckoutController = {
         return res.redirect(`${successUrl}?order=${payment.orderId}`);
       }
 
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: "FAILED", gatewayResponse: txnData },
+      // 🔴 AUTO-CANCEL ON FAILED PAYMENT STATUS
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "FAILED", gatewayResponse: txnData },
+        });
+
+        await tx.order.update({
+          where: { id: payment.orderId },
+          data: { status: "CANCELED" },
+        });
       });
 
       return res.redirect(`${failUrl}?message=payment_failed`);
     } catch (err: any) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: "FAILED", gatewayResponse: err?.message },
+      // 🔴 AUTO-CANCEL ON VERIFICATION EXCEPTION/ERROR
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "FAILED", gatewayResponse: err?.message },
+        });
+
+        await tx.order.update({
+          where: { id: payment.orderId },
+          data: { status: "CANCELED" },
+        });
       });
+
       return res.redirect(`${failUrl}?message=verification_error`);
     }
   }),
