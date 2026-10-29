@@ -148,6 +148,8 @@ const createOrderWithCartItems = async (payload: {
   additionalNotes?: string;
   coupon?: string | null;
   discountAmount?: number;
+  fbp?: string | null;
+  fbc?: string | null;
   customerInfo?: any;
   shippingAddress?: any;
   billingAddress?: any;
@@ -340,6 +342,8 @@ const createOrderWithCartItems = async (payload: {
             address: shippingAddress?.address || customerInfo?.address || null,
             district: shippingAddress?.district || customerInfo?.district || null,
             thana: shippingAddress?.thana || customerInfo?.thana || null,
+            fbp: payload.fbp || null, // ✅ Store fbp
+            fbc: payload.fbc || null, // ✅ Store fbc
           },
           billing: {
             name: billingAddress?.name || shippingAddress?.name || customerInfo?.name || null,
@@ -456,13 +460,14 @@ const createOrderWithCartItems = async (payload: {
       (finalOrder.customer as any)?.phone ||
       finalOrder.phone;
 
+    // ✅ 1. Dispatch emails & CAPI ONLY for Cash on Delivery immediately. 
+    // Online payments (bKash/DGePay) will trigger CAPI and emails on successful payment callback/webhook verification.
     if (finalOrder.method === 'cashOnDelivery') {
       dispatchOrderEmails(finalOrder).catch((err) =>
         console.error('❌ Failed to dispatch order emails:', err)
       );
+      sendMetaCapiPurchase(finalOrder, customerEmail, customerPhone);
     }
-
-    sendMetaCapiPurchase(finalOrder, customerEmail, customerPhone);
   });
 
   // ✅ Return full order so frontend & Redux store populate the Thank You page correctly
@@ -1002,13 +1007,13 @@ const deleteOrder = async (orderId: string) => {
 };
 
 // Helper function to send CAPI Purchase asynchronously (Zero impact on response speed)
-async function sendMetaCapiPurchase(order: any, customerEmail?: string, customerPhone?: string) {
+export async function sendMetaCapiPurchase(order: any, customerEmail?: string, customerPhone?: string) {
   try {
     const pixelId = process.env.META_PIXEL_ID;
     const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
     if (!pixelId || !accessToken) return;
 
-    const eventId = `kw_${order.id}`;
+    const eventId = `kw_${order.id}`; // ✅ Must match frontend thank-you page event_id exactly
     const value = Number(order.amount || 0);
     const shipping = Number(order.shippingCost || 0);
 
@@ -1021,13 +1026,14 @@ async function sendMetaCapiPurchase(order: any, customerEmail?: string, customer
     const shippingInfo = (order.shipping as any) || {};
 
     const payload = {
-      test_event_code: "TEST40281",
+      // Use environment variable for test code or omit if live
+      ...(process.env.META_TEST_EVENT_CODE ? { test_event_code: process.env.META_TEST_EVENT_CODE } : {}),
       data: [
         {
           event_name: "Purchase",
           event_time: Math.floor(Date.now() / 1000),
           event_id: eventId,
-          event_source_url: "https://khushbuwaala.com/thank-you",
+          event_source_url: `${process.env.CLIENT_URL || "https://khushbuwaala.com"}/thank-you`,
           action_source: "website",
           user_data: {
             em: customerEmail ? [crypto.createHash("sha256").update(customerEmail.trim().toLowerCase()).digest("hex")] : undefined,
@@ -1035,8 +1041,8 @@ async function sendMetaCapiPurchase(order: any, customerEmail?: string, customer
             fn: shippingInfo.name ? [crypto.createHash("sha256").update(shippingInfo.name.trim().toLowerCase()).digest("hex")] : undefined,
             ct: shippingInfo.district ? [crypto.createHash("sha256").update(shippingInfo.district.trim().toLowerCase()).digest("hex")] : undefined,
             country: ["bd"],
-            fbp: shippingInfo.fbp || undefined,
-            fbc: shippingInfo.fbc || undefined,
+            fbp: shippingInfo.fbp || undefined, // ✅ Passed from client cookie
+            fbc: shippingInfo.fbc || undefined, // ✅ Passed from client cookie
           },
           custom_data: {
             currency: "BDT",
@@ -1050,12 +1056,11 @@ async function sendMetaCapiPurchase(order: any, customerEmail?: string, customer
       ],
     };
 
-    // 🚀 Async Fire-and-Forget: Never blocks order placement response time
-    fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`, {
+    await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }).catch((err) => console.error("❌ CAPI Background Dispatch Error:", err));
+    });
   } catch (e) {
     console.error("❌ CAPI Build Error:", e);
   }

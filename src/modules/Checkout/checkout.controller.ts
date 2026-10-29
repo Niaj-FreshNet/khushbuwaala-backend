@@ -7,6 +7,7 @@ import { dgepayGateway } from "./checkout.service";
 import { getClientRedirects, makeInvoice } from "./checkout.utils";
 import { DiscountServices } from "../Discount/discount.service";
 import { sendOrderConfirmationEmail, sendOrderNotificationToAdmin } from "../../helpers/emailSender/emails";
+import { sendMetaCapiPurchase } from "../Order/order.service";
 
 export const CheckoutController = {
   // ==========================================
@@ -212,36 +213,33 @@ export const CheckoutController = {
           }
         });
 
-        // Resolve customer name properly across fields
-        const customerName =
-          completedOrder?.shipping?.name ||
-          completedOrder?.customer?.name ||
-          completedOrder?.name ||
-          "Valued Customer";
-
+        // ✅ Trigger Emails & Server CAPI Purchase upon verified successful payment
         const customerEmail =
           completedOrder?.shipping?.email ||
           completedOrder?.billing?.email ||
           completedOrder?.customer?.email ||
           completedOrder?.email;
 
-        // ✅ Send Customer Confirmation Email for Online Payment
+        const customerPhone =
+          completedOrder?.shipping?.phone ||
+          completedOrder?.billing?.phone ||
+          completedOrder?.customer?.phone ||
+          completedOrder?.phone;
+
         if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
           sendOrderConfirmationEmail(customerEmail, completedOrder).catch((e) =>
             console.error("DGePay confirmation email error:", e.message)
           );
         }
 
-        // ✅ Send Admin Alert for Online Payment (with customer name)
         const adminEmail = process.env.ADMIN_EMAIL || "khushbuwaala@gmail.com";
         if (adminEmail) {
           sendOrderNotificationToAdmin(adminEmail, {
             ...completedOrder,
-            name: customerName, // 👈 Included customer name
             email: customerEmail || 'N/A',
             address: (completedOrder.shipping as any)?.address || completedOrder.address,
             district: (completedOrder.shipping as any)?.district || '',
-            phone: (completedOrder.shipping as any)?.phone || completedOrder.phone,
+            phone: customerPhone || 'N/A',
             date: new Date().toLocaleDateString('en-GB'),
             note: completedOrder.additionalNotes,
             cartItems: (completedOrder.orderItems || []).map((oi: any) => ({
@@ -251,10 +249,14 @@ export const CheckoutController = {
               quantity: oi.quantity,
               price: Number(oi.price || 0),
             })),
-          }).catch((e) =>
-            console.error("Admin notification email error:", e.message)
-          );
+          }).catch((e) => console.error("Admin notification email error:", e.message));
         }
+
+        // ✅ Fire Server-Side Meta CAPI Purchase with the exact same order ID / event_id (`kw_${orderId}`)
+        // This matches the browser-side event_id on the Thank You page for flawless deduplication.
+        sendMetaCapiPurchase(completedOrder, customerEmail, customerPhone).catch((err) =>
+          console.error("❌ Gateway CAPI Dispatch Error:", err)
+        );
 
         return res.redirect(`${successUrl}?order=${payment.orderId}`);
       }
