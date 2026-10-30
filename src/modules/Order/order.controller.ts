@@ -204,6 +204,16 @@ export const getWeeklySalesOverview = catchAsync(async (req, res) => {
   sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
 });
 
+export const getMonthlySalesOverview = catchAsync(async (req, res) => {
+  const type = (req.query.type as any) || "all";
+  const year = req.query.year ? Number(req.query.year) : undefined;
+  const month = req.query.month ? Number(req.query.month) : undefined;
+
+  const data = await OrderServices.getMonthlySalesOverview(type, year, month);
+
+  sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
+});
+
 const trackOrders = catchAsync(async (req, res) => {
   const { query } = req.params;
   const result = await OrderServices.trackOrders(query);
@@ -241,6 +251,7 @@ export const OrderController = {
   getAllCustomers,
   getDashboardMetrics,
   getWeeklySalesOverview,
+  getMonthlySalesOverview,
   trackOrders,
   deleteOrder,
 };

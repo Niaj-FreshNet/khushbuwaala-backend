@@ -54,6 +54,7 @@ const getUser = async (id: string) => {
       imageUrl: true,
       address: true,
       district: true,
+      createdAt: true, // ✅ Added so details page gets creation date
     },
   });
   return result;
@@ -87,7 +88,6 @@ const changePassword = async (
     throw new AppError(httpStatus.BAD_REQUEST, 'Both current and new passwords are required');
   }
 
-  // 1. Fetch user including their existing hashed password and email
   const user = await prisma.user.findUnique({
     where: { id },
     select: {
@@ -102,7 +102,6 @@ const changePassword = async (
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
-  // Guard check: Ensure user actually has an existing password set
   if (!user.password) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -110,19 +109,16 @@ const changePassword = async (
     );
   }
 
-  // 2. Verify current password
   const isPasswordMatched = await bcrypt.compare(oldPassword, user.password);
   if (!isPasswordMatched) {
     throw new AppError(httpStatus.UNAUTHORIZED, 'Current password is incorrect');
   }
 
-  // 3. Prevent reusing the exact same password
   const isSamePassword = await bcrypt.compare(newPassword, user.password);
   if (isSamePassword) {
     throw new AppError(httpStatus.BAD_REQUEST, 'New password cannot be the same as your current password');
   }
 
-  // 4. Hash and save new password
   const hashedPassword = await bcrypt.hash(
     newPassword,
     Number(config.salt_round),
@@ -135,7 +131,6 @@ const changePassword = async (
     },
   });
 
-  // 5. Fire email alert asynchronously (non-blocking)
   if (user.email) {
     sendPasswordChangeNotificationEmail(user.email, user.name).catch((err) => {
       console.error('Password change email error:', err);
@@ -150,10 +145,18 @@ const updateUser = async (id: string, data: any) => {
 
   if (data.name !== undefined) updateData.name = String(data.name).trim();
   if (data.address !== undefined) updateData.address = String(data.address).trim();
-  if (data.district !== undefined) updateData.district = String(data.district).trim(); // ✅ Allow district
+  if (data.district !== undefined) updateData.district = String(data.district).trim();
   if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
 
-  // ✅ Handle Email update & prevent duplicates
+  // ✅ Added Role update support so admin promotions/demotions persist
+  if (data.role !== undefined) {
+    const validRoles = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+    if (!validRoles.includes(data.role)) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Invalid user role specified');
+    }
+    updateData.role = data.role;
+  }
+
   if (data.email !== undefined) {
     const cleanEmail = String(data.email).trim().toLowerCase();
 
@@ -171,7 +174,6 @@ const updateUser = async (id: string, data: any) => {
     updateData.email = cleanEmail;
   }
 
-  // Accept either phone or contact from payload and save to prisma's phone field
   const incomingPhone = data.phone !== undefined ? data.phone : data.contact;
   if (incomingPhone !== undefined) {
     updateData.phone = String(incomingPhone).trim();
@@ -189,6 +191,7 @@ const updateUser = async (id: string, data: any) => {
       imageUrl: true,
       address: true,
       district: true,
+      createdAt: true,
     },
   });
 

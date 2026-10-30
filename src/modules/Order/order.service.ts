@@ -835,7 +835,7 @@ const getWeeklySalesOverview = async (type: DashboardType = "all") => {
     select: {
       orderTime: true,
       amount: true,
-      isPaid: true,
+      isPaid: true, // You can keep or drop this depending on choice
     },
   });
 
@@ -848,7 +848,10 @@ const getWeeklySalesOverview = async (type: DashboardType = "all") => {
     if (!buckets[key]) continue;
 
     buckets[key].orders += 1;
-    if (o.isPaid) buckets[key].sales += Number(o.amount ?? 0);
+
+    // ✅ FIX: Accumulate amount for all non-canceled orders (or check if you want only paid. 
+    // If COD orders should count towards sales overview graph, remove `o.isPaid`)
+    buckets[key].sales += Number(o.amount ?? 0);
   }
 
   return last7.map((d) => ({
@@ -856,6 +859,61 @@ const getWeeklySalesOverview = async (type: DashboardType = "all") => {
     sales: buckets[d.key]?.sales ?? 0,
     orders: buckets[d.key]?.orders ?? 0,
   }));
+};
+
+const getMonthlySalesOverview = async (type: DashboardType = "all", year?: number, month?: number) => {
+  const nowUtc = new Date();
+  const nowDhaka = toZonedTime(nowUtc, TZ);
+
+  // If specific year & month are passed, use them; otherwise default to current month
+  const targetYear = year ? Number(year) : nowDhaka.getFullYear();
+  const targetMonth = month ? Number(month) - 1 : nowDhaka.getMonth(); // 0-indexed for date-fns/js
+
+  const monthStartDhaka = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+  const monthEndDhaka = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
+  const monthStart = fromZonedTime(monthStartDhaka, TZ);
+  const monthEnd = fromZonedTime(monthEndDhaka, TZ);
+
+  const sourceWhere = resolveOrderSourceWhere(type);
+
+  const orders = await prisma.order.findMany({
+    where: {
+      ...sourceWhere,
+      orderTime: {
+        gte: monthStart,
+        lte: monthEnd,
+      },
+      status: { not: "CANCELED" },
+    },
+    select: {
+      orderTime: true,
+      amount: true,
+      isPaid: true,
+    },
+  });
+
+  const dailyBuckets: Record<string, { sales: number; orders: number }> = {};
+
+  for (const o of orders) {
+    const oDhaka = toZonedTime(o.orderTime, TZ);
+    const key = format(oDhaka, "dd-MM-yy"); // matches your DD-MM-YY format
+
+    if (!dailyBuckets[key]) {
+      dailyBuckets[key] = { sales: 0, orders: 0 };
+    }
+
+    dailyBuckets[key].orders += 1;
+    dailyBuckets[key].sales += Number(o.amount ?? 0);
+  }
+
+  return Object.keys(dailyBuckets)
+    .sort()
+    .map((dateKey) => ({
+      date: dateKey,
+      sales: dailyBuckets[dateKey].sales,
+      orders: dailyBuckets[dateKey].orders,
+    }));
 };
 
 const trackOrders = async (queryParam: string) => {
@@ -1127,6 +1185,7 @@ export const OrderServices = {
   getAllCustomers,
   getDashboardMetrics,
   getWeeklySalesOverview,
+  getMonthlySalesOverview,
   trackOrders,
   deleteOrder,
 };

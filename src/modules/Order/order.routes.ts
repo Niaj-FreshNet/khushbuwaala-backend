@@ -34,6 +34,7 @@ router.patch(
 
 router.get("/dashboard/metrics", auth('ADMIN', 'SUPER_ADMIN'), OrderController.getDashboardMetrics);
 router.get("/dashboard/weekly-sales", auth('ADMIN', 'SUPER_ADMIN'), OrderController.getWeeklySalesOverview);
+router.get("/dashboard/monthly-sales", auth('ADMIN', 'SUPER_ADMIN'), OrderController.getMonthlySalesOverview);
 
 // Customer management
 router.get('/get-all-customers', auth('SUPER_ADMIN', 'ADMIN'), OrderController.getAllCustomers);

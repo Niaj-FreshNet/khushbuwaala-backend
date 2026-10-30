@@ -44,26 +44,21 @@ export const PASSWORD_RESET_REQUEST_TEMPLATE = `
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reset Your Password</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 32px 12px;">
-  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid ${BORDER_COLOR}; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-    <div style="background-color: ${BRAND_COLOR}; padding: 32px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
-      <p style="color: #A3C9A8; margin: 6px 0 0 0; font-size: 12px; letter-spacing: 1.5px; font-weight: 500;">ACCOUNT SECURITY</p>
+<body style="font-family: sans-serif; background-color: #F6F8F6; padding: 32px 12px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #E2E8E4;">
+    <div style="background-color: #1b382b; padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Khushbuwaala</h1>
     </div>
     <div style="padding: 36px 30px;">
-      <h2 style="margin: 0 0 14px; font-size: 19px; color: #111827; font-weight: 600;">Password Reset Request</h2>
-      <p style="margin: 0 0 24px; color: #4B5563; font-size: 14px;">We received a request to reset your Khushbuwaala account password. Click the button below to proceed:</p>
+      <h2>Password Reset Request</h2>
+      <p>We received a request to reset your password. Click below to proceed:</p>
       
       <div style="text-align: center; margin: 28px 0;">
-        <a href="{resetURL}" style="background-color: ${BRAND_COLOR}; color: #ffffff; padding: 13px 26px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; letter-spacing: 0.5px; display: inline-block;">Reset Password</a>
+        <a href="{resetURL}" style="background-color: #1b382b; color: #ffffff; padding: 13px 26px; text-decoration: none; border-radius: 6px; font-weight: 600;">Reset Password</a>
       </div>
       
-      <p style="font-size: 13px; color: #6B7280; margin: 0 0 12px;">This link will expire in <strong>15 minutes</strong>.</p>
-      <p style="font-size: 12px; color: #9CA3AF; margin: 0; word-break: break-all;">Button not working? Paste this link into your browser:<br><a href="{resetURL}" style="color: ${ACCENT_COLOR}; text-decoration: underline;">{resetURL}</a></p>
-    </div>
-    <div style="border-top: 1px solid ${BORDER_COLOR}; padding: 18px; text-align: center; font-size: 12px; color: #9CA3AF;">
-      <p style="margin: 0 0 4px;">&copy; ${new Date().getFullYear()} Khushbuwaala. All rights reserved.</p>
-      <p style="margin: 0;"><a href="https://khushbuwaala.com" style="color: ${ACCENT_COLOR}; text-decoration: none; font-weight: 500;">khushbuwaala.com</a></p>
+      <p style="font-size: 13px; color: #6B7280;">This link will expire in <strong>15 minutes</strong>.</p>
+      <p style="font-size: 12px; color: #9CA3AF; word-break: break-all;">Button not working? Paste this link into your browser:<br><a href="{resetURL}" style="color: #4a7c59;">{resetURL}</a></p>
     </div>
   </div>
 </body>

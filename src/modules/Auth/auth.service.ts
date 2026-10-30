@@ -205,9 +205,7 @@ const forgotPassword = async (email: string) => {
     throw new AppError(400, 'Email is required');
   }
   const user = await prisma.user.findUnique({
-    where: {
-      email,
-    },
+    where: { email },
   });
 
   if (!user) {
@@ -215,16 +213,18 @@ const forgotPassword = async (email: string) => {
   }
 
   const resetToken = crypto.randomBytes(32).toString('hex');
-  const tokenExpiry = new Date(Date.now() + 1000 * 60 * 15); //15 minutes
+  const tokenExpiry = new Date(Date.now() + 1000 * 60 * 15); // 15 minutes
 
-  const link = `${config.live_url}/reset-password?email=${email}&token=${resetToken}`;
+  // Fallback to localhost if config.live_url is missing or undefined
+  const baseUrl = config.live_url || 'http://localhost:3000';
+
+  // If your frontend file is at app/reset-password/[token]/page.tsx, structure it like this:
+  const link = `${baseUrl}/reset-password/${resetToken}`;
 
   await sendPasswordResetEmail(email, link);
 
   await prisma.user.update({
-    where: {
-      email,
-    },
+    where: { email },
     data: {
       resetToken,
       resetTokenExpiry: tokenExpiry,
@@ -235,33 +235,28 @@ const forgotPassword = async (email: string) => {
 };
 
 export const resetPassword = async (
-  email: string,
   token: string,
   password: string,
 ) => {
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where: {
-      email,
+      resetToken: token,
     },
   });
 
   if (!user) {
-    throw new Error('User not found with this email');
+    throw new AppError(404, 'Invalid or expired reset token');
   }
 
-  if (user.resetToken !== token || !user.resetTokenExpiry) {
-    throw new Error('Invalid reset token');
-  }
-
-  if (user?.resetTokenExpiry < new Date()) {
-    throw new Error('Reset token has expired');
+  if (!user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+    throw new AppError(400, 'Reset token has expired');
   }
 
   const hashedPassword = await bcrypt.hash(password, Number(config.salt_round));
 
   await prisma.user.update({
     where: {
-      email,
+      id: user.id,
     },
     data: {
       password: hashedPassword,

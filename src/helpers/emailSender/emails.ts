@@ -37,8 +37,13 @@ export const sendWelcomeEmail = async (to: string, name: string) => {
 
 //forgot password
 
-export const sendPasswordResetEmail = async (to: string, token: string) => {
-  const template = PASSWORD_RESET_REQUEST_TEMPLATE.replace('{resetURL}', token);
+export const sendPasswordResetEmail = async (to: string, resetURL: string) => {
+  // Use a global regular expression /.../g to replace every instance of {resetURL}
+  const template = PASSWORD_RESET_REQUEST_TEMPLATE.replace(
+    /{resetURL}/g, 
+    resetURL
+  );
+
   const response = await sendEmail(
     [{ email: to }],
     'Password Reset Request',

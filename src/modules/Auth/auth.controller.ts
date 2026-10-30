@@ -82,15 +82,18 @@ const forgotPassword = catchAsync(async (req, res) => {
 
 const resetPassword = catchAsync(async (req, res) => {
   const token = req.params.token;
-  const { email, newPassword } = req.body;
+  // Match whatever key your form/schema sends ('password' or 'newPassword')
+  const { password, newPassword } = req.body;
+  const passwordToUse = password || newPassword;
 
-  const result = await AuthServices.resetPassword(email, token, newPassword);
+  // Call the service using only token and password (no email needed)
+  const result = await AuthServices.resetPassword(token, passwordToUse);
   const isok = result ? true : false;
 
   sendResponse(res, {
     statusCode: isok ? 200 : 400,
     success: isok,
-    message: isok ? 'Password Reset Successfull' : 'Password Reset Failed',
+    message: isok ? 'Password Reset Successful' : 'Password Reset Failed',
   });
 });
 
