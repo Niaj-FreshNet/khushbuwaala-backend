@@ -337,6 +337,13 @@ model Order {
   payments       Payment[]
   orderDiscounts OrderDiscount[]
 
+  // STEADFAST COURIER INTEGRATION FIELDS
+  consignmentId    Int?    @unique
+  trackingCode     String? 
+  trackingLink     String?
+  deliveryCharge   Float?  @default(0) 
+  courierStatus    String?         
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

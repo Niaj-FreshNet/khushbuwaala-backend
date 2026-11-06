@@ -505,77 +505,145 @@ const cleanNumber = (v: any, field: string) => {
 };
 
 const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: any) => {
-  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  const existing = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { orderItems: true },
+  });
   if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
 
-  const data: any = {};
+  const updated = await prisma.$transaction(
+    async (tx) => {
+      const data: any = {};
 
-  if (payload.status !== undefined) data.status = payload.status;
+      if (payload.status !== undefined) data.status = payload.status;
 
-  if (payload.isPaid !== undefined) {
-    if (typeof payload.isPaid !== 'boolean') {
-      throw new AppError(httpStatus.BAD_REQUEST, 'isPaid must be boolean');
-    }
-    data.isPaid = payload.isPaid;
-  }
-  if (payload.method !== undefined) data.method = payload.method ?? null;
+      if (payload.isPaid !== undefined) {
+        if (typeof payload.isPaid !== 'boolean') {
+          throw new AppError(httpStatus.BAD_REQUEST, 'isPaid must be boolean');
+        }
+        data.isPaid = payload.isPaid;
+      }
+      if (payload.method !== undefined) data.method = payload.method ?? null;
 
-  if (payload.orderSource !== undefined) data.orderSource = payload.orderSource;
-  if (payload.saleType !== undefined) data.saleType = payload.saleType;
+      if (payload.orderSource !== undefined) data.orderSource = payload.orderSource;
+      if (payload.saleType !== undefined) data.saleType = payload.saleType;
 
-  if (payload.shippingCost !== undefined) data.shippingCost = cleanNumber(payload.shippingCost, 'shippingCost');
-  if (payload.discountAmount !== undefined) data.discountAmount = Math.max(0, Math.floor(Number(payload.discountAmount)));
-  if (payload.coupon !== undefined) data.coupon = payload.coupon ? String(payload.coupon).trim().toUpperCase() : null;
-  if (payload.additionalNotes !== undefined) data.additionalNotes = payload.additionalNotes ?? null;
+      if (payload.shippingCost !== undefined) data.shippingCost = cleanNumber(payload.shippingCost, 'shippingCost');
+      if (payload.discountAmount !== undefined) data.discountAmount = Math.max(0, Math.floor(Number(payload.discountAmount)));
+      if (payload.coupon !== undefined) data.coupon = payload.coupon ? String(payload.coupon).trim().toUpperCase() : null;
+      if (payload.additionalNotes !== undefined) data.additionalNotes = payload.additionalNotes ?? null;
 
-  if (payload.shipping !== undefined) data.shipping = payload.shipping;
-  if (payload.billing !== undefined) data.billing = payload.billing;
+      if (payload.shipping !== undefined) data.shipping = payload.shipping;
+      if (payload.billing !== undefined) data.billing = payload.billing;
 
-  if (payload.name !== undefined) data.name = payload.name;
-  if (payload.phone !== undefined) data.phone = payload.phone;
-  if (payload.email !== undefined) data.email = payload.email;
-  if (payload.address !== undefined) data.address = payload.address;
+      if (payload.name !== undefined) data.name = payload.name;
+      if (payload.phone !== undefined) data.phone = payload.phone;
+      if (payload.email !== undefined) data.email = payload.email;
+      if (payload.address !== undefined) data.address = payload.address;
 
-  if (payload.amount !== undefined) {
-    const amt = cleanNumber(payload.amount, 'amount');
-    if (amt! <= 0) throw new AppError(httpStatus.BAD_REQUEST, 'amount must be > 0');
-    data.amount = amt;
-  }
+      if (payload.amount !== undefined) {
+        const amt = cleanNumber(payload.amount, 'amount');
+        if (amt! <= 0) throw new AppError(httpStatus.BAD_REQUEST, 'amount must be > 0');
+        data.amount = amt;
+      }
 
-  if (payload.customerId !== undefined) {
-    const role = user?.role;
-    if (!['SUPER_ADMIN', 'ADMIN', 'SALESMAN'].includes(role)) {
-      throw new AppError(httpStatus.FORBIDDEN, 'Only ADMIN/SUPER_ADMIN/SALESMAN can change customer');
-    }
+      if (payload.customerId !== undefined) {
+        const role = user?.role;
+        if (!['SUPER_ADMIN', 'ADMIN', 'SALESMAN'].includes(role)) {
+          throw new AppError(httpStatus.FORBIDDEN, 'Only ADMIN/SUPER_ADMIN/SALESMAN can change customer');
+        }
 
-    if (!payload.customerId) {
-      data.customerId = null;
-    } else {
-      data.customer = { connect: { id: payload.customerId } };
-    }
-  }
+        if (!payload.customerId) {
+          data.customerId = null;
+        } else {
+          data.customer = { connect: { id: payload.customerId } };
+        }
+      }
 
-  if (payload.salesmanId !== undefined) data.salesman = payload.salesmanId
-    ? { connect: { id: payload.salesmanId } }
-    : { disconnect: true };
+      if (payload.salesmanId !== undefined) data.salesman = payload.salesmanId
+        ? { connect: { id: payload.salesmanId } }
+        : { disconnect: true };
 
-  if (Object.keys(data).length === 0) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'No valid fields provided to update');
-  }
+      // 🔄 HANDLE ORDER ITEMS UPDATE IF PROVIDED IN PAYLOAD
+      if (payload.orderItems && Array.isArray(payload.orderItems)) {
+        const incomingItems = payload.orderItems;
+        const existingItems = existing.orderItems; // fetched with include: { orderItems: true }
 
-  const updated = await prisma.order.update({
-    where: { id: orderId },
-    data,
-    include: {
-      customer: { select: { id: true, name: true, imageUrl: true, email: true, phone: true, address: true } },
-      orderItems: {
+        const incomingItemIds = incomingItems
+          .map((item: any) => item.id)
+          .filter((id: string) => id && !id.startsWith("temp_"));
+
+        // 1. Identify items to delete (exist in DB but missing from incoming payload)
+        const itemsToDelete = existingItems.filter((item) => !incomingItemIds.includes(item.id));
+
+        if (itemsToDelete.length > 0) {
+          await tx.cartItem.deleteMany({
+            where: { id: { in: itemsToDelete.map((i) => i.id) } },
+          });
+        }
+
+        // 2. Process incoming items (Update existing real IDs, Create new temp/missing ones)
+        const safeProductIds: string[] = [];
+
+        await Promise.all(
+          incomingItems.map(async (item: any) => {
+            if (item.productId) safeProductIds.push(item.productId);
+
+            const itemPayload = {
+              productId: item.productId,
+              variantId: item.variantId || null,
+              size: Number(item.size || 0),
+              unit: item.unit || "ML",
+              quantity: Math.max(1, Number(item.quantity || 1)),
+              price: Number(item.price || 0),
+              status: "ORDERED" as const,
+            };
+
+            // If it's an existing real DB item ID, update it
+            if (item.id && !item.id.toString().startsWith("temp_")) {
+              // Ensure the item actually belongs to this order before updating
+              const belongsToOrder = existingItems.some((ei) => ei.id === item.id);
+              if (belongsToOrder) {
+                return tx.cartItem.update({
+                  where: { id: item.id },
+                  data: itemPayload,
+                });
+              }
+            }
+
+            // Otherwise, create a new cart item linked to this order
+            return tx.cartItem.create({
+              data: {
+                ...itemPayload,
+                orderId: existing.id,
+              },
+            });
+          })
+        );
+
+        data.productIds = [...new Set(safeProductIds)];
+      }
+
+      if (Object.keys(data).length === 0) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'No valid fields provided to update');
+      }
+
+      return await tx.order.update({
+        where: { id: orderId },
+        data,
         include: {
-          product: { select: { id: true, name: true, primaryImage: true } },
-          variant: true,
+          customer: { select: { id: true, name: true, imageUrl: true, email: true, phone: true, address: true } },
+          orderItems: {
+            include: {
+              product: { select: { id: true, name: true, primaryImage: true } },
+              variant: true,
+            },
+          },
         },
-      },
+      });
     },
-  });
+    { timeout: 15000 }
+  );
 
   const customerData = updated.customer || {
     id: null,
