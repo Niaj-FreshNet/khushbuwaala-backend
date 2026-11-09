@@ -20,6 +20,7 @@ router.patch('/update-payment-status/:id', (0, auth_1.default)('SUPER_ADMIN', 'A
 router.patch('/update-order/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), order_controller_1.OrderController.updateOrder);
 router.get("/dashboard/metrics", (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), order_controller_1.OrderController.getDashboardMetrics);
 router.get("/dashboard/weekly-sales", (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), order_controller_1.OrderController.getWeeklySalesOverview);
+router.get("/dashboard/monthly-sales", (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), order_controller_1.OrderController.getMonthlySalesOverview);
 // Customer management
 router.get('/get-all-customers', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN'), order_controller_1.OrderController.getAllCustomers);
 // User orders (customer)

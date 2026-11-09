@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OrderController = exports.getWeeklySalesOverview = exports.getDashboardMetrics = void 0;
+exports.OrderController = exports.getMonthlySalesOverview = exports.getWeeklySalesOverview = exports.getDashboardMetrics = void 0;
 const http_status_1 = __importDefault(require("http-status"));
 const crypto_1 = __importDefault(require("crypto"));
 const AppError_1 = __importDefault(require("../../errors/AppError"));
@@ -176,6 +176,13 @@ exports.getWeeklySalesOverview = (0, catchAsync_1.default)((req, res) => __await
     const data = yield order_service_1.OrderServices.getWeeklySalesOverview(type);
     (0, sendResponse_1.default)(res, { statusCode: 200, success: true, message: "OK", data });
 }));
+exports.getMonthlySalesOverview = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const type = req.query.type || "all";
+    const year = req.query.year ? Number(req.query.year) : undefined;
+    const month = req.query.month ? Number(req.query.month) : undefined;
+    const data = yield order_service_1.OrderServices.getMonthlySalesOverview(type, year, month);
+    (0, sendResponse_1.default)(res, { statusCode: 200, success: true, message: "OK", data });
+}));
 const trackOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { query } = req.params;
     const result = yield order_service_1.OrderServices.trackOrders(query);
@@ -209,6 +216,7 @@ exports.OrderController = {
     getAllCustomers,
     getDashboardMetrics: exports.getDashboardMetrics,
     getWeeklySalesOverview: exports.getWeeklySalesOverview,
+    getMonthlySalesOverview: exports.getMonthlySalesOverview,
     trackOrders,
     deleteOrder,
 };

@@ -85,13 +85,16 @@ const forgotPassword = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
 }));
 const resetPassword = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const token = req.params.token;
-    const { email, newPassword } = req.body;
-    const result = yield auth_service_1.AuthServices.resetPassword(email, token, newPassword);
+    // Match whatever key your form/schema sends ('password' or 'newPassword')
+    const { password, newPassword } = req.body;
+    const passwordToUse = password || newPassword;
+    // Call the service using only token and password (no email needed)
+    const result = yield auth_service_1.AuthServices.resetPassword(token, passwordToUse);
     const isok = result ? true : false;
     (0, sendResponse_1.default)(res, {
         statusCode: isok ? 200 : 400,
         success: isok,
-        message: isok ? 'Password Reset Successfull' : 'Password Reset Failed',
+        message: isok ? 'Password Reset Successful' : 'Password Reset Failed',
     });
 }));
 const changePassword = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {

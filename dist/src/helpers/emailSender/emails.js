@@ -25,8 +25,9 @@ const sendWelcomeEmail = (to, name) => __awaiter(void 0, void 0, void 0, functio
 });
 exports.sendWelcomeEmail = sendWelcomeEmail;
 //forgot password
-const sendPasswordResetEmail = (to, token) => __awaiter(void 0, void 0, void 0, function* () {
-    const template = emailTemplates_1.PASSWORD_RESET_REQUEST_TEMPLATE.replace('{resetURL}', token);
+const sendPasswordResetEmail = (to, resetURL) => __awaiter(void 0, void 0, void 0, function* () {
+    // Use a global regular expression /.../g to replace every instance of {resetURL}
+    const template = emailTemplates_1.PASSWORD_RESET_REQUEST_TEMPLATE.replace(/{resetURL}/g, resetURL);
     const response = yield (0, email_config_1.sendEmail)([{ email: to }], 'Password Reset Request', template);
     return response;
 });

@@ -711,7 +711,7 @@ const getWeeklySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], voi
         select: {
             orderTime: true,
             amount: true,
-            isPaid: true,
+            isPaid: true, // You can keep or drop this depending on choice
         },
     });
     const buckets = {};
@@ -723,8 +723,9 @@ const getWeeklySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], voi
         if (!buckets[key])
             continue;
         buckets[key].orders += 1;
-        if (o.isPaid)
-            buckets[key].sales += Number((_a = o.amount) !== null && _a !== void 0 ? _a : 0);
+        // ✅ FIX: Accumulate amount for all non-canceled orders (or check if you want only paid. 
+        // If COD orders should count towards sales overview graph, remove `o.isPaid`)
+        buckets[key].sales += Number((_a = o.amount) !== null && _a !== void 0 ? _a : 0);
     }
     return last7.map((d) => {
         var _a, _b, _c, _d;
@@ -734,6 +735,47 @@ const getWeeklySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], voi
             orders: (_d = (_c = buckets[d.key]) === null || _c === void 0 ? void 0 : _c.orders) !== null && _d !== void 0 ? _d : 0,
         });
     });
+});
+const getMonthlySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], void 0, function* (type = "all", year, month) {
+    var _a;
+    const nowUtc = new Date();
+    const nowDhaka = (0, date_fns_tz_1.toZonedTime)(nowUtc, TZ);
+    // If specific year & month are passed, use them; otherwise default to current month
+    const targetYear = year ? Number(year) : nowDhaka.getFullYear();
+    const targetMonth = month ? Number(month) - 1 : nowDhaka.getMonth(); // 0-indexed for date-fns/js
+    const monthStartDhaka = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+    const monthEndDhaka = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+    const monthStart = (0, date_fns_tz_1.fromZonedTime)(monthStartDhaka, TZ);
+    const monthEnd = (0, date_fns_tz_1.fromZonedTime)(monthEndDhaka, TZ);
+    const sourceWhere = resolveOrderSourceWhere(type);
+    const orders = yield client_1.prisma.order.findMany({
+        where: Object.assign(Object.assign({}, sourceWhere), { orderTime: {
+                gte: monthStart,
+                lte: monthEnd,
+            }, status: { not: "CANCELED" } }),
+        select: {
+            orderTime: true,
+            amount: true,
+            isPaid: true,
+        },
+    });
+    const dailyBuckets = {};
+    for (const o of orders) {
+        const oDhaka = (0, date_fns_tz_1.toZonedTime)(o.orderTime, TZ);
+        const key = (0, date_fns_1.format)(oDhaka, "dd-MM-yy"); // matches your DD-MM-YY format
+        if (!dailyBuckets[key]) {
+            dailyBuckets[key] = { sales: 0, orders: 0 };
+        }
+        dailyBuckets[key].orders += 1;
+        dailyBuckets[key].sales += Number((_a = o.amount) !== null && _a !== void 0 ? _a : 0);
+    }
+    return Object.keys(dailyBuckets)
+        .sort()
+        .map((dateKey) => ({
+        date: dateKey,
+        sales: dailyBuckets[dateKey].sales,
+        orders: dailyBuckets[dateKey].orders,
+    }));
 });
 const trackOrders = (queryParam) => __awaiter(void 0, void 0, void 0, function* () {
     const param = String(queryParam || "").trim();
@@ -953,6 +995,7 @@ exports.OrderServices = {
     getAllCustomers,
     getDashboardMetrics,
     getWeeklySalesOverview,
+    getMonthlySalesOverview,
     trackOrders,
     deleteOrder,
 };

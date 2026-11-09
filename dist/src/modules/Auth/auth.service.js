@@ -158,21 +158,20 @@ const forgotPassword = (email) => __awaiter(void 0, void 0, void 0, function* ()
         throw new AppError_1.default(400, 'Email is required');
     }
     const user = yield client_1.prisma.user.findUnique({
-        where: {
-            email,
-        },
+        where: { email },
     });
     if (!user) {
         throw new AppError_1.default(400, 'User not found with this email');
     }
     const resetToken = crypto_1.default.randomBytes(32).toString('hex');
-    const tokenExpiry = new Date(Date.now() + 1000 * 60 * 15); //15 minutes
-    const link = `${config_1.default.live_url}/reset-password?email=${email}&token=${resetToken}`;
+    const tokenExpiry = new Date(Date.now() + 1000 * 60 * 15); // 15 minutes
+    // Fallback to localhost if config.live_url is missing or undefined
+    const baseUrl = config_1.default.live_url || 'http://localhost:3000';
+    // If your frontend file is at app/reset-password/[token]/page.tsx, structure it like this:
+    const link = `${baseUrl}/reset-password/${resetToken}`;
     yield (0, emails_1.sendPasswordResetEmail)(email, link);
     yield client_1.prisma.user.update({
-        where: {
-            email,
-        },
+        where: { email },
         data: {
             resetToken,
             resetTokenExpiry: tokenExpiry,
@@ -180,25 +179,22 @@ const forgotPassword = (email) => __awaiter(void 0, void 0, void 0, function* ()
     });
     return true;
 });
-const resetPassword = (email, token, password) => __awaiter(void 0, void 0, void 0, function* () {
-    const user = yield client_1.prisma.user.findUnique({
+const resetPassword = (token, password) => __awaiter(void 0, void 0, void 0, function* () {
+    const user = yield client_1.prisma.user.findFirst({
         where: {
-            email,
+            resetToken: token,
         },
     });
     if (!user) {
-        throw new Error('User not found with this email');
+        throw new AppError_1.default(404, 'Invalid or expired reset token');
     }
-    if (user.resetToken !== token || !user.resetTokenExpiry) {
-        throw new Error('Invalid reset token');
-    }
-    if ((user === null || user === void 0 ? void 0 : user.resetTokenExpiry) < new Date()) {
-        throw new Error('Reset token has expired');
+    if (!user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+        throw new AppError_1.default(400, 'Reset token has expired');
     }
     const hashedPassword = yield bcrypt_1.default.hash(password, Number(config_1.default.salt_round));
     yield client_1.prisma.user.update({
         where: {
-            email,
+            id: user.id,
         },
         data: {
             password: hashedPassword,

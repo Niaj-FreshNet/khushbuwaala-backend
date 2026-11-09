@@ -59,6 +59,7 @@ const getUser = (id) => __awaiter(void 0, void 0, void 0, function* () {
             imageUrl: true,
             address: true,
             district: true,
+            createdAt: true, // ✅ Added so details page gets creation date
         },
     });
     return result;
@@ -85,7 +86,6 @@ const changePassword = (id, payload) => __awaiter(void 0, void 0, void 0, functi
     if (!oldPassword || !newPassword) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'Both current and new passwords are required');
     }
-    // 1. Fetch user including their existing hashed password and email
     const user = yield client_1.prisma.user.findUnique({
         where: { id },
         select: {
@@ -98,21 +98,17 @@ const changePassword = (id, payload) => __awaiter(void 0, void 0, void 0, functi
     if (!user) {
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'User not found');
     }
-    // Guard check: Ensure user actually has an existing password set
     if (!user.password) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'This account does not have a password set. Please use password reset or social login.');
     }
-    // 2. Verify current password
     const isPasswordMatched = yield bcrypt_1.default.compare(oldPassword, user.password);
     if (!isPasswordMatched) {
         throw new AppError_1.default(http_status_1.default.UNAUTHORIZED, 'Current password is incorrect');
     }
-    // 3. Prevent reusing the exact same password
     const isSamePassword = yield bcrypt_1.default.compare(newPassword, user.password);
     if (isSamePassword) {
         throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'New password cannot be the same as your current password');
     }
-    // 4. Hash and save new password
     const hashedPassword = yield bcrypt_1.default.hash(newPassword, Number(config_1.default.salt_round));
     yield client_1.prisma.user.update({
         where: { id },
@@ -120,7 +116,6 @@ const changePassword = (id, payload) => __awaiter(void 0, void 0, void 0, functi
             password: hashedPassword,
         },
     });
-    // 5. Fire email alert asynchronously (non-blocking)
     if (user.email) {
         (0, emails_1.sendPasswordChangeNotificationEmail)(user.email, user.name).catch((err) => {
             console.error('Password change email error:', err);
@@ -135,10 +130,17 @@ const updateUser = (id, data) => __awaiter(void 0, void 0, void 0, function* () 
     if (data.address !== undefined)
         updateData.address = String(data.address).trim();
     if (data.district !== undefined)
-        updateData.district = String(data.district).trim(); // ✅ Allow district
+        updateData.district = String(data.district).trim();
     if (data.imageUrl !== undefined)
         updateData.imageUrl = data.imageUrl;
-    // ✅ Handle Email update & prevent duplicates
+    // ✅ Added Role update support so admin promotions/demotions persist
+    if (data.role !== undefined) {
+        const validRoles = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+        if (!validRoles.includes(data.role)) {
+            throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'Invalid user role specified');
+        }
+        updateData.role = data.role;
+    }
     if (data.email !== undefined) {
         const cleanEmail = String(data.email).trim().toLowerCase();
         const existing = yield client_1.prisma.user.findFirst({
@@ -152,7 +154,6 @@ const updateUser = (id, data) => __awaiter(void 0, void 0, void 0, function* () 
         }
         updateData.email = cleanEmail;
     }
-    // Accept either phone or contact from payload and save to prisma's phone field
     const incomingPhone = data.phone !== undefined ? data.phone : data.contact;
     if (incomingPhone !== undefined) {
         updateData.phone = String(incomingPhone).trim();
@@ -169,6 +170,7 @@ const updateUser = (id, data) => __awaiter(void 0, void 0, void 0, function* () 
             imageUrl: true,
             address: true,
             district: true,
+            createdAt: true,
         },
     });
     return result;
