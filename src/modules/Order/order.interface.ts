@@ -2,52 +2,33 @@ import { OrderSource, OrderStatus, SaleType } from "@prisma/client";
 
 export type DashboardType = "all" | "website" | "manual";
 
-export type UpdateOrderPayload = {
-  // common editable fields
-  status?: OrderStatus;
+export interface UpdateOrderPayload {
+  status?: string;
   isPaid?: boolean;
-  method?: string | null;
-
+  method?: string;
   orderSource?: OrderSource;
   saleType?: SaleType;
-
   shippingCost?: number;
-  additionalNotes?: string | null;
-
-  coupon?: string | null;
   discountAmount?: number;
-
-  // addresses (stored as Json)
-  shipping?: {
-    name?: string | null;
-    phone?: string | null;
-    email?: string | null;
-    address?: string | null;
-    district?: string | null;
-    thana?: string | null;
-  } | null;
-
-  billing?: {
-    name?: string | null;
-    phone?: string | null;
-    email?: string | null;
-    address?: string | null;
-    district?: string | null;
-    thana?: string | null;
-  } | null;
-
-  // manual sales fields
-  salesmanId?: string | null;
-
-  // optional walk-in fields (for MANUAL / showroom order)
-  name?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-
-  // if you REALLY want admin to override amount
+  coupon?: string | null;
+  additionalNotes?: string | null;
+  shipping?: any;
+  billing?: any;
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
   amount?: number;
-
-  // optional: move order to a different customer (admin only)
   customerId?: string | null;
-};
+  salesmanId?: string | null;
+  // ✅ Add this line:
+  orderItems?: Array<{
+    id?: string;
+    productId?: string;
+    variantId?: string | null;
+    size?: number;
+    unit?: string;
+    quantity?: number;
+    price?: number;
+  }>;
+}

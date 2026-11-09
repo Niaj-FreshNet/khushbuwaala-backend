@@ -22,6 +22,7 @@ const cart_routes_1 = require("../modules/Cart/cart.routes");
 const fragrance_routes_1 = require("../modules/Fragrance/fragrance.routes");
 const discount_routes_1 = require("../modules/Discount/discount.routes");
 const checkout_routes_1 = require("../modules/Checkout/checkout.routes");
+const steadfast_routes_1 = require("../modules/Steadfast/steadfast.routes");
 const router = express_1.default.Router();
 const moduleRoutes = [
     {
@@ -96,6 +97,10 @@ const moduleRoutes = [
         path: '/checkout',
         route: checkout_routes_1.CheckoutRoutes,
     },
+    {
+        path: '/steadfast',
+        route: steadfast_routes_1.SteadfastRoutes,
+    }
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));
 exports.default = router;
