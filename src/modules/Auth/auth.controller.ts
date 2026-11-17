@@ -234,11 +234,18 @@ const getMe = catchAsync(async (req, res) => {
 });
 
 const logout = catchAsync(async (req, res) => {
-  res.clearCookie('refreshToken', {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-  });
+    sameSite: 'strict' as const, // 👈 Add "as const" here
+  };
+
+  // 1. Clear the refresh token
+  res.clearCookie('refreshToken', cookieOptions);
+
+  // 2. Also clear the access token if your backend sets it as a cookie!
+  res.clearCookie('accessToken', cookieOptions);
+  res.clearCookie('access_token', cookieOptions);
 
   sendResponse(res, {
     statusCode: 200,

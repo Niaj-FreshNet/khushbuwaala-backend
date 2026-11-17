@@ -12,6 +12,7 @@ enum Role {
   SALESMAN
   ADMIN
   SUPER_ADMIN
+  INVESTOR
 }
 
 enum OrderSource {
