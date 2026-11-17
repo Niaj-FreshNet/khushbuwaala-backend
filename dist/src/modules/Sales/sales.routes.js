@@ -8,17 +8,18 @@ const express_1 = require("express");
 const sales_controller_1 = require("./sales.controller");
 const auth_1 = __importDefault(require("../../middlewares/auth"));
 const router = (0, express_1.Router)();
-// Create a manual sale (done by SALESMAN or ADMIN)
+// 1. Static / Specific Routes First
 router.post('/create-sale', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.createSale);
-// Get all sales (admin overview)
 router.get('/get-all-sales', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getAllSales);
-// Get sales by salesman (each salesman sees his own)
 router.get('/my-sales', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getMySales);
-router.get('/get-sale-by-id/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSaleById);
-// Get sales by customer phone/name (walk-in tracking)
-router.get('/get-sales-by-customer/:phone', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSalesByCustomer);
-// Update sale status (delivered/CANCELED etc.)
-router.patch('/update-sale-status/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.updateSaleStatus);
-// Analytics for sales performance
 router.get('/get-sales-analytics', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSalesAnalytics);
+// 2. Parameterized Routes Last
+router.get('/get-sale-by-id/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSaleById);
+router.get('/get-sales-by-customer/:phone', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.getSalesByCustomer);
+router.patch('/update-sale-status/:id', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), sales_controller_1.SalesController.updateSaleStatus);
+// Update full sale route
+router.patch('/update-sale/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), sales_controller_1.SalesController.updateSale);
+// Delete sale route
+router.delete('/delete-sale/:id', (0, auth_1.default)('SUPER_ADMIN', 'ADMIN'), // Typically restricted to Admins
+sales_controller_1.SalesController.deleteSale);
 exports.SalesRoutes = router;

@@ -22,76 +22,98 @@ const slugify_1 = __importDefault(require("slugify"));
 const sendImageToCloudinary_1 = require("../../utils/sendImageToCloudinary");
 // Create Product
 const createProduct = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
-    const categoryExists = yield client_1.prisma.category.findUnique({
-        where: { id: payload.categoryId },
-    });
+    const slug = (0, slugify_1.default)(payload.name, { lower: true, strict: true });
+    // 1. Run category and SKU duplicate validation concurrently
+    const [categoryExists, existingSKUs] = yield Promise.all([
+        client_1.prisma.category.findUnique({ where: { id: payload.categoryId }, select: { id: true } }),
+        client_1.prisma.productVariant.findMany({
+            where: { sku: { in: payload.variants.map(v => v.sku) } },
+            select: { sku: true },
+        }),
+    ]);
     if (!categoryExists) {
         throw new AppError_1.default(404, 'Category not found');
     }
-    const existingSKUs = yield client_1.prisma.productVariant.findMany({
-        where: { sku: { in: payload.variants.map(v => v.sku) } },
-        select: { sku: true },
-    });
     if (existingSKUs.length > 0) {
         throw new AppError_1.default(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
     }
-    const slug = (0, slugify_1.default)(payload.name, { lower: true, strict: true });
-    const result = yield client_1.prisma.product.create({
-        data: {
-            name: payload.name,
-            description: payload.description,
-            slug,
-            primaryImage: payload.primaryImage,
-            otherImages: payload.otherImages || [],
-            videoUrl: payload.videoUrl,
-            tags: payload.tags,
-            origin: payload.origin,
-            brand: payload.brand,
-            gender: payload.gender,
-            perfumeNotes: payload.perfumeNotes,
-            accords: payload.accords,
-            performance: payload.performance,
-            longevity: payload.longevity,
-            projection: payload.projection,
-            sillage: payload.sillage,
-            bestFor: payload.bestFor,
-            categoryId: payload.categoryId,
-            published: payload.published,
-            supplier: payload.supplier,
-            stock: payload.stock,
-            variants: {
-                create: payload.variants.map(v => ({
-                    sku: v.sku,
-                    size: v.size,
-                    unit: v.unit,
-                    price: v.price,
-                })),
+    // 2. Use a transaction to perform product creation and relations in a single fast batch
+    const result = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        var _a, _b;
+        const product = yield tx.product.create({
+            data: {
+                name: payload.name,
+                description: payload.description,
+                slug,
+                primaryImage: payload.primaryImage,
+                otherImages: payload.otherImages || [],
+                videos: payload.videos || [],
+                tags: payload.tags,
+                brand: payload.brand,
+                condition: payload.condition || 'new',
+                itemGroupId: payload.itemGroupId,
+                googleProductCategory: payload.googleProductCategory,
+                origin: payload.origin,
+                gender: payload.gender,
+                metaTitle: payload.metaTitle,
+                metaDescription: payload.metaDescription,
+                perfumeNotes: payload.perfumeNotes,
+                accords: payload.accords,
+                performance: payload.performance,
+                longevity: payload.longevity,
+                projection: payload.projection,
+                sillage: payload.sillage,
+                bestFor: payload.bestFor,
+                categoryId: payload.categoryId,
+                published: payload.published,
+                supplier: payload.supplier,
+                stock: payload.stock,
+                variants: {
+                    create: payload.variants.map(v => {
+                        var _a, _b, _c;
+                        return ({
+                            sku: v.sku,
+                            size: v.size,
+                            unit: v.unit,
+                            price: v.price,
+                            stock: (_a = v.stock) !== null && _a !== void 0 ? _a : 0,
+                            published: (_b = v.published) !== null && _b !== void 0 ? _b : true,
+                            isDefault: (_c = v.isDefault) !== null && _c !== void 0 ? _c : false,
+                            gtin: v.gtin,
+                            mpn: v.mpn,
+                            barcode: v.barcode,
+                            compareAtPrice: v.compareAtPrice,
+                            costPrice: v.costPrice,
+                            weightGrams: v.weightGrams,
+                            attributes: v.attributes || {},
+                            images: v.images || [],
+                        });
+                    }),
+                },
             },
-        },
-        include: {
-            variants: true,
-            category: true,
-        },
-    });
-    if ((_a = payload.materialIds) === null || _a === void 0 ? void 0 : _a.length) {
-        for (const materialId of payload.materialIds) {
-            yield client_1.prisma.productMaterial.upsert({
-                where: { productId_materialId: { productId: result.id, materialId } },
-                create: { productId: result.id, materialId },
-                update: {},
-            });
+        });
+        // Bulk insert or link product materials safely
+        if ((_a = payload.materialIds) === null || _a === void 0 ? void 0 : _a.length) {
+            for (const materialId of payload.materialIds) {
+                yield tx.productMaterial.upsert({
+                    where: { productId_materialId: { productId: product.id, materialId } },
+                    create: { productId: product.id, materialId },
+                    update: {},
+                });
+            }
         }
-    }
-    if ((_b = payload.fragranceIds) === null || _b === void 0 ? void 0 : _b.length) {
-        for (const fragranceId of payload.fragranceIds) {
-            yield client_1.prisma.productFragrance.upsert({
-                where: { productId_fragranceId: { productId: result.id, fragranceId } },
-                create: { productId: result.id, fragranceId },
-                update: {},
-            });
+        // Bulk insert or link product fragrances safely
+        if ((_b = payload.fragranceIds) === null || _b === void 0 ? void 0 : _b.length) {
+            for (const fragranceId of payload.fragranceIds) {
+                yield tx.productFragrance.upsert({
+                    where: { productId_fragranceId: { productId: product.id, fragranceId } },
+                    create: { productId: product.id, fragranceId },
+                    update: {},
+                });
+            }
         }
-    }
+        return product;
+    }));
     const finalProduct = yield client_1.prisma.product.findUnique({
         where: { id: result.id },
         include: {
@@ -104,7 +126,6 @@ const createProduct = (payload) => __awaiter(void 0, void 0, void 0, function* (
     return formatProductDetailResponse(finalProduct);
 });
 exports.createProduct = createProduct;
-// Shared: normalizes a comma-string or array into a clean string[]
 const toArray = (val) => {
     if (!val)
         return [];
@@ -114,9 +135,6 @@ const toArray = (val) => {
         return val.split(',').map(s => s.trim()).filter(Boolean);
     return [];
 };
-// Shared: builds all the manual array/range/exact filters both public
-// listing and admin/category listing need. Does NOT force `published`
-// or add pagination/sort/include — callers do that themselves.
 const applyProductFilters = (queryBuilder, query) => {
     if (query.gender && query.gender !== 'all') {
         queryBuilder.rawFilter({ gender: { equals: String(query.gender), mode: 'insensitive' } });
@@ -187,12 +205,10 @@ const runProductQuery = (query) => __awaiter(void 0, void 0, void 0, function* (
     results = applySorting(results, query.sortBy);
     return { results, meta };
 });
-// Get All Products (Public)
 const getAllProducts = (query) => __awaiter(void 0, void 0, void 0, function* () {
     const { results, meta } = yield runProductQuery(query);
     return { data: results.map(formatProductListingResponse), meta };
 });
-// Get All Products (Admin)
 const getAllProductsAdmin = (query) => __awaiter(void 0, void 0, void 0, function* () {
     const queryBuilder = new queryBuilder_1.default(query, client_1.prisma.product);
     if (query.stock === 'in')
@@ -210,7 +226,6 @@ const getAllProductsAdmin = (query) => __awaiter(void 0, void 0, void 0, functio
     results = applySorting(results, query.sortBy);
     return { data: results.map(formatProductAdminListingResponse), meta };
 });
-// Get Single Product
 const getProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const product = yield client_1.prisma.product.findUnique({
         where: { id },
@@ -232,14 +247,13 @@ const getProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
         take: product_constant_1.QUERY_DEFAULTS.RELATED_LIMIT,
         orderBy: { salesCount: 'desc' },
     });
-    const formattedProduct = formatProductDetailResponse(product);
+    const formattedProduct = formatProductAdminDetailResponse(product);
     return Object.assign(Object.assign({}, formattedProduct), { relatedProducts: {
             sameBrand: relatedProducts.map(formatProductListingResponse),
             sameCategory: relatedProducts.map(formatProductListingResponse),
             similarAccords: relatedProducts.map(formatProductListingResponse),
         } });
 });
-// Get Product By Slug
 const getProductBySlug = (slug) => __awaiter(void 0, void 0, void 0, function* () {
     const product = yield client_1.prisma.product.findUnique({
         where: { slug },
@@ -268,27 +282,27 @@ const getProductBySlug = (slug) => __awaiter(void 0, void 0, void 0, function* (
             similarAccords: relatedProducts.map(formatProductListingResponse),
         } });
 });
-// Update Product
 const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
-    const existingProduct = yield client_1.prisma.product.findUnique({
-        where: { id },
-        include: {
-            variants: true,
-            ProductMaterial: true,
-            ProductFragrance: true,
-        },
-    });
+    var _a;
+    // 1. Fetch product and category existence check concurrently if categoryId is updated
+    const [existingProduct, categoryExists] = yield Promise.all([
+        client_1.prisma.product.findUnique({
+            where: { id },
+            include: {
+                variants: true,
+                ProductMaterial: true,
+                ProductFragrance: true,
+            },
+        }),
+        payload.categoryId
+            ? client_1.prisma.category.findUnique({ where: { id: payload.categoryId }, select: { id: true } })
+            : Promise.resolve(true),
+    ]);
     if (!existingProduct) {
         throw new AppError_1.default(404, 'Product not found');
     }
-    if (payload.categoryId) {
-        const categoryExists = yield client_1.prisma.category.findUnique({
-            where: { id: payload.categoryId },
-        });
-        if (!categoryExists) {
-            throw new AppError_1.default(404, 'Category not found');
-        }
+    if (payload.categoryId && !categoryExists) {
+        throw new AppError_1.default(404, 'Category not found');
     }
     let primaryImage = existingProduct.primaryImage;
     let otherImages = existingProduct.otherImages;
@@ -303,7 +317,7 @@ const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, functio
                 return;
             yield (0, sendImageToCloudinary_1.deleteFromCloudinaryByPublicId)(publicId);
         });
-        yield Promise.all(imagesToDelete.map(safeDeleteCloudinary));
+        Promise.all(imagesToDelete.map(safeDeleteCloudinary)).catch(err => console.error('Cloudinary cleanup error:', err));
         const allNewImages = [...imagesToKeep, ...newImages];
         if (allNewImages.length > 0) {
             primaryImage = allNewImages[0];
@@ -322,46 +336,71 @@ const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, functio
             throw new AppError_1.default(400, `SKU already exists: ${existingSKUs.map(s => s.sku).join(', ')}`);
         }
     }
-    const updatedProduct = yield client_1.prisma.product.update({
-        where: { id },
-        data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (payload.name && { name: payload.name, slug: (0, slugify_1.default)(payload.name, { lower: true, strict: true }) })), (payload.description && { description: payload.description })), (primaryImage && { primaryImage })), (otherImages && { otherImages })), (payload.videoUrl !== undefined && { videoUrl: payload.videoUrl })), (payload.tags && { tags: payload.tags })), (payload.origin !== undefined && { origin: payload.origin })), (payload.brand !== undefined && { brand: payload.brand })), (payload.gender !== undefined && { gender: payload.gender })), (payload.perfumeNotes !== undefined && { perfumeNotes: payload.perfumeNotes })), (payload.accords && { accords: payload.accords })), (payload.performance !== undefined && { performance: payload.performance })), (payload.longevity !== undefined && { longevity: payload.longevity })), (payload.projection !== undefined && { projection: payload.projection })), (payload.sillage !== undefined && { sillage: payload.sillage })), (payload.bestFor && { bestFor: payload.bestFor })), (payload.stock !== undefined && { stock: payload.stock })), (payload.categoryId && { categoryId: payload.categoryId })), (typeof payload.published === 'boolean' && { published: payload.published })),
+    // 2. Wrap update operations in an atomic transaction with an increased timeout (15s)
+    yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        var _a;
+        // Update basic product info
+        yield tx.product.update({
+            where: { id },
+            data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (payload.name && { name: payload.name, slug: (0, slugify_1.default)(payload.name, { lower: true, strict: true }) })), (payload.description && { description: payload.description })), (primaryImage && { primaryImage })), (otherImages && { otherImages })), (payload.videos && { videos: payload.videos })), (payload.tags && { tags: payload.tags })), (payload.brand !== undefined && { brand: payload.brand })), (payload.condition !== undefined && { condition: payload.condition })), (payload.itemGroupId !== undefined && { itemGroupId: payload.itemGroupId })), (payload.googleProductCategory !== undefined && { googleProductCategory: payload.googleProductCategory })), (payload.origin !== undefined && { origin: payload.origin })), (payload.gender !== undefined && { gender: payload.gender })), (payload.metaTitle !== undefined && { metaTitle: payload.metaTitle })), (payload.metaDescription !== undefined && { metaDescription: payload.metaDescription })), (payload.perfumeNotes !== undefined && { perfumeNotes: payload.perfumeNotes })), (payload.accords && { accords: payload.accords })), (payload.performance !== undefined && { performance: payload.performance })), (payload.longevity !== undefined && { longevity: payload.longevity })), (payload.projection !== undefined && { projection: payload.projection })), (payload.sillage !== undefined && { sillage: payload.sillage })), (payload.bestFor && { bestFor: payload.bestFor })), (payload.stock !== undefined && { stock: payload.stock })), (payload.categoryId && { categoryId: payload.categoryId })), (typeof payload.published === 'boolean' && { published: payload.published })),
+        });
+        // Replace variants if provided
+        if ((_a = payload.variants) === null || _a === void 0 ? void 0 : _a.length) {
+            yield tx.productVariant.deleteMany({ where: { productId: id } });
+            yield tx.productVariant.createMany({
+                data: payload.variants.map(v => {
+                    var _a, _b, _c;
+                    return ({
+                        sku: v.sku,
+                        size: v.size,
+                        unit: v.unit,
+                        price: v.price,
+                        stock: (_a = v.stock) !== null && _a !== void 0 ? _a : 0,
+                        published: (_b = v.published) !== null && _b !== void 0 ? _b : true,
+                        isDefault: (_c = v.isDefault) !== null && _c !== void 0 ? _c : false,
+                        gtin: v.gtin,
+                        mpn: v.mpn,
+                        barcode: v.barcode,
+                        compareAtPrice: v.compareAtPrice,
+                        costPrice: v.costPrice,
+                        weightGrams: v.weightGrams,
+                        attributes: v.attributes || {},
+                        images: v.images || [],
+                        productId: id,
+                    });
+                }),
+            });
+        }
+        // ⚡ Update materials concurrently using Promise.all
+        if (payload.materialIds) {
+            yield tx.productMaterial.deleteMany({
+                where: { productId: id, materialId: { notIn: payload.materialIds } },
+            });
+            if (payload.materialIds.length > 0) {
+                yield Promise.all(payload.materialIds.map(materialId => tx.productMaterial.upsert({
+                    where: { productId_materialId: { productId: id, materialId } },
+                    create: { productId: id, materialId },
+                    update: {},
+                })));
+            }
+        }
+        // ⚡ Update fragrances concurrently using Promise.all
+        if (payload.fragranceIds) {
+            yield tx.productFragrance.deleteMany({
+                where: { productId: id, fragranceId: { notIn: payload.fragranceIds } },
+            });
+            if (payload.fragranceIds.length > 0) {
+                yield Promise.all(payload.fragranceIds.map(fragranceId => tx.productFragrance.upsert({
+                    where: { productId_fragranceId: { productId: id, fragranceId } },
+                    create: { productId: id, fragranceId },
+                    update: {},
+                })));
+            }
+        }
+    }), {
+        maxWait: 10000, // 10s max wait to acquire connection
+        timeout: 15000, // 15s timeout limit for the transaction
     });
-    if ((_b = payload.variants) === null || _b === void 0 ? void 0 : _b.length) {
-        yield client_1.prisma.productVariant.deleteMany({ where: { productId: id } });
-        yield client_1.prisma.productVariant.createMany({
-            data: payload.variants.map(v => ({
-                sku: v.sku,
-                size: v.size,
-                unit: v.unit,
-                price: v.price,
-                productId: id,
-            })),
-        });
-    }
-    if (payload.materialIds) {
-        yield client_1.prisma.productMaterial.deleteMany({
-            where: { productId: id, materialId: { notIn: payload.materialIds } },
-        });
-        for (const materialId of payload.materialIds) {
-            yield client_1.prisma.productMaterial.upsert({
-                where: { productId_materialId: { productId: id, materialId } },
-                create: { productId: id, materialId },
-                update: {},
-            });
-        }
-    }
-    if (payload.fragranceIds) {
-        yield client_1.prisma.productFragrance.deleteMany({
-            where: { productId: id, fragranceId: { notIn: payload.fragranceIds } },
-        });
-        for (const fragranceId of payload.fragranceIds) {
-            yield client_1.prisma.productFragrance.upsert({
-                where: { productId_fragranceId: { productId: id, fragranceId } },
-                create: { productId: id, fragranceId },
-                update: {},
-            });
-        }
-    }
     const finalProduct = yield client_1.prisma.product.findUnique({
         where: { id },
         include: {
@@ -374,7 +413,6 @@ const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, functio
     return formatProductDetailResponse(finalProduct);
 });
 exports.updateProduct = updateProduct;
-// Delete Product
 const deleteProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const existingProduct = yield client_1.prisma.product.findUnique({
         where: { id },
@@ -397,29 +435,36 @@ const deleteProduct = (id) => __awaiter(void 0, void 0, void 0, function* () {
     if (hasActiveOrders && existingProduct.published) {
         throw new AppError_1.default(400, product_constant_1.PRODUCT_ERROR_MESSAGES.PRODUCT_PUBLISHED_CANNOT_DELETE);
     }
+    // ⚡ 1. Execute DB transaction with an expanded timeout window (e.g. 15 seconds)
     yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        // 1. Delete associated cart items to prevent orphaned references
         yield tx.cartItem.deleteMany({ where: { productId: id } });
-        // 2. Delete other related documents
         yield tx.wishlist.deleteMany({ where: { productId: id } });
         yield tx.comboVariant.deleteMany({ where: { productId: id } });
         yield tx.review.deleteMany({ where: { productId: id } });
         yield tx.productVariant.deleteMany({ where: { productId: id } });
         yield tx.discount.deleteMany({ where: { productId: id } });
-        // 3. Delete the main product
         yield tx.product.delete({ where: { id } });
-    }));
+    }), {
+        maxWait: 10000, // Max wait time to connect to transaction pool
+        timeout: 15000, // Increased transaction timeout to 15 seconds
+    });
+    // ⚡ 2. Handle Cloudinary cleanup AFTER the transaction has safely closed
     const safeDeleteCloudinary = (url) => __awaiter(void 0, void 0, void 0, function* () {
-        const publicId = (0, sendImageToCloudinary_1.getPublicIdFromCloudinaryUrl)(url);
-        if (!publicId)
-            return;
-        yield (0, sendImageToCloudinary_1.deleteFromCloudinaryByPublicId)(publicId);
+        try {
+            const publicId = (0, sendImageToCloudinary_1.getPublicIdFromCloudinaryUrl)(url);
+            if (!publicId)
+                return;
+            yield (0, sendImageToCloudinary_1.deleteFromCloudinaryByPublicId)(publicId);
+        }
+        catch (err) {
+            console.error('Cloudinary deletion failed for URL:', url, err);
+        }
     });
     const allImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
-    yield Promise.all(allImages.filter(Boolean).map(safeDeleteCloudinary));
+    // Run image deletions asynchronously in the background so they don't block the response
+    Promise.all(allImages.filter(Boolean).map(safeDeleteCloudinary)).catch((err) => console.error('Background image cleanup error:', err));
     return { id };
 });
-// Get Trending Products
 const getTrendingProducts = () => __awaiter(void 0, void 0, void 0, function* () {
     const trendingProducts = yield client_1.prisma.product.findMany({
         where: { published: true },
@@ -429,7 +474,6 @@ const getTrendingProducts = () => __awaiter(void 0, void 0, void 0, function* ()
     });
     return trendingProducts.map((product) => (Object.assign(Object.assign({}, formatProductListingResponse(product)), { totalSold: product.salesCount || 0, trendingScore: Math.round((product.salesCount || 0) * 1.5) })));
 });
-// Get Navbar Products
 const getNavbarProducts = () => __awaiter(void 0, void 0, void 0, function* () {
     const overallTrendingProducts = yield client_1.prisma.product.findMany({
         where: { published: true },
@@ -457,7 +501,6 @@ const getNavbarProducts = () => __awaiter(void 0, void 0, void 0, function* () {
     }));
     return { trendingByCategory, overallTrending };
 });
-// Get Featured Products
 const getFeaturedProducts = () => __awaiter(void 0, void 0, void 0, function* () {
     const products = yield client_1.prisma.product.findMany({
         where: {
@@ -470,7 +513,6 @@ const getFeaturedProducts = () => __awaiter(void 0, void 0, void 0, function* ()
     });
     return products.map(formatProductListingResponse);
 });
-// Get New Arrivals
 const getNewArrivals = () => __awaiter(void 0, void 0, void 0, function* () {
     const cutoffDate = (0, date_fns_1.subDays)(new Date(), product_constant_1.QUERY_DEFAULTS.NEW_ARRIVALS_DAYS);
     const products = yield client_1.prisma.product.findMany({
@@ -484,7 +526,6 @@ const getNewArrivals = () => __awaiter(void 0, void 0, void 0, function* () {
     });
     return products.map(formatProductListingResponse);
 });
-// Get Products by Category Name
 const getProductsByCategoryName = (categoryName, query) => __awaiter(void 0, void 0, void 0, function* () {
     const category = yield client_1.prisma.category.findFirst({
         where: { categoryName: { equals: categoryName, mode: 'insensitive' } },
@@ -509,7 +550,6 @@ const getProductsByCategoryId = (categoryId, query) => __awaiter(void 0, void 0,
     results = applySorting(results, query.sortBy);
     return { data: results.map(formatProductListingResponse), meta };
 });
-// Get Related Products
 const getRelatedProducts = (productId) => __awaiter(void 0, void 0, void 0, function* () {
     const product = yield client_1.prisma.product.findUnique({
         where: { id: productId },
@@ -544,7 +584,6 @@ const getRelatedProducts = (productId) => __awaiter(void 0, void 0, void 0, func
         similarAccords: similarAccords.map(formatProductListingResponse),
     };
 });
-// Search Products
 const searchProducts = (query) => __awaiter(void 0, void 0, void 0, function* () {
     const { results, meta } = yield runProductQuery(query);
     return {
@@ -557,7 +596,6 @@ const searchProducts = (query) => __awaiter(void 0, void 0, void 0, function* ()
         },
     };
 });
-// Get Product Variants
 const getProductVariants = (productId) => __awaiter(void 0, void 0, void 0, function* () {
     const variants = yield client_1.prisma.productVariant.findMany({
         where: { productId },
@@ -568,7 +606,6 @@ const getProductVariants = (productId) => __awaiter(void 0, void 0, void 0, func
     }
     return variants;
 });
-// Get Product Analytics
 const getProductAnalytics = () => __awaiter(void 0, void 0, void 0, function* () {
     const [totalProducts, publishedProducts, totalVariants, priceStats, categoryStats, brandStats, stockStats,] = yield Promise.all([
         client_1.prisma.product.count(),
@@ -610,7 +647,6 @@ const getProductAnalytics = () => __awaiter(void 0, void 0, void 0, function* ()
         topBrands: topBrands.slice(0, 5),
     };
 });
-// Get Low Stock Products
 const getLowStockProducts = (...args_1) => __awaiter(void 0, [...args_1], void 0, function* (threshold = product_constant_1.QUERY_DEFAULTS.LOW_STOCK_THRESHOLD) {
     const products = yield client_1.prisma.product.findMany({
         where: { stock: { lte: threshold } },
@@ -631,10 +667,10 @@ const getLowStockProducts = (...args_1) => __awaiter(void 0, [...args_1], void 0
             size: v.size,
             unit: v.unit,
             price: v.price,
+            stock: v.stock,
         })),
     }));
 });
-// Get Bestsellers
 const getBestsellers = () => __awaiter(void 0, void 0, void 0, function* () {
     const products = yield client_1.prisma.product.findMany({
         where: { published: true },
@@ -642,9 +678,8 @@ const getBestsellers = () => __awaiter(void 0, void 0, void 0, function* () {
         orderBy: { salesCount: 'desc' },
         take: 20,
     });
-    return products.map((product, index) => (Object.assign(Object.assign({}, formatProductListingResponse(product)), { totalSold: product.salesCount, trendingScore: 100 - index })));
+    return products.map((product, index) => (Object.assign(Object.assign({}, formatProductAdminListingResponse(product)), { totalSold: product.salesCount, trendingScore: 100 - index })));
 });
-// Update Product Stock
 const updateProductStock = (productId, addedStock, reason) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const product = yield client_1.prisma.product.findUnique({ where: { id: productId } });
@@ -664,7 +699,6 @@ const updateProductStock = (productId, addedStock, reason) => __awaiter(void 0, 
     });
     return formatProductDetailResponse(updatedProduct);
 });
-// Get Stock Logs
 const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* () {
     const product = yield client_1.prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
@@ -684,7 +718,6 @@ const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* 
         product: { name: log.product.name },
     }));
 });
-// Shared helper — avoids repeating rating math across formatters
 const computeRating = (reviews) => {
     const reviewCount = reviews.length;
     const averageRating = reviewCount > 0
@@ -692,14 +725,13 @@ const computeRating = (reviews) => {
         : 0;
     return { averageRating: parseFloat(averageRating.toFixed(2)), reviewCount };
 };
-// Pick the single best currently-active, non-coupon discount for a card badge
 const pickBestDiscount = (discounts = []) => {
     if (!discounts.length)
         return undefined;
     const now = new Date();
     const active = discounts.filter((d) => {
         if (d.code && String(d.code).trim() !== '')
-            return false; // Ignore promo coupons
+            return false;
         const startOk = !d.startDate || new Date(d.startDate) <= now;
         const endOk = !d.endDate || new Date(d.endDate) >= now;
         return startOk && endOk;
@@ -709,11 +741,8 @@ const pickBestDiscount = (discounts = []) => {
     const best = active.reduce((a, b) => (b.value > a.value ? b : a));
     return { type: best.type, value: best.value };
 };
-// ============================================================
-// 1) LISTING formatter (public storefront)
-// ============================================================
 const formatProductListingResponse = (product) => {
-    const variants = product.variants || [];
+    const variants = (product.variants || []).filter((v) => v.published !== false);
     const prices = variants.map((v) => v.price);
     const { averageRating, reviewCount } = computeRating(product.Review || []);
     return {
@@ -731,6 +760,11 @@ const formatProductListingResponse = (product) => {
             unit: v.unit,
             size: v.size,
             price: v.price,
+            stock: v.stock,
+            isDefault: v.isDefault,
+            published: v.published,
+            compareAtPrice: v.compareAtPrice,
+            images: v.images || [],
         })),
         minPrice: prices.length ? Math.min(...prices) : 0,
         maxPrice: prices.length ? Math.max(...prices) : 0,
@@ -743,23 +777,25 @@ const formatProductListingResponse = (product) => {
         updatedAt: product.updatedAt,
     };
 };
-// ============================================================
-// 1b) ADMIN LISTING formatter — keeps category + variant list
-// ============================================================
 const formatProductAdminListingResponse = (product) => {
     const base = formatProductListingResponse(product);
     const variants = product.variants || [];
-    return Object.assign(Object.assign({}, base), { category: product.category, variants: variants.map((v) => ({
-            id: v.id,
-            sku: v.sku,
-            unit: v.unit,
-            size: v.size,
-            price: v.price,
-        })) });
+    return Object.assign(Object.assign({}, base), { supplier: product.supplier || null, category: product.category, variants: variants.map((v) => {
+            var _a;
+            return ({
+                id: v.id,
+                sku: v.sku,
+                unit: v.unit,
+                size: v.size,
+                price: v.price,
+                stock: v.stock,
+                isDefault: v.isDefault,
+                published: (_a = v.published) !== null && _a !== void 0 ? _a : true,
+                compareAtPrice: v.compareAtPrice,
+                images: v.images || [],
+            });
+        }) });
 };
-// ============================================================
-// 2) SEARCH formatter (minimal, fast)
-// ============================================================
 const formatProductSearchResponse = (product) => {
     var _a;
     const variants = product.variants || [];
@@ -780,12 +816,9 @@ const formatProductSearchResponse = (product) => {
         discount: pickBestDiscount(product.discounts),
     };
 };
-// ============================================================
-// 3) DETAIL formatter (single product page)
-// ============================================================
 const formatProductDetailResponse = (product) => {
     var _a, _b, _c, _d;
-    const variants = product.variants || [];
+    const variants = (product.variants || []).filter((v) => v.published !== false);
     const prices = variants.map((v) => v.price);
     const reviews = product.Review || [];
     const { averageRating, reviewCount } = computeRating(reviews);
@@ -797,7 +830,12 @@ const formatProductDetailResponse = (product) => {
         slug: product.slug,
         primaryImage: product.primaryImage,
         brand: product.brand,
+        condition: product.condition,
+        itemGroupId: product.itemGroupId,
+        googleProductCategory: product.googleProductCategory,
         gender: product.gender,
+        metaTitle: product.metaTitle,
+        metaDescription: product.metaDescription,
         origin: product.origin,
         accords: product.accords || [],
         bestFor: product.bestFor || [],
@@ -826,7 +864,78 @@ const formatProductDetailResponse = (product) => {
         fragrances: fragrances.map((f) => ({ id: f.id, name: f.fragranceName })),
         supplier: product.supplier,
         discounts: product.discounts || [],
-        variants: variants.map((v) => (Object.assign(Object.assign({}, v), { discounts: v.discounts || [] }))),
+        variants: variants.map((v) => (Object.assign(Object.assign({}, v), { images: v.images || [], discounts: v.discounts || [] }))),
+        reviews: reviews.map((r) => ({
+            id: r.id,
+            rating: r.rating,
+            title: r.title,
+            comment: r.comment,
+            isPublished: r.isPublished,
+            productId: r.productId,
+            userId: r.userId,
+            user: r.user
+                ? { name: r.user.name, imageUrl: r.user.imageUrl || '/default-avatar.png' }
+                : { name: 'Anonymous', imageUrl: '/default-avatar.png' },
+            createdAt: r.createdAt,
+            updatedAt: r.updatedAt,
+        })),
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+    };
+};
+const formatProductAdminDetailResponse = (product) => {
+    var _a, _b, _c, _d;
+    const variants = product.variants || [];
+    const prices = variants.map((v) => v.price);
+    const reviews = product.Review || [];
+    const { averageRating, reviewCount } = computeRating(reviews);
+    const materials = ((_a = product.ProductMaterial) === null || _a === void 0 ? void 0 : _a.map((pm) => pm.material)) || [];
+    const fragrances = ((_b = product.ProductFragrance) === null || _b === void 0 ? void 0 : _b.map((pf) => pf.fragrance)) || [];
+    return {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        primaryImage: product.primaryImage,
+        brand: product.brand,
+        condition: product.condition,
+        itemGroupId: product.itemGroupId,
+        googleProductCategory: product.googleProductCategory,
+        gender: product.gender,
+        metaTitle: product.metaTitle,
+        metaDescription: product.metaDescription,
+        origin: product.origin,
+        accords: product.accords || [],
+        bestFor: product.bestFor || [],
+        tags: product.tags || [],
+        published: product.published,
+        salesCount: product.salesCount,
+        categoryId: product.categoryId,
+        category: product.category,
+        minPrice: prices.length ? Math.min(...prices) : 0,
+        maxPrice: prices.length ? Math.max(...prices) : 0,
+        totalStock: product.stock,
+        inStock: product.stock > 0,
+        averageRating,
+        reviewCount,
+        description: product.description,
+        videos: product.videos || [],
+        otherImages: product.otherImages || [],
+        perfumeNotes: product.perfumeNotes,
+        performance: product.performance,
+        longevity: product.longevity,
+        projection: product.projection,
+        sillage: product.sillage,
+        materialIds: ((_c = product.ProductMaterial) === null || _c === void 0 ? void 0 : _c.map((m) => m.material.id)) || [],
+        fragranceIds: ((_d = product.ProductFragrance) === null || _d === void 0 ? void 0 : _d.map((f) => f.fragrance.id)) || [],
+        materials: materials.map((m) => ({ id: m.id, name: m.materialName })),
+        fragrances: fragrances.map((f) => ({ id: f.id, name: f.fragranceName })),
+        supplier: product.supplier,
+        discounts: product.discounts || [],
+        // ⚡ Explicitly preserve variant publication status for admin views
+        variants: variants.map((v) => {
+            var _a;
+            return (Object.assign(Object.assign({}, v), { published: (_a = v.published) !== null && _a !== void 0 ? _a : true, images: v.images || [], discounts: v.discounts || [] }));
+        }),
         reviews: reviews.map((r) => ({
             id: r.id,
             rating: r.rating,
@@ -878,6 +987,187 @@ const applySorting = (results, sortBy) => {
     }
     return results;
 };
+const upsertVariantPackagingCost = (sku, payload) => __awaiter(void 0, void 0, void 0, function* () {
+    const totalCost = payload.costLines.reduce((sum, line) => sum + line.amount, 0);
+    const variant = yield client_1.prisma.productVariant.findUnique({ where: { sku } });
+    if (!variant) {
+        throw new AppError_1.default(404, `Variant with SKU ${sku} not found.`);
+    }
+    return yield client_1.prisma.variantPackagingCost.upsert({
+        where: { sku },
+        update: {
+            costLines: payload.costLines,
+            totalCost,
+        },
+        create: {
+            sku,
+            costLines: payload.costLines,
+            totalCost,
+        },
+    });
+});
+const addStockPurchaseAndUpdateWAC = (payload) => __awaiter(void 0, void 0, void 0, function* () {
+    const { productId, quantity, costLines, supplier, billNo, note, unit, createdById } = payload;
+    const totalPurchaseCost = costLines.reduce((sum, line) => sum + line.amount, 0);
+    const costPerUnit = totalPurchaseCost / quantity;
+    return yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        // 1. Get current stock and current live cost
+        const product = yield tx.product.findUnique({ where: { id: productId } });
+        if (!product)
+            throw new AppError_1.default(404, product_constant_1.PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+        const currentCostData = yield tx.productCost.findUnique({ where: { productId } });
+        const currentStock = product.stock || 0;
+        const currentAvgCost = (currentCostData === null || currentCostData === void 0 ? void 0 : currentCostData.avgCostPerUnit) || 0;
+        // 2. Calculate New Weighted Average Cost (WAC)
+        // Formula: ((Old Stock * Old Avg Cost) + New Purchase Cost) / (Old Stock + New Stock)
+        const totalCurrentValue = currentStock * currentAvgCost;
+        const newTotalStock = currentStock + quantity;
+        const newAvgCostPerUnit = (totalCurrentValue + totalPurchaseCost) / newTotalStock;
+        // 3. Log the Financial Purchase
+        const purchase = yield tx.stockPurchase.create({
+            data: {
+                productId,
+                quantity,
+                unit,
+                totalCost: totalPurchaseCost,
+                costPerUnit,
+                costLines,
+                supplier,
+                billNo,
+                note,
+                createdById,
+                isOpening: currentStock === 0, // Flag as opening stock if it was 0
+            },
+        });
+        // 4. Update the live ProductCost WAC
+        yield tx.productCost.upsert({
+            where: { productId },
+            update: {
+                avgCostPerUnit: newAvgCostPerUnit,
+                lastCostPerUnit: costPerUnit,
+            },
+            create: {
+                productId,
+                avgCostPerUnit: costPerUnit, // Fallback if no history
+                lastCostPerUnit: costPerUnit,
+            },
+        });
+        // 5. Update actual Product Stock
+        yield tx.product.update({
+            where: { id: productId },
+            data: { stock: { increment: quantity } },
+        });
+        // 6. Push a standard Stock Log for frontend history
+        yield tx.stockLog.create({
+            data: {
+                productId,
+                change: quantity,
+                reason: `Purchase Bill: ${billNo || 'N/A'} - Supp: ${supplier || 'N/A'}`,
+            },
+        });
+        return purchase;
+    }));
+});
+const generateGoogleShoppingFeed = () => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e;
+    // Fetch all published products with their variants and category relations
+    const products = yield client_1.prisma.product.findMany({
+        where: { published: true },
+        include: {
+            variants: true,
+            category: { select: { categoryName: true } },
+        },
+    });
+    const domain = process.env.FRONTEND_LIVE_URL || 'https://khushbuwaala.com';
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n`;
+    xml += `  <channel>\n`;
+    xml += `    <title>Khushbuwaala Product Catalog</title>\n`;
+    xml += `    <link>${domain}</link>\n`;
+    xml += `    <description>Bespoke fragrances, attars, and custom perfumes catalog</description>\n`;
+    for (const product of products) {
+        const parentId = product.id;
+        const brand = product.brand || 'Khushbuwaala';
+        const category = ((_a = product.category) === null || _a === void 0 ? void 0 : _a.categoryName) || 'Health & Beauty > Personal Care > Cosmetics > Perfume';
+        const description = (product.description || '').replace(/<\/?[^>]+(>|$)/g, "").trim(); // Safe HTML strip
+        // Collect additional image links for Google Merchant Center g:additional_image_link
+        const additionalImages = (product.otherImages || []).slice(0, 10); // Google allows up to 10 additional images
+        // Collect product showcase videos for g:video_link
+        const productVideos = product.videos || [];
+        if (product.variants && product.variants.length > 0) {
+            for (const variant of product.variants) {
+                // Skip unpublished variants if they are explicitly marked false
+                if (variant.published === false)
+                    continue;
+                const variantImages = ((_b = variant.images) === null || _b === void 0 ? void 0 : _b.length) ? variant.images : [product.primaryImage];
+                const primaryVariantImage = variantImages[0] || product.primaryImage;
+                const variantAdditionalImages = [...variantImages.slice(1), ...additionalImages].slice(0, 10);
+                const variantUrl = `${domain}/products/${product.slug}?variant=${variant.id}`;
+                const availability = (variant.stock > 0 || product.stock > 0) ? 'in_stock' : 'out_of_stock';
+                const priceStr = `${variant.price.toFixed(2)} BDT`;
+                const regularPriceStr = variant.compareAtPrice ? `${variant.compareAtPrice.toFixed(2)} BDT` : priceStr;
+                xml += `    <item>\n`;
+                xml += `      <g:id>${variant.sku}</g:id>\n`;
+                xml += `      <g:title><![CDATA[${product.name} - ${variant.size}${variant.unit}]]></g:title>\n`;
+                xml += `      <g:description><![CDATA[${description}]]></g:description>\n`;
+                xml += `      <g:link>${variantUrl}</g:link>\n`;
+                xml += `      <g:image_link>${primaryVariantImage}</g:image_link>\n`;
+                // Additional Images
+                for (const imgLink of variantAdditionalImages) {
+                    xml += `      <g:additional_image_link>${imgLink}</g:additional_image_link>\n`;
+                }
+                // Showcase Videos
+                for (const vidLink of productVideos) {
+                    xml += `      <g:video_link>${vidLink}</g:video_link>\n`;
+                }
+                xml += `      <g:condition>${product.condition || 'new'}</g:condition>\n`;
+                xml += `      <g:availability>${availability}</g:availability>\n`;
+                xml += `      <g:price>${regularPriceStr}</g:price>\n`;
+                if (variant.compareAtPrice) {
+                    xml += `      <g:sale_price>${priceStr}</g:sale_price>\n`;
+                }
+                xml += `      <g:brand><![CDATA[${brand}]]></g:brand>\n`;
+                xml += `      <g:item_group_id>${parentId}</g:item_group_id>\n`;
+                xml += `      <g:google_product_category><![CDATA[${product.googleProductCategory || category}]]></g:google_product_category>\n`;
+                xml += `      <g:gender>${((_c = product.gender) === null || _c === void 0 ? void 0 : _c.toLowerCase()) || 'unisex'}</g:gender>\n`;
+                xml += `      <g:age_group>${((_d = product.bestFor) === null || _d === void 0 ? void 0 : _d.join(', ')) || 'all'}</g:age_group>\n`;
+                xml += `      <g:meta_title><![CDATA[${product.metaTitle || product.name}]]></g:meta_title>\n`;
+                xml += `      <g:meta_description><![CDATA[${product.metaDescription || description}]]></g:meta_description>\n`;
+                if (variant.gtin)
+                    xml += `      <g:gtin>${variant.gtin}</g:gtin>\n`;
+                if (variant.weightGrams)
+                    xml += `      <g:shipping_weight>${variant.weightGrams} g</g:shipping_weight>\n`;
+                xml += `    </item>\n`;
+            }
+        }
+        else {
+            // Fallback for products without variants
+            const availability = product.stock > 0 ? 'in_stock' : 'out_of_stock';
+            xml += `    <item>\n`;
+            xml += `      <g:id>${product.id}</g:id>\n`;
+            xml += `      <g:title><![CDATA[${product.name}]]></g:title>\n`;
+            xml += `      <g:description><![CDATA[${description}]]></g:description>\n`;
+            xml += `      <g:link>${domain}/products/${product.slug}</g:link>\n`;
+            xml += `      <g:image_link>${product.primaryImage}</g:image_link>\n`;
+            for (const imgLink of additionalImages) {
+                xml += `      <g:additional_image_link>${imgLink}</g:additional_image_link>\n`;
+            }
+            for (const vidLink of productVideos) {
+                xml += `      <g:video_link>${vidLink}</g:video_link>\n`;
+            }
+            xml += `      <g:condition>${product.condition || 'new'}</g:condition>\n`;
+            xml += `      <g:availability>${availability}</g:availability>\n`;
+            xml += `      <g:price>${product.minPrice.toFixed(2)} BDT</g:price>\n`;
+            xml += `      <g:brand><![CDATA[${brand}]]></g:brand>\n`;
+            xml += `      <g:google_product_category><![CDATA[${category}]]></g:google_product_category>\n`;
+            xml += `      <g:gender>${((_e = product.gender) === null || _e === void 0 ? void 0 : _e.toLowerCase()) || 'unisex'}</g:gender>\n`;
+            xml += `    </item>\n`;
+        }
+    }
+    xml += `  </channel>\n`;
+    xml += `</rss>`;
+    return xml;
+});
 exports.ProductServices = {
     createProduct: exports.createProduct,
     getAllProducts,
@@ -900,4 +1190,7 @@ exports.ProductServices = {
     getBestsellers,
     updateProductStock,
     getStockLogs,
+    upsertVariantPackagingCost,
+    addStockPurchaseAndUpdateWAC,
+    generateGoogleShoppingFeed,
 };

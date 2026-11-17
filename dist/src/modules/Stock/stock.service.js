@@ -88,39 +88,6 @@ const getLowStockProducts = (queryParams) => __awaiter(void 0, void 0, void 0, f
         data: data.map((product) => (Object.assign(Object.assign({}, product), { unit: product.category.unit || null }))),
     };
 });
-const addStock = (payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const { productId, variantId, change, reason } = payload;
-    const product = yield client_1.prisma.product.findUnique({
-        where: { id: productId },
-        include: { variants: true },
-    });
-    if (!product)
-        throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Product not found');
-    if (variantId) {
-        const variant = product.variants.find((v) => v.id === variantId);
-        if (!variant)
-            throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Variant not found');
-    }
-    const stockLog = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        // Update product stock
-        yield tx.product.update({
-            where: { id: productId },
-            data: { stock: { increment: change } },
-        });
-        // Create stock log
-        const log = yield tx.stockLog.create({
-            data: {
-                productId,
-                variantId: variantId || '',
-                change,
-                reason,
-                createdAt: new Date(),
-            },
-        });
-        return log;
-    }));
-    return stockLog;
-});
 const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* () {
     const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(id);
     if (!isValidObjectId(productId)) {
@@ -144,6 +111,7 @@ const getStockLogs = (productId) => __awaiter(void 0, void 0, void 0, function* 
 exports.StockServices = {
     getAllProducts,
     getLowStockProducts,
-    addStock,
     getStockLogs,
+    // ⚡ Note: `addStock` was removed here because stock additions are now handled 
+    // via `FinanceServices.addStockPurchaseAndUpdateWAC` to ensure WAC financial logging!
 };

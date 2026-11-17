@@ -34,16 +34,6 @@ const getLowStockProducts = (0, catchAsync_1.default)((req, res) => __awaiter(vo
         data: result !== null && result !== void 0 ? result : [],
     });
 }));
-const addStock = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const payload = req.body;
-    const result = yield stock_service_1.StockServices.addStock(payload);
-    (0, sendResponse_1.default)(res, {
-        statusCode: result ? 200 : 400,
-        success: !!result,
-        message: result ? 'Stock added successfully' : 'Failed to add stock',
-        data: result !== null && result !== void 0 ? result : null,
-    });
-}));
 const getStockLogs = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { productId } = req.params;
     const result = yield stock_service_1.StockServices.getStockLogs(productId);
@@ -57,6 +47,5 @@ const getStockLogs = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
 exports.StockController = {
     getAllProducts,
     getLowStockProducts,
-    addStock,
     getStockLogs,
 };

@@ -65,23 +65,26 @@ const createOrder = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, vo
 }));
 // Get All Orders (Admin)
 const getAllOrders = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield order_service_1.OrderServices.getAllOrders(req.query);
+    const user = req.user;
+    const result = yield order_service_1.OrderServices.getAllOrders(req.query, user);
     (0, sendResponse_1.default)(res, {
-        statusCode: result ? 200 : 400,
-        success: !!result,
-        message: result ? 'Orders fetched successfully' : 'Orders fetching failed',
-        data: result || [],
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Orders retrieved successfully',
+        meta: result.meta,
+        summary: result.summary,
+        data: result.data,
     });
 }));
 // Get Order By ID (Admin)
 const getOrderById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield order_service_1.OrderServices.getOrderById(req.params.id);
-    if (!result)
-        throw new AppError_1.default(http_status_1.default.NOT_FOUND, order_constant_1.ORDER_ERROR_MESSAGES.NOT_FOUND);
+    const user = req.user;
+    const { id } = req.params;
+    const result = yield order_service_1.OrderServices.getOrderById(id, user);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
-        message: 'Order fetched successfully',
+        message: 'Order retrieved successfully',
         data: result,
     });
 }));

@@ -18,13 +18,6 @@ router.get(
   StockController.getLowStockProducts
 );
 
-// Add stock
-router.post(
-  '/add-stock',
-  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
-  StockController.addStock
-);
-
 // Get stock logs for a product
 router.get(
   '/get-stock-logs/:productId',

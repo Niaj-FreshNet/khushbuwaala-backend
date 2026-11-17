@@ -30,13 +30,14 @@ const createSale = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
 }));
 // Get all sales (admin)
 const getAllSales = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const userId = req.user.id;
-    const result = yield sales_service_1.SaleServices.getAllSales(req.query);
+    const result = yield sales_service_1.SaleServices.getAllSales(req.query, req.user);
     (0, sendResponse_1.default)(res, {
         statusCode: result ? 200 : 400,
-        success: !!result,
-        message: result ? 'Sales fetched successfully' : 'Failed to fetch sales',
-        data: result !== null && result !== void 0 ? result : [],
+        success: true,
+        message: 'All sales retrieved successfully',
+        meta: result.meta,
+        summary: result.summary,
+        data: result.data,
     });
 }));
 // Get sales for current salesman
@@ -52,12 +53,12 @@ const getMySales = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
 }));
 // Get Order By ID (Admin)
 const getSaleById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield sales_service_1.SaleServices.getSaleById(req.params.id);
+    const result = yield sales_service_1.SaleServices.getSaleById(req.params.id, req.user);
     (0, sendResponse_1.default)(res, {
         statusCode: result ? 200 : 400,
-        success: true,
-        message: 'Sale fetched successfully',
-        data: result,
+        success: !!result,
+        message: result ? 'Sale retrieved successfully' : 'Failed to retrieve sale',
+        data: result !== null && result !== void 0 ? result : null,
     });
 }));
 // Get sales by customer phone or name
@@ -83,6 +84,25 @@ const updateSaleStatus = (0, catchAsync_1.default)((req, res) => __awaiter(void 
         data: result !== null && result !== void 0 ? result : null,
     });
 }));
+const updateSale = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield sales_service_1.SaleServices.updateSale(req.params.id, req.body, req.user);
+    (0, sendResponse_1.default)(res, {
+        statusCode: result ? 200 : 400,
+        success: !!result,
+        message: result ? 'Sale updated successfully' : 'Failed to update sale',
+        data: result !== null && result !== void 0 ? result : null,
+    });
+}));
+// Delete sale controller
+const deleteSale = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield sales_service_1.SaleServices.deleteSale(req.params.id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: result ? 200 : 400,
+        success: !!result,
+        message: result ? 'Sale deleted successfully' : 'Failed to delete sale',
+        data: result !== null && result !== void 0 ? result : null,
+    });
+}));
 // Sales analytics for admin
 const getSalesAnalytics = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield sales_service_1.SaleServices.getSalesAnalytics(req.query);
@@ -100,5 +120,7 @@ exports.SalesController = {
     getSaleById,
     getSalesByCustomer,
     updateSaleStatus,
+    updateSale,
+    deleteSale,
     getSalesAnalytics,
 };

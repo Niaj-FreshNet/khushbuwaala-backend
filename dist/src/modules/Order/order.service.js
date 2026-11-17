@@ -36,7 +36,8 @@ const discount_service_1 = require("../Discount/discount.service");
 const date_fns_1 = require("date-fns");
 const date_fns_tz_1 = require("date-fns-tz");
 const emails_1 = require("../../helpers/emailSender/emails");
-const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
+const finance_service_1 = require("../Finance/finance.service");
+const getAllOrders = (queryParams, user) => __awaiter(void 0, void 0, void 0, function* () {
     const { searchTerm, status, payment, method, dateFrom, dateTo, productId } = queryParams, rest = __rest(queryParams, ["searchTerm", "status", "payment", "method", "dateFrom", "dateTo", "productId"]);
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(rest, ['id', 'customer.name']);
     const prismaQuery = queryBuilder
@@ -77,20 +78,62 @@ const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function
     if (productId) {
         where.productIds = { has: String(productId) };
     }
-    const orders = yield client_1.prisma.order.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
-            customer: {
-                select: { id: true, name: true, email: true, phone: true, address: true, imageUrl: true },
+    // 🔒 STRICT SECURITY: Check if user is Super Admin
+    const isSuperAdmin = (user === null || user === void 0 ? void 0 : user.role) === 'SUPER_ADMIN';
+    const orderIncludeConfig = {
+        customer: {
+            select: { id: true, name: true, email: true, phone: true, address: true, imageUrl: true },
+        },
+        orderItems: {
+            include: {
+                product: { select: { id: true, name: true, primaryImage: true } },
+                variant: true,
             },
-            orderItems: {
-                include: {
-                    product: { select: { id: true, name: true, primaryImage: true } },
-                    variant: true,
-                },
-            },
-        } }));
-    const meta = yield queryBuilder.getPaginationMeta({
-        count: (args) => client_1.prisma.order.count({ where: args.where }),
+        },
+    };
+    // 1️⃣ Fetch paginated orders and unpaginated filtered dataset for summary simultaneously
+    const [orders, allFilteredOrders, meta] = yield Promise.all([
+        client_1.prisma.order.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: orderIncludeConfig })),
+        client_1.prisma.order.findMany({
+            where,
+            include: { orderItems: true },
+        }),
+        queryBuilder.getPaginationMeta({
+            count: (args) => client_1.prisma.order.count({ where: args.where }),
+        }),
+    ]);
+    // 🚀 FOOL-PROOF FIX: Manually fetch and attach costs to bypass Prisma MongoDB relation limits
+    if (isSuperAdmin && orders.length > 0) {
+        const orderIds = orders.map((o) => o.id);
+        const allItemCosts = yield client_1.prisma.orderItemCost.findMany({
+            where: { orderId: { in: orderIds } }
+        });
+        // Attach the fetched costs to each order
+        orders.forEach((order) => {
+            order.orderItemCosts = allItemCosts.filter(c => c.orderId === order.id);
+        });
+    }
+    let totalCount = allFilteredOrders.length;
+    let totalValidCount = 0;
+    let totalCodAmount = 0;
+    let totalBillAmount = 0;
+    let totalRcvAmount = 0;
+    let paidCount = 0;
+    let dueCount = 0;
+    allFilteredOrders.forEach((order) => {
+        const financials = finance_service_1.FinanceServices.calculateOrderFinancials(order); // ✅ Using Finance Logic
+        if (!financials.isCanceledOrReturned) {
+            totalValidCount += Number(financials.isValidOrderCount);
+            totalCodAmount += Number(order.amount);
+            totalBillAmount += Number(financials.productBill);
+            if (financials.isPaid)
+                paidCount++;
+            else
+                dueCount++;
+        }
+        totalRcvAmount += Number(financials.netReceivable);
     });
+    const summary = { totalCount, totalValidCount, totalCodAmount, totalBillAmount, totalRcvAmount, paidCount, dueCount };
     const normalizedOrders = orders.map((order) => {
         var _a, _b, _c, _d, _e;
         const customerData = (_a = order.customer) !== null && _a !== void 0 ? _a : {
@@ -101,30 +144,60 @@ const getAllOrders = (queryParams) => __awaiter(void 0, void 0, void 0, function
             address: (_e = order.address) !== null && _e !== void 0 ? _e : null,
             imageUrl: null,
         };
-        return Object.assign(Object.assign({}, order), { customer: customerData });
+        const orderStatus = String(order.status || "").toUpperCase();
+        let itemCosts = order.orderItemCosts || [];
+        if (isSuperAdmin) {
+            if (orderStatus === "CANCELED") {
+                itemCosts = [{ profit: 0 }];
+            }
+            else if (orderStatus === "RETURNED") {
+                const financials = finance_service_1.FinanceServices.calculateOrderFinancials(order);
+                itemCosts = [{ profit: -financials.courierDeliveryCharge }];
+            }
+        }
+        return Object.assign(Object.assign({}, order), { customer: customerData, orderItemCosts: itemCosts });
     });
-    return { meta, data: normalizedOrders };
+    return { meta, summary, data: normalizedOrders };
 });
-const getOrderById = (idOrInvoice) => __awaiter(void 0, void 0, void 0, function* () {
+const getOrderById = (idOrInvoice, user) => __awaiter(void 0, void 0, void 0, function* () {
     const param = String(idOrInvoice || "").trim();
-    // A MongoDB ObjectId must be exactly 24 hexadecimal characters
     const isMongoId = /^[0-9a-fA-F]{24}$/.test(param);
+    const isSuperAdmin = (user === null || user === void 0 ? void 0 : user.role) === 'SUPER_ADMIN';
+    const orderIncludeConfig = {
+        customer: { select: { id: true, name: true, imageUrl: true } },
+        orderItems: {
+            include: {
+                product: { select: { id: true, name: true, primaryImage: true } },
+                variant: true,
+            },
+        },
+    };
     const order = yield client_1.prisma.order.findFirst({
         where: isMongoId
             ? { OR: [{ id: param }, { invoice: param }] }
             : { invoice: param },
-        include: {
-            customer: { select: { id: true, name: true, imageUrl: true } },
-            orderItems: {
-                include: {
-                    product: { select: { id: true, name: true, primaryImage: true } },
-                    variant: true,
-                },
-            },
-        },
+        include: orderIncludeConfig,
     });
     if (!order)
         throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Order not found');
+    // 🚀 FOOL-PROOF FIX: Attach costs manually for the single order
+    if (isSuperAdmin) {
+        const itemCosts = yield client_1.prisma.orderItemCost.findMany({
+            where: { orderId: order.id }
+        });
+        const orderStatus = String(order.status || "").toUpperCase();
+        if (orderStatus === "CANCELED") {
+            order.orderItemCosts = [{ profit: 0 }];
+        }
+        else if (orderStatus === "RETURNED") {
+            // ✅ Deduct delivery charge as a loss for single order view
+            const financials = finance_service_1.FinanceServices.calculateOrderFinancials(order);
+            order.orderItemCosts = [{ profit: -financials.courierDeliveryCharge }];
+        }
+        else {
+            order.orderItemCosts = itemCosts;
+        }
+    }
     const customerData = order.customer || {
         id: null,
         name: order.name || null,
@@ -403,6 +476,7 @@ const createOrderWithCartItems = (payload) => __awaiter(void 0, void 0, void 0, 
         if (finalOrder.method === 'cashOnDelivery') {
             dispatchOrderEmails(finalOrder).catch((err) => console.error('❌ Failed to dispatch order emails:', err));
             sendMetaCapiPurchase(finalOrder, customerEmail, customerPhone);
+            (0, finance_service_1.snapshotOrderCosts)(finalOrder.id).catch((err) => console.error('❌ Failed to snapshot order costs:', err));
         }
     });
     // ✅ Return full order so frontend & Redux store populate the Thank You page correctly
@@ -715,117 +789,153 @@ const buildLast7Days = () => {
 };
 const TZ = "Asia/Dhaka";
 const getDashboardMetrics = (...args_1) => __awaiter(void 0, [...args_1], void 0, function* (type = "all") {
-    var _a, _b;
     const nowUtc = new Date();
     const nowDhaka = (0, date_fns_tz_1.toZonedTime)(nowUtc, TZ);
     const todayStartDhaka = (0, date_fns_1.startOfDay)(nowDhaka);
     const todayEndDhaka = (0, date_fns_1.endOfDay)(nowDhaka);
+    const weekStartDhaka = (0, date_fns_1.startOfWeek)(nowDhaka, { weekStartsOn: 6 }); // Saturday start
+    const weekEndDhaka = (0, date_fns_1.endOfWeek)(nowDhaka, { weekStartsOn: 6 });
     const monthStartDhaka = (0, date_fns_1.startOfMonth)(nowDhaka);
+    const threeMonthsAgoDhaka = (0, date_fns_1.startOfMonth)((0, date_fns_1.subMonths)(nowDhaka, 2)); // Current month + past 2 months
     const todayStart = (0, date_fns_tz_1.fromZonedTime)(todayStartDhaka, TZ);
     const todayEnd = (0, date_fns_tz_1.fromZonedTime)(todayEndDhaka, TZ);
+    const weekStart = (0, date_fns_tz_1.fromZonedTime)(weekStartDhaka, TZ);
+    const weekEnd = (0, date_fns_tz_1.fromZonedTime)(weekEndDhaka, TZ);
     const monthStart = (0, date_fns_tz_1.fromZonedTime)(monthStartDhaka, TZ);
+    const threeMonthsStart = (0, date_fns_tz_1.fromZonedTime)(threeMonthsAgoDhaka, TZ);
     const sourceWhere = resolveOrderSourceWhere(type);
-    const baseOrdersWhere = Object.assign(Object.assign({}, sourceWhere), { status: { not: "CANCELED" } });
-    const baseSalesWhere = Object.assign(Object.assign({}, sourceWhere), { status: { not: "CANCELED" }, isPaid: true });
-    const [todayOrders, monthOrders, monthSalesAgg, totalSalesAgg] = yield Promise.all([
-        client_1.prisma.order.count({
-            where: Object.assign(Object.assign({}, baseOrdersWhere), { orderTime: { gte: todayStart, lte: todayEnd } }),
-        }),
-        client_1.prisma.order.count({
-            where: Object.assign(Object.assign({}, baseOrdersWhere), { orderTime: { gte: monthStart } }),
-        }),
-        client_1.prisma.order.aggregate({
-            where: Object.assign(Object.assign({}, baseSalesWhere), { orderTime: { gte: monthStart } }),
-            _sum: { amount: true },
-        }),
-        client_1.prisma.order.aggregate({
-            where: baseSalesWhere,
-            _sum: { amount: true },
-        }),
-    ]);
+    // Fetch all orders from the last 3 months onwards to process timeframes cleanly in memory
+    const orders = yield client_1.prisma.order.findMany({
+        where: Object.assign(Object.assign({}, sourceWhere), { orderTime: { gte: threeMonthsStart } }),
+        include: { orderItems: true },
+    });
+    let todayOrders = 0, todaySales = 0;
+    let weekOrders = 0, weekSales = 0;
+    let monthOrders = 0, monthSales = 0;
+    let last3MonthsOrders = 0, last3MonthsSales = 0;
+    orders.forEach((order) => {
+        const orderTime = new Date(order.orderTime);
+        const financials = (0, finance_service_1.calculateOrderFinancials)(order); // Uses your centralized robust logic (excludes canceled/returned)
+        // Strict rule: Only count valid non-canceled/non-returned orders
+        if (!financials.isCanceledOrReturned) {
+            const bill = financials.productBill;
+            // Today
+            if (orderTime >= todayStart && orderTime <= todayEnd) {
+                todayOrders++;
+                todaySales += bill;
+            }
+            // This Week
+            if (orderTime >= weekStart && orderTime <= weekEnd) {
+                weekOrders++;
+                weekSales += bill;
+            }
+            // This Month
+            if (orderTime >= monthStart) {
+                monthOrders++;
+                monthSales += bill;
+            }
+            // Last 3 Months
+            if (orderTime >= threeMonthsStart) {
+                last3MonthsOrders++;
+                last3MonthsSales += bill;
+            }
+        }
+    });
     return {
         type,
-        todayOrders,
-        monthOrders,
-        monthSales: Number((_a = monthSalesAgg._sum.amount) !== null && _a !== void 0 ? _a : 0),
-        totalSales: Number((_b = totalSalesAgg._sum.amount) !== null && _b !== void 0 ? _b : 0),
+        today: { orders: todayOrders, sales: todaySales },
+        thisWeek: { orders: weekOrders, sales: weekSales },
+        thisMonth: { orders: monthOrders, sales: monthSales },
+        last3Months: { orders: last3MonthsOrders, sales: last3MonthsSales },
     };
 });
 const getWeeklySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], void 0, function* (type = "all") {
-    var _a;
     const last7 = buildLast7Days();
     const fromDhakaStart = (0, date_fns_1.startOfDay)(last7[0].date);
     const fromUtc = (0, date_fns_tz_1.fromZonedTime)(fromDhakaStart, TZ);
     const sourceWhere = resolveOrderSourceWhere(type);
     const orders = yield client_1.prisma.order.findMany({
-        where: Object.assign(Object.assign({}, sourceWhere), { orderTime: { gte: fromUtc }, status: { not: "CANCELED" } }),
-        select: {
-            orderTime: true,
-            amount: true,
-            isPaid: true, // You can keep or drop this depending on choice
+        where: Object.assign(Object.assign({}, sourceWhere), { orderTime: { gte: fromUtc } }),
+        include: {
+            orderItems: {
+                include: {
+                    product: { select: { id: true, name: true, primaryImage: true } },
+                    variant: true,
+                },
+            },
         },
+        orderBy: { orderTime: "asc" },
     });
-    const buckets = {};
-    for (const d of last7)
-        buckets[d.key] = { sales: 0, orders: 0 };
+    const dailyBuckets = {};
     for (const o of orders) {
         const oDhaka = (0, date_fns_tz_1.toZonedTime)(o.orderTime, TZ);
-        const key = (0, date_fns_1.format)(oDhaka, "yyyy-MM-dd");
-        if (!buckets[key])
-            continue;
-        buckets[key].orders += 1;
-        // ✅ FIX: Accumulate amount for all non-canceled orders (or check if you want only paid. 
-        // If COD orders should count towards sales overview graph, remove `o.isPaid`)
-        buckets[key].sales += Number((_a = o.amount) !== null && _a !== void 0 ? _a : 0);
+        const key = (0, date_fns_1.format)(oDhaka, "dd-MM-yy");
+        if (!dailyBuckets[key]) {
+            dailyBuckets[key] = { sales: 0, netReceivable: 0, ordersCount: 0, ordersList: [] };
+        }
+        const financials = (0, finance_service_1.calculateOrderFinancials)(o);
+        // Only count valid orders (excluding canceled/returned) for period orders count
+        dailyBuckets[key].ordersCount += financials.isValidOrderCount;
+        dailyBuckets[key].ordersList.push(o);
+        // Period revenue = total bill without canceled/returned
+        dailyBuckets[key].sales += financials.productBill;
+        dailyBuckets[key].netReceivable += financials.netReceivable;
     }
-    return last7.map((d) => {
-        var _a, _b, _c, _d;
-        return ({
-            day: d.label,
-            sales: (_b = (_a = buckets[d.key]) === null || _a === void 0 ? void 0 : _a.sales) !== null && _b !== void 0 ? _b : 0,
-            orders: (_d = (_c = buckets[d.key]) === null || _c === void 0 ? void 0 : _c.orders) !== null && _d !== void 0 ? _d : 0,
-        });
-    });
+    return Object.keys(dailyBuckets)
+        .sort()
+        .map((dateKey) => ({
+        date: dateKey,
+        totalSales: dailyBuckets[dateKey].sales, // Total Bill (Excl. Canceled/Returned)
+        totalNetReceivable: dailyBuckets[dateKey].netReceivable, // Delivered/Completed Paid + Returned losses
+        totalOrders: dailyBuckets[dateKey].ordersCount, // Orders excl. Canceled/Returned
+        orders: dailyBuckets[dateKey].ordersList,
+    }));
 });
 const getMonthlySalesOverview = (...args_1) => __awaiter(void 0, [...args_1], void 0, function* (type = "all", year, month) {
-    var _a;
     const nowUtc = new Date();
     const nowDhaka = (0, date_fns_tz_1.toZonedTime)(nowUtc, TZ);
-    // If specific year & month are passed, use them; otherwise default to current month
     const targetYear = year ? Number(year) : nowDhaka.getFullYear();
-    const targetMonth = month ? Number(month) - 1 : nowDhaka.getMonth(); // 0-indexed for date-fns/js
+    const targetMonth = month ? Number(month) - 1 : nowDhaka.getMonth();
     const monthStartDhaka = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
     const monthEndDhaka = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
     const monthStart = (0, date_fns_tz_1.fromZonedTime)(monthStartDhaka, TZ);
     const monthEnd = (0, date_fns_tz_1.fromZonedTime)(monthEndDhaka, TZ);
     const sourceWhere = resolveOrderSourceWhere(type);
     const orders = yield client_1.prisma.order.findMany({
-        where: Object.assign(Object.assign({}, sourceWhere), { orderTime: {
-                gte: monthStart,
-                lte: monthEnd,
-            }, status: { not: "CANCELED" } }),
-        select: {
-            orderTime: true,
-            amount: true,
-            isPaid: true,
+        where: Object.assign(Object.assign({}, sourceWhere), { orderTime: { gte: monthStart, lte: monthEnd } }),
+        include: {
+            orderItems: {
+                include: {
+                    product: { select: { id: true, name: true, primaryImage: true } },
+                    variant: true,
+                },
+            },
         },
+        orderBy: { orderTime: "asc" },
     });
     const dailyBuckets = {};
     for (const o of orders) {
         const oDhaka = (0, date_fns_tz_1.toZonedTime)(o.orderTime, TZ);
-        const key = (0, date_fns_1.format)(oDhaka, "dd-MM-yy"); // matches your DD-MM-YY format
+        const key = (0, date_fns_1.format)(oDhaka, "dd-MM-yy");
         if (!dailyBuckets[key]) {
-            dailyBuckets[key] = { sales: 0, orders: 0 };
+            dailyBuckets[key] = { sales: 0, netReceivable: 0, ordersCount: 0, ordersList: [] };
         }
-        dailyBuckets[key].orders += 1;
-        dailyBuckets[key].sales += Number((_a = o.amount) !== null && _a !== void 0 ? _a : 0);
+        const financials = (0, finance_service_1.calculateOrderFinancials)(o);
+        // Only count valid orders (excluding canceled/returned) for period orders count
+        dailyBuckets[key].ordersCount += financials.isValidOrderCount;
+        dailyBuckets[key].ordersList.push(o);
+        // Period revenue = total bill without canceled/returned
+        dailyBuckets[key].sales += financials.productBill;
+        dailyBuckets[key].netReceivable += financials.netReceivable;
     }
     return Object.keys(dailyBuckets)
         .sort()
         .map((dateKey) => ({
         date: dateKey,
-        sales: dailyBuckets[dateKey].sales,
-        orders: dailyBuckets[dateKey].orders,
+        totalSales: dailyBuckets[dateKey].sales, // Total Bill (Excl. Canceled/Returned)
+        totalNetReceivable: dailyBuckets[dateKey].netReceivable, // Delivered/Completed Paid + Returned losses
+        totalOrders: dailyBuckets[dateKey].ordersCount, // Orders excl. Canceled/Returned
+        orders: dailyBuckets[dateKey].ordersList,
     }));
 });
 const trackOrders = (queryParam) => __awaiter(void 0, void 0, void 0, function* () {

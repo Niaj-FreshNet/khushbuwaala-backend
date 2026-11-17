@@ -22,14 +22,13 @@ const blog_service_1 = require("./blog.service");
 const createBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const user = req.user;
-    let imageUrl = '';
-    if (!((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename)) {
-        throw new AppError_1.default(400, 'Image is required for blog creation');
+    // ⚡ Accept imageUrl from JSON body first (Cloudinary), or fall back to Multer file if uploaded locally
+    let imageUrl = req.body.imageUrl || null;
+    if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename) {
+        imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
     }
-    imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
     const isPublish = req.body.isPublish === 'true' || req.body.isPublish === true;
-    const blogdata = Object.assign(Object.assign({}, req.body), { userId: user.id, imageUrl,
-        isPublish, metaTitle: req.body.metaTitle || req.body.title, metaDescription: req.body.metaDescription || '', keywords: req.body.keywords || '' });
+    const blogdata = Object.assign(Object.assign({}, req.body), { userId: user.id, imageUrl, imageAltText: req.body.imageAltText || '', isPublish, metaTitle: req.body.metaTitle || req.body.title, metaDescription: req.body.metaDescription || '', keywords: req.body.keywords || '', tags: req.body.tags || '', faqs: req.body.faqs || '' });
     const result = yield blog_service_1.BlogServices.createBlog(blogdata);
     (0, sendResponse_1.default)(res, {
         statusCode: 201,
@@ -52,11 +51,21 @@ const updateBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, voi
         updateddata.isPublish =
             req.body.isPublish === 'true' || req.body.isPublish === true;
     }
-    if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename) {
+    // Handle Cloudinary URL update or local file upload update
+    if (req.body.imageUrl) {
+        if (existingBlog.imageUrl && existingBlog.imageUrl.includes('/Uploads/')) {
+            yield (0, fileDelete_1.deleteFile)(existingBlog.imageUrl);
+        }
+        updateddata.imageUrl = req.body.imageUrl;
+    }
+    else if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.filename) {
         if (existingBlog.imageUrl) {
             yield (0, fileDelete_1.deleteFile)(existingBlog.imageUrl);
         }
         updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
+    }
+    if (req.body.imageAltText !== undefined) {
+        updateddata.imageAltText = req.body.imageAltText;
     }
     const result = yield blog_service_1.BlogServices.updateBlog(blogId, updateddata);
     (0, sendResponse_1.default)(res, {
@@ -85,7 +94,7 @@ const getAllBlogsAdmin = (0, catchAsync_1.default)((req, res) => __awaiter(void 
     });
 }));
 const getBlog = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { slug } = req.params; // FIXED: reading 'slug' rather than nonexistent 'id'
+    const { slug } = req.params;
     const result = yield blog_service_1.BlogServices.getBlog(slug);
     if (!result) {
         throw new AppError_1.default(404, 'Blog not found');

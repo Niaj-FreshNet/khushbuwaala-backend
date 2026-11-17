@@ -23,17 +23,6 @@ const getLowStockProducts = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const addStock = catchAsync(async (req: Request, res: Response) => {
-  const payload = req.body;
-  const result = await StockServices.addStock(payload);
-  sendResponse(res, {
-    statusCode: result ? 200 : 400,
-    success: !!result,
-    message: result ? 'Stock added successfully' : 'Failed to add stock',
-    data: result ?? null,
-  });
-});
-
 const getStockLogs = catchAsync(async (req: Request, res: Response) => {
   const { productId } = req.params;
   const result = await StockServices.getStockLogs(productId);
@@ -48,6 +37,5 @@ const getStockLogs = catchAsync(async (req: Request, res: Response) => {
 export const StockController = {
   getAllProducts,
   getLowStockProducts,
-  addStock,
   getStockLogs,
 };

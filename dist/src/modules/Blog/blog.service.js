@@ -13,6 +13,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BlogServices = void 0;
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const slugify_1 = __importDefault(require("slugify"));
 const QueryBuilder_1 = require("../../builder/QueryBuilder");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
@@ -34,17 +35,35 @@ const generateUniqueSlug = (title, currentId) => __awaiter(void 0, void 0, void 
 const createBlog = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const slug = yield generateUniqueSlug(payload.title);
+    // Combine keywords and tags if tags are provided
+    let keywords = payload.keywords || '';
+    if (payload.tags) {
+        keywords = keywords ? `${keywords}, ${payload.tags}` : payload.tags;
+    }
+    // Store FAQs and extra metadata inside 'others' field as a JSON string if provided
+    let othersData = payload.others || null;
+    if (payload.faqs) {
+        try {
+            // Ensure it's valid JSON before saving
+            const parsedFaqs = typeof payload.faqs === 'string' ? JSON.parse(payload.faqs) : payload.faqs;
+            othersData = JSON.stringify({ faqs: parsedFaqs });
+        }
+        catch (_b) {
+            othersData = null;
+        }
+    }
     const result = yield client_1.prisma.blog.create({
         data: {
             userId: payload.userId,
             title: payload.title,
             content: payload.content,
             imageUrl: payload.imageUrl,
-            others: payload.others,
+            imageAltText: payload.imageAltText,
+            others: othersData,
             isPublish: (_a = payload.isPublish) !== null && _a !== void 0 ? _a : false,
             metaTitle: payload.metaTitle,
             metaDescription: payload.metaDescription,
-            keywords: payload.keywords,
+            keywords,
             slug,
         },
     });
@@ -55,6 +74,26 @@ const updateBlog = (id, payload) => __awaiter(void 0, void 0, void 0, function* 
     if (payload.title) {
         updateData.slug = yield generateUniqueSlug(payload.title, id);
     }
+    if (payload.tags || payload.keywords) {
+        let keywords = payload.keywords || '';
+        if (payload.tags) {
+            keywords = keywords ? `${keywords}, ${payload.tags}` : payload.tags;
+        }
+        updateData.keywords = keywords;
+    }
+    if (payload.faqs) {
+        try {
+            const parsedFaqs = typeof payload.faqs === 'string' ? JSON.parse(payload.faqs) : payload.faqs;
+            updateData.others = JSON.stringify({ faqs: parsedFaqs });
+        }
+        catch (_a) {
+            // Keep existing others if parsing fails
+            delete updateData.faqs;
+        }
+    }
+    // Clean up unused temporary payload fields not in Prisma schema
+    delete updateData.tags;
+    delete updateData.faqs;
     const result = yield client_1.prisma.blog.update({
         where: { id },
         data: updateData,
@@ -66,6 +105,7 @@ const getAllBlogs = (queryParams) => __awaiter(void 0, void 0, void 0, function*
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(filterParams, [
         'title',
         'content',
+        'keywords',
     ]);
     const prismaQuery = queryBuilder
         .buildWhere()
@@ -89,6 +129,7 @@ const getAllBlogsAdmin = (queryParams) => __awaiter(void 0, void 0, void 0, func
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams, [
         'title',
         'content',
+        'keywords',
     ]);
     const prismaQuery = queryBuilder
         .buildWhere()
@@ -127,6 +168,7 @@ const getBlog = (slug) => __awaiter(void 0, void 0, void 0, function* () {
             title: true,
             content: true,
             imageUrl: true,
+            imageAltText: true,
             slug: true,
             metaTitle: true,
             metaDescription: true,

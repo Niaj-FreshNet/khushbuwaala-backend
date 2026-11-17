@@ -22,6 +22,7 @@ const checkout_utils_1 = require("./checkout.utils");
 const discount_service_1 = require("../Discount/discount.service");
 const emails_1 = require("../../helpers/emailSender/emails");
 const order_service_1 = require("../Order/order.service");
+const finance_service_1 = require("../Finance/finance.service");
 exports.CheckoutController = {
     // ==========================================
     // DGePay Gateway Methods
@@ -217,6 +218,8 @@ exports.CheckoutController = {
                 }
                 // ✅ Fire Server-Side Meta CAPI Purchase with the exact same order ID / event_id (`kw_${orderId}`)
                 (0, order_service_1.sendMetaCapiPurchase)(completedOrder, customerEmail, customerPhone).catch((err) => console.error("❌ Gateway CAPI Dispatch Error:", err));
+                // 💸 FREEZE THE FINANCIAL COSTS NOW THAT PAYMENT IS SECURED 💸
+                (0, finance_service_1.snapshotOrderCosts)(completedOrder.id).catch((err) => console.error('❌ Failed to snapshot order costs from Gateway:', err));
                 return res.redirect(`${successUrl}?order=${payment.orderId}`);
             }
             // 🔴 AUTO-CANCEL ON FAILED PAYMENT STATUS

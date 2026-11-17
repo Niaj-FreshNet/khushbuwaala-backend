@@ -16,10 +16,9 @@ exports.ExpenseController = void 0;
 const catchAsync_1 = __importDefault(require("../../utils/catchAsync"));
 const sendResponse_1 = __importDefault(require("../../utils/sendResponse"));
 const expense_service_1 = require("./expense.service");
-// Create an expense
 const createExpense = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const payload = req.body;
-    const userId = req.user.id; // ADMIN or SUPER_ADMIN creating the expense
+    const userId = req.user.id;
     const result = yield expense_service_1.ExpenseServices.createExpense(payload, userId);
     (0, sendResponse_1.default)(res, {
         statusCode: result ? 200 : 400,
@@ -28,31 +27,28 @@ const createExpense = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, 
         data: result !== null && result !== void 0 ? result : null,
     });
 }));
-// Get all expenses
 const getAllExpenses = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield expense_service_1.ExpenseServices.getAllExpenses(req.query);
     (0, sendResponse_1.default)(res, {
-        statusCode: result ? 200 : 400,
-        success: !!result,
-        message: result ? 'Expenses fetched successfully' : 'Failed to fetch expenses',
-        data: result !== null && result !== void 0 ? result : [],
+        statusCode: 200,
+        success: true,
+        message: 'Expenses fetched successfully',
+        data: result,
     });
 }));
-// Get expense by ID
 const getExpenseById = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const result = yield expense_service_1.ExpenseServices.getExpenseById(id);
     (0, sendResponse_1.default)(res, {
-        statusCode: result ? 200 : 400,
+        statusCode: result ? 200 : 404,
         success: !!result,
         message: result ? 'Expense fetched successfully' : 'Expense not found',
         data: result !== null && result !== void 0 ? result : null,
     });
 }));
-// Update expense status
 const updateExpenseStatus = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const expenseId = req.params.id;
-    const payload = req.body; // e.g., { status: "COMPLETED" }
+    const payload = req.body;
     const result = yield expense_service_1.ExpenseServices.updateExpenseStatus(expenseId, payload);
     (0, sendResponse_1.default)(res, {
         statusCode: result ? 200 : 400,
@@ -61,14 +57,23 @@ const updateExpenseStatus = (0, catchAsync_1.default)((req, res) => __awaiter(vo
         data: result !== null && result !== void 0 ? result : null,
     });
 }));
-// Expense analytics
+const deleteExpense = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const result = yield expense_service_1.ExpenseServices.deleteExpense(id);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: 'Expense deleted successfully',
+        data: result,
+    });
+}));
 const getExpenseAnalytics = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield expense_service_1.ExpenseServices.getExpenseAnalytics(req.query);
     (0, sendResponse_1.default)(res, {
-        statusCode: result ? 200 : 400,
-        success: !!result,
-        message: result ? 'Expense analytics fetched successfully' : 'Failed to fetch analytics',
-        data: result !== null && result !== void 0 ? result : {},
+        statusCode: 200,
+        success: true,
+        message: 'Expense analytics fetched successfully',
+        data: result,
     });
 }));
 exports.ExpenseController = {
@@ -76,5 +81,6 @@ exports.ExpenseController = {
     getAllExpenses,
     getExpenseById,
     updateExpenseStatus,
+    deleteExpense,
     getExpenseAnalytics,
 };

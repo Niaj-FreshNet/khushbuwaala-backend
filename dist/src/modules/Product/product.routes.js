@@ -43,4 +43,7 @@ router.get('/get-stock-logs/:productId', (0, auth_1.default)('ADMIN', 'SUPER_ADM
 router.get('/get-product-analytics', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), product_controller_1.ProductController.getProductAnalytics);
 router.get('/get-low-stock-products', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), product_controller_1.ProductController.getLowStockProducts);
 router.get('/get-best-sellers', product_controller_1.ProductController.getBestsellers);
+router.post('/:productId/variant-packaging-cost', product_controller_1.ProductController.setVariantPackagingCost);
+router.post('/:productId/purchase', product_controller_1.ProductController.receiveStockPurchase);
+router.get('/google-shopping-feed.xml', product_controller_1.ProductController.generateGoogleShoppingFeed);
 exports.ProductRoutes = router;

@@ -12,8 +12,6 @@ const router = (0, express_1.Router)();
 router.get('/get-all-products', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), stock_controller_1.StockController.getAllProducts);
 // Get low stock products
 router.get('/get-low-stock-products', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), stock_controller_1.StockController.getLowStockProducts);
-// Add stock
-router.post('/add-stock', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), stock_controller_1.StockController.addStock);
 // Get stock logs for a product
 router.get('/get-stock-logs/:productId', (0, auth_1.default)('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), stock_controller_1.StockController.getStockLogs);
 exports.StockRoutes = router;

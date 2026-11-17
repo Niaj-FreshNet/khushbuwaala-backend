@@ -34,6 +34,11 @@ const createCategory = (payload) => __awaiter(void 0, void 0, void 0, function* 
             unit: payload.unit,
             imageUrl: payload.imageUrl,
         },
+        include: {
+            _count: {
+                select: { Product: true },
+            },
+        },
     });
     return result;
 });
@@ -46,7 +51,11 @@ const getAllCategories = (queryParams) => __awaiter(void 0, void 0, void 0, func
         .buildPagination()
         .buildSelect()
         .getQuery();
-    const categories = yield client_1.prisma.category.findMany(Object.assign({}, prismaQuery));
+    const categories = yield client_1.prisma.category.findMany(Object.assign(Object.assign({}, prismaQuery), { include: {
+            _count: {
+                select: { Product: true },
+            },
+        } }));
     const meta = yield queryBuilder.getPaginationMeta(client_1.prisma.category);
     return {
         meta,
@@ -61,7 +70,11 @@ const getAllCategoriesAdmin = (queryParams) => __awaiter(void 0, void 0, void 0,
         .buildPagination()
         .buildSelect()
         .getQuery();
-    const categories = yield client_1.prisma.category.findMany(Object.assign({}, prismaQuery));
+    const categories = yield client_1.prisma.category.findMany(Object.assign(Object.assign({}, prismaQuery), { include: {
+            _count: {
+                select: { Product: true }, // ⚡ Returns product count for each category
+            },
+        } }));
     const meta = yield queryBuilder.getPaginationMeta(client_1.prisma.category);
     return {
         meta,
@@ -70,8 +83,11 @@ const getAllCategoriesAdmin = (queryParams) => __awaiter(void 0, void 0, void 0,
 });
 const getCategory = (id) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield client_1.prisma.category.findUnique({
-        where: {
-            id,
+        where: { id },
+        include: {
+            _count: {
+                select: { Product: true },
+            },
         },
     });
     return result;
@@ -79,9 +95,7 @@ const getCategory = (id) => __awaiter(void 0, void 0, void 0, function* () {
 const updateCategory = (id, payload) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const isExist = yield client_1.prisma.category.findUnique({
-        where: {
-            id,
-        },
+        where: { id },
     });
     if (!isExist) {
         throw new AppError_1.default(400, 'Category not found');
@@ -91,15 +105,18 @@ const updateCategory = (id, payload) => __awaiter(void 0, void 0, void 0, functi
     }
     const imageUrl = payload.imageUrl;
     const result = yield client_1.prisma.category.update({
-        where: {
-            id,
-        },
+        where: { id },
         data: {
             categoryName: (_a = payload === null || payload === void 0 ? void 0 : payload.categoryName) === null || _a === void 0 ? void 0 : _a.toUpperCase(),
             sizes: payload.sizes,
             unit: payload.unit,
             imageUrl: imageUrl,
             published: payload.published,
+        },
+        include: {
+            _count: {
+                select: { Product: true },
+            },
         },
     });
     return result;
@@ -119,9 +136,7 @@ const deleteCategory = (id) => __awaiter(void 0, void 0, void 0, function* () {
         yield (0, fileDelete_1.deleteFile)(isExist.imageUrl);
     }
     const result = yield client_1.prisma.category.delete({
-        where: {
-            id,
-        },
+        where: { id },
     });
     return result;
 });

@@ -23,6 +23,7 @@ const fragrance_routes_1 = require("../modules/Fragrance/fragrance.routes");
 const discount_routes_1 = require("../modules/Discount/discount.routes");
 const checkout_routes_1 = require("../modules/Checkout/checkout.routes");
 const steadfast_routes_1 = require("../modules/Steadfast/steadfast.routes");
+const finance_routes_1 = require("../modules/Finance/finance.routes");
 const router = express_1.default.Router();
 const moduleRoutes = [
     {
@@ -100,6 +101,10 @@ const moduleRoutes = [
     {
         path: '/steadfast',
         route: steadfast_routes_1.SteadfastRoutes,
+    },
+    {
+        path: '/finance',
+        route: finance_routes_1.FinanceRoutes,
     }
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

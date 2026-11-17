@@ -314,6 +314,41 @@ const getStockLogs = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         data: result !== null && result !== void 0 ? result : [],
     });
 }));
+// Set Variant Packaging Costs
+const setVariantPackagingCost = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { sku } = req.params;
+    const payload = req.body; // Expects costLines array
+    if (!payload.costLines || !Array.isArray(payload.costLines)) {
+        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'costLines array is required');
+    }
+    const result = yield product_service_1.ProductServices.upsertVariantPackagingCost(sku, { sku, costLines: payload.costLines });
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Variant packaging costs updated successfully',
+        data: result,
+    });
+}));
+// Receive Stock Purchase (Procurement)
+const receiveStockPurchase = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { productId } = req.params;
+    const payload = Object.assign(Object.assign({}, req.body), { productId });
+    if (!payload.quantity || !payload.costLines) {
+        throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'quantity and costLines are required');
+    }
+    const result = yield product_service_1.ProductServices.addStockPurchaseAndUpdateWAC(payload);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.CREATED,
+        success: true,
+        message: 'Stock purchase recorded and WAC updated successfully',
+        data: result,
+    });
+}));
+const generateGoogleShoppingFeed = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const xmlFeed = yield product_service_1.ProductServices.generateGoogleShoppingFeed();
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.status(http_status_1.default.OK).send(xmlFeed);
+}));
 exports.ProductController = {
     createProduct,
     getAllProducts,
@@ -337,4 +372,7 @@ exports.ProductController = {
     getLowStockProducts,
     getBestsellers,
     getStockLogs,
+    setVariantPackagingCost,
+    receiveStockPurchase,
+    generateGoogleShoppingFeed,
 };

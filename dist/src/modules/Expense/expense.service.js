@@ -34,15 +34,13 @@ const createExpense = (payload, userId) => __awaiter(void 0, void 0, void 0, fun
         data: {
             expenseTime: new Date(expenseTime),
             title,
-            description,
+            description: description || '',
             amount: Number(amount),
             method,
-            isPaid: isPaid || false,
+            isPaid: isPaid !== null && isPaid !== void 0 ? isPaid : false,
             status: status || 'PENDING',
-            reference,
+            reference: reference || '',
             expenseById: userId,
-            createdAt: new Date(),
-            updatedAt: new Date(),
         },
         include: {
             expenseBy: { select: { id: true, name: true } },
@@ -51,7 +49,7 @@ const createExpense = (payload, userId) => __awaiter(void 0, void 0, void 0, fun
     return expense;
 });
 const getAllExpenses = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
-    const _a = queryParams, { searchTerm, status } = _a, rest = __rest(_a, ["searchTerm", "status"]);
+    const _a = queryParams, { searchTerm, status, isPaid, method, dateFrom, dateTo } = _a, rest = __rest(_a, ["searchTerm", "status", "isPaid", "method", "dateFrom", "dateTo"]);
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(rest);
     const prismaQuery = queryBuilder
         .buildWhere()
@@ -59,8 +57,29 @@ const getAllExpenses = (queryParams) => __awaiter(void 0, void 0, void 0, functi
         .buildPagination()
         .getQuery();
     const where = Object.assign({}, prismaQuery.where);
-    if (status)
+    // Exact Match Filters
+    if (status && status !== 'ALL') {
         where.status = status;
+    }
+    if (method && method !== 'ALL') {
+        where.method = method;
+    }
+    if (isPaid !== undefined && isPaid !== 'ALL') {
+        where.isPaid = isPaid === 'true' || isPaid === true;
+    }
+    // Financial Period Alignment
+    if (dateFrom || dateTo) {
+        where.expenseTime = {};
+        if (dateFrom) {
+            where.expenseTime.gte = new Date(dateFrom);
+        }
+        if (dateTo) {
+            const endDateTime = new Date(dateTo);
+            endDateTime.setHours(23, 59, 59, 999);
+            where.expenseTime.lte = endDateTime;
+        }
+    }
+    // Fuzzy Search
     if (searchTerm && searchTerm.trim()) {
         const s = searchTerm.trim();
         where.OR = [
@@ -74,7 +93,10 @@ const getAllExpenses = (queryParams) => __awaiter(void 0, void 0, void 0, functi
             },
         ];
     }
-    const data = yield client_1.prisma.expense.findMany(Object.assign(Object.assign({}, prismaQuery), { where, include: {
+    // Default Sort if none provided
+    const orderBy = prismaQuery.orderBy || { expenseTime: 'desc' };
+    const data = yield client_1.prisma.expense.findMany(Object.assign(Object.assign({}, prismaQuery), { where,
+        orderBy, include: {
             expenseBy: { select: { id: true, name: true } },
         } }));
     const meta = yield queryBuilder.getPaginationMeta({
@@ -108,6 +130,14 @@ const updateExpenseStatus = (id, payload) => __awaiter(void 0, void 0, void 0, f
     });
     return updated;
 });
+const deleteExpense = (id) => __awaiter(void 0, void 0, void 0, function* () {
+    const expense = yield client_1.prisma.expense.findUnique({ where: { id } });
+    if (!expense)
+        throw new AppError_1.default(http_status_1.default.NOT_FOUND, 'Expense not found');
+    return yield client_1.prisma.expense.delete({
+        where: { id },
+    });
+});
 const getExpenseAnalytics = (queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const { startDate, endDate } = queryParams;
@@ -116,8 +146,11 @@ const getExpenseAnalytics = (queryParams) => __awaiter(void 0, void 0, void 0, f
         where.expenseTime = {};
         if (startDate)
             where.expenseTime.gte = new Date(startDate);
-        if (endDate)
-            where.expenseTime.lte = new Date(endDate);
+        if (endDate) {
+            const endDateTime = new Date(endDate);
+            endDateTime.setHours(23, 59, 59, 999);
+            where.expenseTime.lte = endDateTime;
+        }
     }
     const [count, sum, byStatus] = yield Promise.all([
         client_1.prisma.expense.count({ where }),
@@ -140,5 +173,6 @@ exports.ExpenseServices = {
     getAllExpenses,
     getExpenseById,
     updateExpenseStatus,
+    deleteExpense,
     getExpenseAnalytics,
 };
