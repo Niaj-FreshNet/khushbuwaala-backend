@@ -387,6 +387,55 @@ const getStockLogs = catchAsync(async (req, res) => {
   });
 });
 
+// Set Variant Packaging Costs
+const setVariantPackagingCost = catchAsync(async (req, res) => {
+  const { sku } = req.params;
+  const payload = req.body; // Expects costLines array
+
+  if (!payload.costLines || !Array.isArray(payload.costLines)) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'costLines array is required');
+  }
+
+  const result = await ProductServices.upsertVariantPackagingCost(sku, { sku, costLines: payload.costLines });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Variant packaging costs updated successfully',
+    data: result,
+  });
+});
+
+// Receive Stock Purchase (Procurement)
+const receiveStockPurchase = catchAsync(async (req, res) => {
+  const { productId } = req.params;
+  
+  const payload = {
+    ...req.body,
+    productId,
+    // createdById: req.user.id // Uncomment if you have authentication middleware setting req.user
+  };
+
+  if (!payload.quantity || !payload.costLines) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'quantity and costLines are required');
+  }
+
+  const result = await ProductServices.addStockPurchaseAndUpdateWAC(payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: 'Stock purchase recorded and WAC updated successfully',
+    data: result,
+  });
+});
+
+const generateGoogleShoppingFeed = catchAsync(async (req, res) => {
+  const xmlFeed = await ProductServices.generateGoogleShoppingFeed();
+  
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.status(httpStatus.OK).send(xmlFeed);
+});
 
 export const ProductController = {
   createProduct,
@@ -411,4 +460,7 @@ export const ProductController = {
   getLowStockProducts,
   getBestsellers,
   getStockLogs,
+  setVariantPackagingCost,
+  receiveStockPurchase,
+  generateGoogleShoppingFeed,
 };

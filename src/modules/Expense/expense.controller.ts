@@ -3,10 +3,9 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { ExpenseServices } from './expense.service';
 
-// Create an expense
 const createExpense = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body;
-  const userId = req.user.id; // ADMIN or SUPER_ADMIN creating the expense
+  const userId = req.user.id;
   const result = await ExpenseServices.createExpense(payload, userId);
 
   sendResponse(res, {
@@ -17,34 +16,32 @@ const createExpense = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-// Get all expenses
 const getAllExpenses = catchAsync(async (req: Request, res: Response) => {
   const result = await ExpenseServices.getAllExpenses(req.query);
+
   sendResponse(res, {
-    statusCode: result ? 200 : 400,
-    success: !!result,
-    message: result ? 'Expenses fetched successfully' : 'Failed to fetch expenses',
-    data: result ?? [],
+    statusCode: 200,
+    success: true,
+    message: 'Expenses fetched successfully',
+    data: result,
   });
 });
 
-// Get expense by ID
 const getExpenseById = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const result = await ExpenseServices.getExpenseById(id);
 
   sendResponse(res, {
-    statusCode: result ? 200 : 400,
+    statusCode: result ? 200 : 404,
     success: !!result,
     message: result ? 'Expense fetched successfully' : 'Expense not found',
     data: result ?? null,
   });
 });
 
-// Update expense status
 const updateExpenseStatus = catchAsync(async (req: Request, res: Response) => {
   const expenseId = req.params.id;
-  const payload = req.body; // e.g., { status: "COMPLETED" }
+  const payload = req.body;
   const result = await ExpenseServices.updateExpenseStatus(expenseId, payload);
 
   sendResponse(res, {
@@ -55,15 +52,26 @@ const updateExpenseStatus = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-// Expense analytics
+const deleteExpense = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await ExpenseServices.deleteExpense(id);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Expense deleted successfully',
+    data: result,
+  });
+});
+
 const getExpenseAnalytics = catchAsync(async (req: Request, res: Response) => {
   const result = await ExpenseServices.getExpenseAnalytics(req.query);
 
   sendResponse(res, {
-    statusCode: result ? 200 : 400,
-    success: !!result,
-    message: result ? 'Expense analytics fetched successfully' : 'Failed to fetch analytics',
-    data: result ?? {},
+    statusCode: 200,
+    success: true,
+    message: 'Expense analytics fetched successfully',
+    data: result,
   });
 });
 
@@ -72,5 +80,6 @@ export const ExpenseController = {
   getAllExpenses,
   getExpenseById,
   updateExpenseStatus,
+  deleteExpense,
   getExpenseAnalytics,
 };

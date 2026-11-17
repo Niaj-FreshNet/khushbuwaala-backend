@@ -18,6 +18,7 @@ import { FragranceRoutes } from '../modules/Fragrance/fragrance.routes';
 import { DiscountRoutes } from '../modules/Discount/discount.routes';
 import { CheckoutRoutes } from '../modules/Checkout/checkout.routes';
 import { SteadfastRoutes } from '../modules/Steadfast/steadfast.routes';
+import { FinanceRoutes } from '../modules/Finance/finance.routes';
 
 const router = express.Router();
 
@@ -98,6 +99,10 @@ const moduleRoutes = [
   {
     path: '/steadfast',
     route: SteadfastRoutes,
+  },
+  {
+    path: '/finance',
+    route: FinanceRoutes,
   }
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

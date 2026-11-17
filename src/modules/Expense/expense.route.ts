@@ -11,10 +11,10 @@ router.post(
   ExpenseController.createExpense
 );
 
-// Get all expenses (admin overview)
+// Get all expenses (Supports pagination, sorting, date ranges, and filters)
 router.get(
   '/get-all-expenses',
-  auth('ADMIN', 'SUPER_ADMIN'),
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   ExpenseController.getAllExpenses
 );
 
@@ -25,11 +25,18 @@ router.get(
   ExpenseController.getExpenseById
 );
 
-// Update expense status
+// Update expense status / payment status
 router.patch(
   '/update-expense-status/:id',
-  auth('ADMIN', 'SUPER_ADMIN'),
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   ExpenseController.updateExpenseStatus
+);
+
+// Delete expense (Required for frontend single/bulk delete)
+router.delete(
+  '/:id',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.deleteExpense
 );
 
 // Analytics for expenses

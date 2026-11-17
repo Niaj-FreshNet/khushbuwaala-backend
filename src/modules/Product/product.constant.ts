@@ -71,6 +71,7 @@ export const productListInclude: Prisma.ProductInclude = {
       size: true,
       unit: true,
       price: true,
+      published: true,
       discounts: true,
     },
     orderBy: [{ price: "asc" }],
@@ -305,8 +306,22 @@ export const BEST_FOR_OCCASIONS = [
 
 export const LEAN_PRODUCT_INCLUDE = {
   category: { select: { categoryName: true } },
-  variants: { select: { id: true, sku: true, unit: true, size: true, price: true } },
-  Review: { select: { rating: true } }, // ONLY fetch rating number, ignore comment/user data
+  variants: {
+    where: { published: true },
+    select: {
+      id: true,
+      sku: true,
+      unit: true,
+      size: true,
+      price: true,
+      stock: true,
+      isDefault: true,
+      published: true,
+      compareAtPrice: true,
+      images: true
+    }
+  },
+  Review: { select: { rating: true } },
   discounts: {
     select: { type: true, value: true, code: true, startDate: true, endDate: true },
   },
@@ -314,20 +329,20 @@ export const LEAN_PRODUCT_INCLUDE = {
 
 // Validation constants
 export const PRODUCT_VALIDATION = {
-  NAME_MIN_LENGTH: 2,
-  NAME_MAX_LENGTH: 200,
-  DESCRIPTION_MIN_LENGTH: 10,
-  DESCRIPTION_MAX_LENGTH: 2000,
-  MAX_TAGS: 20,
+  NAME_MIN_LENGTH: 1,
+  NAME_MAX_LENGTH: 500,
+  DESCRIPTION_MIN_LENGTH: 5,
+  DESCRIPTION_MAX_LENGTH: 3000,
+  MAX_TAGS: 50,
   MAX_ACCORDS: 10,
-  MAX_BEST_FOR: 15,
+  MAX_BEST_FOR: 10,
   MAX_IMAGES: 10,
-  MIN_PRICE: 0.01,
+  MIN_PRICE: 0,
   MAX_PRICE: 999999,
   MIN_STOCK: 0,
   MAX_STOCK: 999999,
-  MAX_SIZE: 10000, // in ml or gm
-  MIN_SIZE: 0.1
+  MAX_SIZE: 100000,
+  MIN_SIZE: 0
 } as const;
 
 // Query defaults

@@ -69,26 +69,29 @@ const createOrder = catchAsync(async (req, res) => {
 
 // Get All Orders (Admin)
 const getAllOrders = catchAsync(async (req, res) => {
-  const result = await OrderServices.getAllOrders(req.query);
+  const user = (req as any).user;
+  const result = await OrderServices.getAllOrders(req.query, user);
 
   sendResponse(res, {
-    statusCode: result ? 200 : 400,
-    success: !!result,
-    message: result ? 'Orders fetched successfully' : 'Orders fetching failed',
-    data: result || [],
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Orders retrieved successfully',
+    meta: result.meta,
+    summary: result.summary,
+    data: result.data,
   });
 });
 
 // Get Order By ID (Admin)
 const getOrderById = catchAsync(async (req, res) => {
-  const result = await OrderServices.getOrderById(req.params.id);
-
-  if (!result) throw new AppError(httpStatus.NOT_FOUND, ORDER_ERROR_MESSAGES.NOT_FOUND);
+  const user = (req as any).user;
+  const { id } = req.params;
+  const result = await OrderServices.getOrderById(id, user);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'Order fetched successfully',
+    message: 'Order retrieved successfully',
     data: result,
   });
 });

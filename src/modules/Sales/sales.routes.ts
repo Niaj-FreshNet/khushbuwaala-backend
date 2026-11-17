@@ -4,33 +4,62 @@ import auth from '../../middlewares/auth';
 
 const router = Router();
 
-// Create a manual sale (done by SALESMAN or ADMIN)
+// 1. Static / Specific Routes First
 router.post(
   '/create-sale',
   auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   SalesController.createSale
 );
 
-// Get all sales (admin overview)
-router.get('/get-all-sales', auth('ADMIN', 'SUPER_ADMIN'), SalesController.getAllSales);
+router.get(
+  '/get-all-sales',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  SalesController.getAllSales
+);
 
-// Get sales by salesman (each salesman sees his own)
-router.get('/my-sales', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), SalesController.getMySales);
+router.get(
+  '/my-sales',
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
+  SalesController.getMySales
+);
 
+router.get(
+  '/get-sales-analytics',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  SalesController.getSalesAnalytics
+);
 
-router.get('/get-sale-by-id/:id', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), SalesController.getSaleById);
+// 2. Parameterized Routes Last
+router.get(
+  '/get-sale-by-id/:id',
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
+  SalesController.getSaleById
+);
 
-// Get sales by customer phone/name (walk-in tracking)
-router.get('/get-sales-by-customer/:phone', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), SalesController.getSalesByCustomer);
+router.get(
+  '/get-sales-by-customer/:phone',
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
+  SalesController.getSalesByCustomer
+);
 
-// Update sale status (delivered/CANCELED etc.)
 router.patch(
   '/update-sale-status/:id',
   auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   SalesController.updateSaleStatus
 );
 
-// Analytics for sales performance
-router.get('/get-sales-analytics', auth('ADMIN', 'SUPER_ADMIN'), SalesController.getSalesAnalytics);
+// Update full sale route
+router.patch(
+  '/update-sale/:id',
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  SalesController.updateSale
+);
+
+// Delete sale route
+router.delete(
+  '/delete-sale/:id',
+  auth('SUPER_ADMIN', 'ADMIN'), // Typically restricted to Admins
+  SalesController.deleteSale
+);
 
 export const SalesRoutes = router;

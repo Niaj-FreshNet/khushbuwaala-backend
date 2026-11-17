@@ -10,6 +10,7 @@ type TResponse<T> = {
         limit?: number;
         [key: string]: any;
     };
+    summary?: any;
     filters?: Record<string, any>;
     data?: T;
 };
@@ -20,6 +21,7 @@ const sendResponse = <T>(res: Response, data: TResponse<T>) => {
         statusCode: data.statusCode,
         message: data.message,
         meta: data.meta,
+        summary: data.summary,
         filters: data.filters,
         data: data.data,
     });

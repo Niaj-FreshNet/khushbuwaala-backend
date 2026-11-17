@@ -9,14 +9,12 @@ const router = Router();
 // 1. SPECIFIC / STATIC GET ROUTES (MUST BE FIRST)
 // ==========================================
 
-// Exact match: /api/blog/get-all-blogs/admin
 router.get(
   '/get-all-blogs/admin',
   auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   BlogController.getAllBlogsAdmin,
 );
 
-// Exact match: /api/blog/get-all-blogs
 router.get('/get-all-blogs', BlogController.getAllBlogs);
 
 // ==========================================
@@ -30,7 +28,8 @@ router.post(
   BlogController.createBlog,
 );
 
-router.put(
+// ⚡ CHANGED FROM router.put TO router.patch TO MATCH FRONTEND RTK QUERY
+router.patch(
   '/update-blog/:id',
   auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
   upload.single('image'),
@@ -47,7 +46,6 @@ router.delete(
 // 3. PARAMETERIZED ROUTES (MUST BE LAST)
 // ==========================================
 
-// If this is placed above /get-all-blogs/admin, Express can mistake sub-segments
 router.get('/get-blog/:slug', BlogController.getBlog);
 
 export const BlogRoutes = router;

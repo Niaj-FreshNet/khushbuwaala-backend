@@ -19,13 +19,14 @@ const createSale = catchAsync(async (req: Request, res: Response) => {
 
 // Get all sales (admin)
 const getAllSales = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user.id;
-  const result = await SaleServices.getAllSales(req.query);
+  const result = await SaleServices.getAllSales(req.query, req.user);
   sendResponse(res, {
     statusCode: result ? 200 : 400,
-    success: !!result,
-    message: result ? 'Sales fetched successfully' : 'Failed to fetch sales',
-    data: result ?? [],
+    success: true,
+    message: 'All sales retrieved successfully',
+    meta: result.meta,
+    summary: result.summary,
+    data: result.data,
   });
 });
 
@@ -43,14 +44,14 @@ const getMySales = catchAsync(async (req: Request, res: Response) => {
 });
 
 // Get Order By ID (Admin)
-const getSaleById = catchAsync(async (req, res) => {
-  const result = await SaleServices.getSaleById(req.params.id);
 
+const getSaleById = catchAsync(async (req: Request, res: Response) => {
+  const result = await SaleServices.getSaleById(req.params.id, req.user);
   sendResponse(res, {
     statusCode: result ? 200 : 400,
-    success: true,
-    message: 'Sale fetched successfully',
-    data: result,
+    success: !!result,
+    message: result ? 'Sale retrieved successfully' : 'Failed to retrieve sale',
+    data: result ?? null,
   });
 });
 
@@ -81,6 +82,27 @@ const updateSaleStatus = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const updateSale = catchAsync(async (req: Request, res: Response) => {
+  const result = await SaleServices.updateSale(req.params.id, req.body, req.user);
+  sendResponse(res, {
+    statusCode: result ? 200 : 400,
+    success: !!result,
+    message: result ? 'Sale updated successfully' : 'Failed to update sale',
+    data: result ?? null,
+  });
+});
+
+// Delete sale controller
+const deleteSale = catchAsync(async (req: Request, res: Response) => {
+  const result = await SaleServices.deleteSale(req.params.id);
+  sendResponse(res, {
+    statusCode: result ? 200 : 400,
+    success: !!result,
+    message: result ? 'Sale deleted successfully' : 'Failed to delete sale',
+    data: result ?? null,
+  });
+});
+
 // Sales analytics for admin
 const getSalesAnalytics = catchAsync(async (req: Request, res: Response) => {
   const result = await SaleServices.getSalesAnalytics(req.query);
@@ -100,5 +122,7 @@ export const SalesController = {
   getSaleById,
   getSalesByCustomer,
   updateSaleStatus,
+  updateSale,
+  deleteSale,
   getSalesAnalytics,
 };

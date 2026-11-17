@@ -5,9 +5,7 @@ import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
 
 const getAllProducts = async (queryParams: Record<string, unknown>) => {
-  const { searchTerm, ...rest } = queryParams as {
-    searchTerm?: string;
-  };
+  const { searchTerm, ...rest } = queryParams as { searchTerm?: string };
 
   const queryBuilder = new PrismaQueryBuilder(rest);
   const prismaQuery = queryBuilder
@@ -16,9 +14,7 @@ const getAllProducts = async (queryParams: Record<string, unknown>) => {
     .buildPagination()
     .getQuery();
 
-  const where: Prisma.ProductWhereInput = {
-    ...prismaQuery.where,
-  };
+  const where: Prisma.ProductWhereInput = { ...prismaQuery.where };
 
   if (searchTerm && searchTerm.trim()) {
     const s = searchTerm.trim();
@@ -104,50 +100,6 @@ const getLowStockProducts = async (queryParams: Record<string, unknown>) => {
   };
 };
 
-const addStock = async (payload: {
-  productId: string;
-  variantId?: string;
-  change: number;
-  reason: string;
-}) => {
-  const { productId, variantId, change, reason } = payload;
-
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-    include: { variants: true },
-  });
-
-  if (!product) throw new AppError(httpStatus.NOT_FOUND, 'Product not found');
-
-  if (variantId) {
-    const variant = product.variants.find((v) => v.id === variantId);
-    if (!variant) throw new AppError(httpStatus.NOT_FOUND, 'Variant not found');
-  }
-
-  const stockLog = await prisma.$transaction(async (tx) => {
-    // Update product stock
-    await tx.product.update({
-      where: { id: productId },
-      data: { stock: { increment: change } },
-    });
-
-    // Create stock log
-    const log = await tx.stockLog.create({
-      data: {
-        productId,
-        variantId: variantId || '',
-        change,
-        reason,
-        createdAt: new Date(),
-      },
-    });
-
-    return log;
-  });
-
-  return stockLog;
-};
-
 const getStockLogs = async (productId: string) => {
   const isValidObjectId = (id: string) => /^[a-f\d]{24}$/i.test(id);
 
@@ -176,6 +128,7 @@ const getStockLogs = async (productId: string) => {
 export const StockServices = {
   getAllProducts,
   getLowStockProducts,
-  addStock,
   getStockLogs,
+  // ⚡ Note: `addStock` was removed here because stock additions are now handled 
+  // via `FinanceServices.addStockPurchaseAndUpdateWAC` to ensure WAC financial logging!
 };

@@ -150,16 +150,25 @@ model Product {
   description  String
   primaryImage String
   otherImages  String[]
-  videoUrl     String?
+  videos       String[] @default([])
   tags         String[]
   salesCount   Int      @default(0)
   published    Boolean  @default(false)
 
+  // ==========================================
+  // 🌍 SEO, GOOGLE & META CATALOG FIELDS 🌍
+  // ==========================================
+  brand                 String? // Required for Google Shopping / Meta Brand attribute
+  condition             String  @default("new") // "new", "refurbished", "used"
+  itemGroupId           String? // Parent item group ID for variant grouping
+  googleProductCategory String? // e.g., "Health & Beauty > Personal Care > Cosmetics > Perfume"
+  gender                String? // "unisex", "male", "female"
+  metaTitle             String?
+  metaDescription       String?
+
   // Perfume specifications
   origin       String?
-  brand        String?
-  gender       String?
-  perfumeNotes PerfumeNotes? // { top: [...], middle: [...], base: [...] }
+  perfumeNotes PerfumeNotes?
   accords      String[]
   performance  String?
   longevity    String?
@@ -173,31 +182,18 @@ model Product {
   ProductMaterial  ProductMaterial[]
   ProductFragrance ProductFragrance[]
 
-  // Variants and combos
   variants      ProductVariant[]
   comboVariants ComboVariant[]
 
   supplier  String?
-  // Stock for the product (aggregate for all variants)
-  stock     Float      @default(0) // e.g., 1 kg or 1000 ml
+  stock     Float      @default(0)
   stocklogs StockLog[]
 
-  // Discounts (can be applied per product)
-  discounts Discount[]
-
-  // Related products (self-relation)
-  // relatedProducts Product[] @relation("RelatedProducts", references: [id])
-  // relatedTo       Product[] @relation("RelatedProducts")  
-
-  // Reviews
-  Review Review[]
-
+  discounts  Discount[]
+  Review     Review[]
   orderItems CartItem[]
   wishlist   Wishlist[]
 
-  // ==========================================
-  // ⚡ NEW FIELDS FOR OPTIMIZED PERFORMANCE ⚡
-  // ==========================================
   minPrice      Float @default(0)
   maxPrice      Float @default(0)
   averageRating Float @default(0)
@@ -206,16 +202,48 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ==========================================
-  // ⚡ NEW INDEXES FOR INSTANT DB SORTING ⚡
-  // ==========================================
   @@index([categoryId, published])
   @@index([minPrice])
   @@index([averageRating])
   @@map("products")
 }
 
-// Junction tables
+model ProductVariant {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  productId String @db.ObjectId
+  sku       String @unique
+  unit      String
+  size      Float
+  price     Float
+
+  isDefault Boolean @default(false)
+  published Boolean @default(true)
+
+  gtin           String?
+  mpn            String?
+  barcode        String?
+  compareAtPrice Float?
+  costPrice      Float?
+  weightGrams    Float?
+
+  stock         Float @default(0)
+  lowStockAlert Float @default(5)
+
+  attributes Json?
+  images     String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  comboVariants ComboVariant[]
+  orderItems    CartItem[]
+  stocklogs     StockLog[]
+  discounts     Discount[]
+
+  @@map("product_variants")
+}
+
 model ProductMaterial {
   id         String @id @default(auto()) @map("_id") @db.ObjectId
   productId  String @db.ObjectId
@@ -238,30 +266,6 @@ model ProductFragrance {
 
   @@unique([productId, fragranceId])
   @@map("product_fragrances")
-}
-
-model ProductVariant {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  productId String   @db.ObjectId
-  sku       String   @unique
-  unit      String
-  size      Float // e.g. 3, 6, 12 ml or 100, 500 gm
-  price     Float
-  // stock     Float // tracks ml or gm left in inventory
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  product       Product        @relation(fields: [productId], references: [id])
-  // wishlist wishlist[]
-  comboVariants ComboVariant[]
-
-  orderItems CartItem[]
-  stocklogs  StockLog[]
-
-  // Discounts (can be applied per variant)
-  discounts Discount[]
-
-  @@map("product_variants")
 }
 
 model ComboProduct {
@@ -306,12 +310,12 @@ model Order {
   cartItems   Json?
   status      OrderStatus @default(PENDING)
   orderSource OrderSource
+  platform    String?
   productIds  String[]
 
   coupon         String?
   discountAmount Int     @default(0)
 
-  // Website orders
   customerId String? @db.ObjectId
   customer   User?   @relation("CustomerOrders", fields: [customerId], references: [id])
 
@@ -320,29 +324,27 @@ model Order {
   shipping        Json?
   billing         Json?
 
-  // Manual sales
   salesmanId String?   @db.ObjectId
   salesman   User?     @relation("SalesmanOrders", fields: [salesmanId], references: [id])
   saleType   SaleType?
 
-  // Optional walk-in customer info
   name    String?
   phone   String?
   email   String?
   address String?
 
-  // Relation to CartItem
   orderItems CartItem[] @relation("Order_CartItems")
 
   payments       Payment[]
   orderDiscounts OrderDiscount[]
 
-  // STEADFAST COURIER INTEGRATION FIELDS
-  consignmentId    Int?    @unique
-  trackingCode     String? 
-  trackingLink     String?
-  deliveryCharge   Float?  @default(0) 
-  courierStatus    String?         
+  orderItemCosts OrderItemCost[]
+
+  consignmentId  Int?    @unique
+  trackingCode   String?
+  trackingLink   String?
+  deliveryCharge Float?  @default(0)
+  courierStatus  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -352,7 +354,7 @@ model Order {
 
 model CartItem {
   id            String  @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String? @db.ObjectId // optional, for guest carts
+  userId        String? @db.ObjectId
   productId     String  @db.ObjectId
   variantId     String? @db.ObjectId
   size          Int?
@@ -362,9 +364,8 @@ model CartItem {
   originalPrice Float?
   discount      Float?
 
-  status CartItemStatus @default(IN_CART) // IN_CART, ORDERED, SOLD
+  status CartItemStatus @default(IN_CART)
 
-  // Relations
   product Product?        @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id])
   user    User?           @relation(fields: [userId], references: [id])
@@ -383,9 +384,9 @@ model StockLog {
   productId String          @db.ObjectId
   variantId String?         @db.ObjectId
   product   Product         @relation(fields: [productId], references: [id])
-  variant   ProductVariant? @relation(fields: [variantId], references: [id])
-  change    Float // +10 (restock), -2 (sold), etc.
-  reason    String // e.g. SALE, RETURN, ADJUSTMENT
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  change    Float
+  reason    String
   createdAt DateTime        @default(now())
 
   @@map("stock_logs")
@@ -399,18 +400,15 @@ model Payment {
   provider PaymentProvider
   status   PaymentState    @default(INITIATED)
 
-  // Generic gateway identifiers (works for bKash / Nagad / Rocket)
   gatewayPaymentId String? @unique
   gatewayTrxId     String?
   gatewayInvoice   String?
-  gatewayStatus    String? // raw gateway status text if needed
+  gatewayStatus    String?
 
-  // Refund tracking (optional, gateway-agnostic)
   refundedAmount Float?  @default(0)
   refundTrxId    String?
   refundStatus   String?
 
-  // Store full gateway payloads safely
   gatewayResponse Json?
 
   createdAt DateTime @default(now())
@@ -432,12 +430,11 @@ model Discount {
 
   scope DiscountScope @default(PRODUCT)
 
-  // For PRODUCT/VARIANT scope only
   productId String? @db.ObjectId
   variantId String? @db.ObjectId
 
   code  String? @unique
-  type  String // "percentage" | "fixed"
+  type  String
   value Float
 
   maxUsage  Int?
@@ -489,16 +486,16 @@ model Blog {
   title           String
   content         String
   imageUrl        String?
-  imageAltText    String? // New field
-  others          String?
+  imageAltText    String?
+  others          String? // Used to store serialized JSON like FAQs / structured data
+  keywords        String? // Can also include tags comma-separated
   isPublish       Boolean  @default(false)
   userId          String   @db.ObjectId
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  metaTitle       String? // New field
-  metaDescription String? // New field
-  keywords        String? // New fields
-  slug            String   @unique // New field
+  metaTitle       String?
+  metaDescription String?
+  slug            String   @unique
 
   user User @relation(fields: [userId], references: [id])
 
@@ -535,4 +532,116 @@ model Wishlist {
   updatedAt DateTime @updatedAt
 
   @@map("wishlist_items")
+}
+
+// ============================================================
+// 📊 FINANCE, INVENTORY & COSTING MODELS
+// ============================================================
+
+enum CostCategory {
+  STOCK_BILL
+  CARRYING
+  BOTTLE
+  PACKAGING
+  LABEL
+  COURIER
+  COD_FEE
+  GIFT_WRAP
+  OTHER
+}
+
+// Embedded type for cost breakdowns (MongoDB specific)
+type CostLine {
+  category CostCategory
+  label    String?
+  amount   Float
+}
+
+// 1. Logs every time liquid stock is purchased/added
+model StockPurchase {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  productId    String     @db.ObjectId
+  billNo       String?
+  supplier     String?
+  purchaseDate DateTime   @default(now())
+  quantity     Float
+  unit         String?
+  costLines    CostLine[] // Array of bills, carrying costs, etc.
+  totalCost    Float
+  costPerUnit  Float // totalCost / quantity
+  isOpening    Boolean    @default(false) // True if this was pre-existing stock
+  note         String?
+  createdById  String?    @db.ObjectId
+  createdAt    DateTime   @default(now())
+
+  @@index([productId, purchaseDate])
+  @@map("stock_purchases")
+}
+
+// 2. The live Weighted Average Cost (WAC) per ML/GM for a product
+model ProductCost {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId       String   @unique @db.ObjectId
+  avgCostPerUnit  Float
+  lastCostPerUnit Float
+  updatedAt       DateTime @updatedAt
+
+  @@map("product_costs")
+}
+
+// 3. Flat packaging costs (Bottle, Box, Label) keyed to the exact SKU
+model VariantPackagingCost {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  sku       String     @unique
+  costLines CostLine[]
+  totalCost Float
+  updatedAt DateTime   @updatedAt
+
+  @@map("variant_packaging_costs")
+}
+
+// 4. Flat packaging costs specifically for Combo/Gift Boxes
+model ComboPackagingCost {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  comboId   String     @unique @db.ObjectId
+  costLines CostLine[]
+  totalCost Float
+  updatedAt DateTime   @updatedAt
+
+  @@map("combo_packaging_costs")
+}
+
+// 5. Historical frozen snapshot of EXACT costs at the moment an order was placed
+model OrderItemCost {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId           String   @db.ObjectId
+  cartItemId        String?  @db.ObjectId
+  productId         String?  @db.ObjectId
+  variantId         String?  @db.ObjectId
+  comboId           String?  @db.ObjectId
+  quantity          Int
+  sellingUnitPrice  Float
+  liquidUnitCost    Float
+  packagingUnitCost Float
+  unitCost          Float
+  totalCost         Float
+  totalRevenue      Float
+  profit            Float
+  costMissing       Boolean  @default(false) // True if sold while cost was unknown
+  createdAt         DateTime @default(now())
+  order             Order    @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("order_item_costs")
+}
+
+// 6. Manual extra costs added to an order (e.g., special gift wrap, custom card)
+model OrderExtraCost {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  orderId   String     @unique @db.ObjectId
+  costLines CostLine[]
+  totalCost Float
+  updatedAt DateTime   @updatedAt
+
+  @@map("order_extra_costs")
 }

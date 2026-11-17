@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient, ExpenseStatus } from '@prisma/client';
+import { Prisma, ExpenseStatus } from '@prisma/client';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { prisma } from '../../../prisma/client';
 import httpStatus from 'http-status';
@@ -23,15 +23,13 @@ const createExpense = async (
     data: {
       expenseTime: new Date(expenseTime),
       title,
-      description,
+      description: description || '',
       amount: Number(amount),
       method,
-      isPaid: isPaid || false,
+      isPaid: isPaid ?? false,
       status: status || 'PENDING',
-      reference,
+      reference: reference || '',
       expenseById: userId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
     },
     include: {
       expenseBy: { select: { id: true, name: true } },
@@ -42,9 +40,13 @@ const createExpense = async (
 };
 
 const getAllExpenses = async (queryParams: Record<string, unknown>) => {
-  const { searchTerm, status, ...rest } = queryParams as {
+  const { searchTerm, status, isPaid, method, dateFrom, dateTo, ...rest } = queryParams as {
     searchTerm?: string;
-    status?: ExpenseStatus | string;
+    status?: string;
+    isPaid?: string | boolean;
+    method?: string;
+    dateFrom?: string;
+    dateTo?: string;
   };
 
   const queryBuilder = new PrismaQueryBuilder(rest);
@@ -58,8 +60,33 @@ const getAllExpenses = async (queryParams: Record<string, unknown>) => {
     ...prismaQuery.where,
   };
 
-  if (status) where.status = status as ExpenseStatus;
+  // Exact Match Filters
+  if (status && status !== 'ALL') {
+    where.status = status as ExpenseStatus;
+  }
 
+  if (method && method !== 'ALL') {
+    where.method = method;
+  }
+
+  if (isPaid !== undefined && isPaid !== 'ALL') {
+    where.isPaid = isPaid === 'true' || isPaid === true;
+  }
+
+  // Financial Period Alignment
+  if (dateFrom || dateTo) {
+    where.expenseTime = {};
+    if (dateFrom) {
+      (where.expenseTime as any).gte = new Date(dateFrom);
+    }
+    if (dateTo) {
+      const endDateTime = new Date(dateTo);
+      endDateTime.setHours(23, 59, 59, 999);
+      (where.expenseTime as any).lte = endDateTime;
+    }
+  }
+
+  // Fuzzy Search
   if (searchTerm && searchTerm.trim()) {
     const s = searchTerm.trim();
     where.OR = [
@@ -74,9 +101,13 @@ const getAllExpenses = async (queryParams: Record<string, unknown>) => {
     ];
   }
 
+  // Default Sort if none provided
+  const orderBy = prismaQuery.orderBy || { expenseTime: 'desc' };
+
   const data = await prisma.expense.findMany({
     ...prismaQuery,
     where,
+    orderBy,
     include: {
       expenseBy: { select: { id: true, name: true } },
     },
@@ -122,6 +153,15 @@ const updateExpenseStatus = async (
   return updated;
 };
 
+const deleteExpense = async (id: string) => {
+  const expense = await prisma.expense.findUnique({ where: { id } });
+  if (!expense) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
+
+  return await prisma.expense.delete({
+    where: { id },
+  });
+};
+
 const getExpenseAnalytics = async (queryParams: Record<string, unknown>) => {
   const { startDate, endDate } = queryParams as {
     startDate?: string;
@@ -133,7 +173,11 @@ const getExpenseAnalytics = async (queryParams: Record<string, unknown>) => {
   if (startDate || endDate) {
     where.expenseTime = {};
     if (startDate) (where.expenseTime as any).gte = new Date(startDate);
-    if (endDate) (where.expenseTime as any).lte = new Date(endDate);
+    if (endDate) {
+      const endDateTime = new Date(endDate);
+      endDateTime.setHours(23, 59, 59, 999);
+      (where.expenseTime as any).lte = endDateTime;
+    }
   }
 
   const [count, sum, byStatus] = await Promise.all([
@@ -159,5 +203,6 @@ export const ExpenseServices = {
   getAllExpenses,
   getExpenseById,
   updateExpenseStatus,
+  deleteExpense,
   getExpenseAnalytics,
 };

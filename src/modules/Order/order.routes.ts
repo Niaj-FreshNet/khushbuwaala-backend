@@ -1,3 +1,4 @@
+// File: order.route.ts
 import { Router } from 'express';
 import { OrderController } from './order.controller';
 import auth from '../../middlewares/auth';
@@ -11,11 +12,15 @@ router.post(
   OrderController.createOrder
 );
 
-// Admin order management
+// Admin order management (Ensures req.user is populated with role)
 router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getAllOrders);
+
 // Public order tracking (by ID, invoice, phone, or email)
 router.get('/track/:query', OrderController.trackOrders);
-router.get('/get-order-by-id/:id', auth('OPTIONAL'), OrderController.getOrderById);
+
+// Updated to authenticate so Super Admin gets profit data, while normal users/guests can still view via OPTIONAL/Token
+router.get('/get-order-by-id/:id', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER', 'OPTIONAL'), OrderController.getOrderById);
+
 router.patch(
   '/update-order-status/:id',
   auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),

@@ -8,6 +8,7 @@ import { getClientRedirects, makeInvoice } from "./checkout.utils";
 import { DiscountServices } from "../Discount/discount.service";
 import { sendOrderConfirmationEmail, sendOrderNotificationToAdmin } from "../../helpers/emailSender/emails";
 import { sendMetaCapiPurchase } from "../Order/order.service";
+import { snapshotOrderCosts } from "../Finance/finance.service";
 
 export const CheckoutController = {
   // ==========================================
@@ -255,6 +256,11 @@ export const CheckoutController = {
         // ✅ Fire Server-Side Meta CAPI Purchase with the exact same order ID / event_id (`kw_${orderId}`)
         sendMetaCapiPurchase(completedOrder, customerEmail, customerPhone).catch((err) =>
           console.error("❌ Gateway CAPI Dispatch Error:", err)
+        );
+
+        // 💸 FREEZE THE FINANCIAL COSTS NOW THAT PAYMENT IS SECURED 💸
+        snapshotOrderCosts(completedOrder.id).catch((err) =>
+          console.error('❌ Failed to snapshot order costs from Gateway:', err)
         );
 
         return res.redirect(`${successUrl}?order=${payment.orderId}`);

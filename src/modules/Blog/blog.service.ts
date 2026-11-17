@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import slugify from 'slugify';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import AppError from '../../errors/AppError';
@@ -20,8 +21,26 @@ const generateUniqueSlug = async (title: string, currentId?: string): Promise<st
   }
 };
 
-const createBlog = async (payload: IBlog) => {
+const createBlog = async (payload: IBlog & { faqs?: string; tags?: string; imageAltText?: string }) => {
   const slug = await generateUniqueSlug(payload.title);
+
+  // Combine keywords and tags if tags are provided
+  let keywords = payload.keywords || '';
+  if (payload.tags) {
+    keywords = keywords ? `${keywords}, ${payload.tags}` : payload.tags;
+  }
+
+  // Store FAQs and extra metadata inside 'others' field as a JSON string if provided
+  let othersData = payload.others || null;
+  if (payload.faqs) {
+    try {
+      // Ensure it's valid JSON before saving
+      const parsedFaqs = typeof payload.faqs === 'string' ? JSON.parse(payload.faqs) : payload.faqs;
+      othersData = JSON.stringify({ faqs: parsedFaqs });
+    } catch {
+      othersData = null;
+    }
+  }
 
   const result = await prisma.blog.create({
     data: {
@@ -29,23 +48,46 @@ const createBlog = async (payload: IBlog) => {
       title: payload.title,
       content: payload.content,
       imageUrl: payload.imageUrl,
-      others: payload.others,
+      imageAltText: payload.imageAltText,
+      others: othersData,
       isPublish: payload.isPublish ?? false,
       metaTitle: payload.metaTitle,
       metaDescription: payload.metaDescription,
-      keywords: payload.keywords,
+      keywords,
       slug,
     },
   });
   return result;
 };
 
-const updateBlog = async (id: string, payload: Partial<IBlog>) => {
+const updateBlog = async (id: string, payload: Partial<IBlog> & { faqs?: string; tags?: string; imageAltText?: string }) => {
   const updateData: any = { ...payload };
 
   if (payload.title) {
     updateData.slug = await generateUniqueSlug(payload.title, id);
   }
+
+  if (payload.tags || payload.keywords) {
+    let keywords = payload.keywords || '';
+    if (payload.tags) {
+      keywords = keywords ? `${keywords}, ${payload.tags}` : payload.tags;
+    }
+    updateData.keywords = keywords;
+  }
+
+  if (payload.faqs) {
+    try {
+      const parsedFaqs = typeof payload.faqs === 'string' ? JSON.parse(payload.faqs) : payload.faqs;
+      updateData.others = JSON.stringify({ faqs: parsedFaqs });
+    } catch {
+      // Keep existing others if parsing fails
+      delete updateData.faqs;
+    }
+  }
+
+  // Clean up unused temporary payload fields not in Prisma schema
+  delete updateData.tags;
+  delete updateData.faqs;
 
   const result = await prisma.blog.update({
     where: { id },
@@ -60,6 +102,7 @@ const getAllBlogs = async (queryParams: Record<string, unknown>) => {
   const queryBuilder = new PrismaQueryBuilder(filterParams, [
     'title',
     'content',
+    'keywords',
   ]);
 
   const prismaQuery = queryBuilder
@@ -96,6 +139,7 @@ const getAllBlogsAdmin = async (queryParams: Record<string, unknown>) => {
   const queryBuilder = new PrismaQueryBuilder(queryParams, [
     'title',
     'content',
+    'keywords',
   ]);
 
   const prismaQuery = queryBuilder
@@ -144,6 +188,7 @@ const getBlog = async (slug: string) => {
       title: true,
       content: true,
       imageUrl: true,
+      imageAltText: true,
       slug: true,
       metaTitle: true,
       metaDescription: true,

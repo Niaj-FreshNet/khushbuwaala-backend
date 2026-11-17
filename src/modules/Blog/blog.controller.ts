@@ -9,25 +9,28 @@ import { BlogServices } from './blog.service';
 
 const createBlog = catchAsync(async (req: Request, res: Response) => {
   const user = (req as any).user;
-  let imageUrl = '';
 
-  if (!req.file?.filename) {
-    throw new AppError(400, 'Image is required for blog creation');
+  // ⚡ Accept imageUrl from JSON body first (Cloudinary), or fall back to Multer file if uploaded locally
+  let imageUrl = req.body.imageUrl || null;
+
+  if (req.file?.filename) {
+    imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
   }
-
-  imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
 
   const isPublish =
     req.body.isPublish === 'true' || req.body.isPublish === true;
 
-  const blogdata: IBlog = {
+  const blogdata: any = {
     ...req.body,
     userId: user.id,
-    imageUrl,
+    imageUrl, // Now correctly receives the Cloudinary secure_url!
+    imageAltText: req.body.imageAltText || '',
     isPublish,
     metaTitle: req.body.metaTitle || req.body.title,
     metaDescription: req.body.metaDescription || '',
     keywords: req.body.keywords || '',
+    tags: req.body.tags || '',
+    faqs: req.body.faqs || '',
   };
 
   const result = await BlogServices.createBlog(blogdata);
@@ -51,18 +54,28 @@ const updateBlog = catchAsync(async (req: Request, res: Response) => {
     throw new AppError(404, 'Blog not found');
   }
 
-  const updateddata: Partial<IBlog> = { ...req.body };
+  const updateddata: any = { ...req.body };
 
   if (req.body.isPublish !== undefined) {
     updateddata.isPublish =
       req.body.isPublish === 'true' || req.body.isPublish === true;
   }
 
-  if (req.file?.filename) {
+  // Handle Cloudinary URL update or local file upload update
+  if (req.body.imageUrl) {
+    if (existingBlog.imageUrl && existingBlog.imageUrl.includes('/Uploads/')) {
+      await deleteFile(existingBlog.imageUrl);
+    }
+    updateddata.imageUrl = req.body.imageUrl;
+  } else if (req.file?.filename) {
     if (existingBlog.imageUrl) {
       await deleteFile(existingBlog.imageUrl);
     }
     updateddata.imageUrl = `${process.env.BACKEND_LIVE_URL}/Uploads/${req.file.filename}`;
+  }
+
+  if (req.body.imageAltText !== undefined) {
+    updateddata.imageAltText = req.body.imageAltText;
   }
 
   const result = await BlogServices.updateBlog(blogId, updateddata);
@@ -98,7 +111,7 @@ const getAllBlogsAdmin = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getBlog = catchAsync(async (req: Request, res: Response) => {
-  const { slug } = req.params; // FIXED: reading 'slug' rather than nonexistent 'id'
+  const { slug } = req.params;
   const result = await BlogServices.getBlog(slug);
 
   if (!result) {

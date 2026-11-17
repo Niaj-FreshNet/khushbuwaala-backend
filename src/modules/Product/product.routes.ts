@@ -74,4 +74,9 @@ router.get('/get-product-analytics', auth('ADMIN', 'SUPER_ADMIN'), ProductContro
 router.get('/get-low-stock-products', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getLowStockProducts);
 router.get('/get-best-sellers', ProductController.getBestsellers);
 
+router.post('/:productId/variant-packaging-cost', ProductController.setVariantPackagingCost);
+router.post('/:productId/purchase', ProductController.receiveStockPurchase);
+
+router.get('/google-shopping-feed.xml', ProductController.generateGoogleShoppingFeed);
+
 export const ProductRoutes = router;

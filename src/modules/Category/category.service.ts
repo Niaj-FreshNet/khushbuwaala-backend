@@ -22,6 +22,11 @@ const createCategory = async (payload: ICategory) => {
       unit: payload.unit,
       imageUrl: payload.imageUrl,
     },
+    include: {
+      _count: {
+        select: { Product: true },
+      },
+    },
   });
 
   return result;
@@ -36,8 +41,14 @@ const getAllCategories = async (queryParams: Record<string, unknown>) => {
     .buildPagination()
     .buildSelect()
     .getQuery();
+
   const categories = await prisma.category.findMany({
     ...prismaQuery,
+    include: {
+      _count: {
+        select: { Product: true },
+      },
+    },
   });
 
   const meta = await queryBuilder.getPaginationMeta(prisma.category);
@@ -56,8 +67,14 @@ const getAllCategoriesAdmin = async (queryParams: Record<string, unknown>) => {
     .buildPagination()
     .buildSelect()
     .getQuery();
+
   const categories = await prisma.category.findMany({
     ...prismaQuery,
+    include: {
+      _count: {
+        select: { Product: true }, // ⚡ Returns product count for each category
+      },
+    },
   });
 
   const meta = await queryBuilder.getPaginationMeta(prisma.category);
@@ -70,8 +87,11 @@ const getAllCategoriesAdmin = async (queryParams: Record<string, unknown>) => {
 
 const getCategory = async (id: string) => {
   const result = await prisma.category.findUnique({
-    where: {
-      id,
+    where: { id },
+    include: {
+      _count: {
+        select: { Product: true },
+      },
     },
   });
   return result;
@@ -79,9 +99,7 @@ const getCategory = async (id: string) => {
 
 const updateCategory = async (id: string, payload: Partial<ICategory>) => {
   const isExist = await prisma.category.findUnique({
-    where: {
-      id,
-    },
+    where: { id },
   });
 
   if (!isExist) {
@@ -95,15 +113,18 @@ const updateCategory = async (id: string, payload: Partial<ICategory>) => {
   const imageUrl: string | undefined = payload.imageUrl;
 
   const result = await prisma.category.update({
-    where: {
-      id,
-    },
+    where: { id },
     data: {
       categoryName: payload?.categoryName?.toUpperCase(),
       sizes: payload.sizes,
       unit: payload.unit,
       imageUrl: imageUrl,
       published: payload.published,
+    },
+    include: {
+      _count: {
+        select: { Product: true },
+      },
     },
   });
 
@@ -132,9 +153,7 @@ const deleteCategory = async (id: string) => {
   }
 
   const result = await prisma.category.delete({
-    where: {
-      id,
-    },
+    where: { id },
   });
   return result;
 };

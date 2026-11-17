@@ -1,11 +1,21 @@
-// Base Product Variant Interface (aligned with schema — no per-variant stock;
-// stock is tracked only at the Product level)
+import { CostCategory } from "@prisma/client";
+
 export interface IProductVariant {
   sku: string;
   unit: string;
   size: number;
   price: number;
   stock: number;
+  isDefault?: boolean;
+  published?: boolean;
+  gtin?: string;
+  mpn?: string;
+  barcode?: string;
+  compareAtPrice?: number;
+  costPrice?: number;
+  weightGrams?: number;
+  attributes?: Record<string, string | number>;
+  images?: string[];
 }
 
 // Product Creation Interface
@@ -15,12 +25,19 @@ export interface IProduct {
   slug: string;
   primaryImage: string;
   otherImages?: string[];
-  videoUrl?: string;
+  videos?: string[];
   tags: string[];
 
-  origin?: string;
+  // SEO & Catalog Fields
   brand?: string;
+  condition?: string;
+  itemGroupId?: string;
+  googleProductCategory?: string;
   gender?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+
+  origin?: string;
   perfumeNotes?: {
     top: string[];
     middle: string[];
@@ -54,12 +71,18 @@ export interface IUpdateProduct {
   description?: string;
   primaryImage?: string;
   otherImages?: string[];
-  videoUrl?: string;
+  videos?: string[];
   tags?: string[];
 
-  origin?: string;
   brand?: string;
+  condition?: string;
+  itemGroupId?: string;
+  googleProductCategory?: string;
   gender?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+
+  origin?: string;
   perfumeNotes?: {
     top: string[];
     middle: string[];
@@ -75,8 +98,8 @@ export interface IUpdateProduct {
   categoryId?: string;
   published?: boolean;
 
-  materialIds: string[];
-  fragranceIds: string[];
+  materialIds?: string[];
+  fragranceIds?: string[];
 
   imagesToKeep?: string[];
   newImages?: string[];
@@ -144,7 +167,6 @@ export interface IDiscount {
   variantId?: string;
 }
 
-// Lightweight discount for cards/listing badges
 export interface IDiscountLight {
   type: "percentage" | "fixed";
   value: number;
@@ -156,19 +178,28 @@ export interface IProductVariantResponse {
   unit: string;
   size: number;
   price: number;
+  stock: number;
+  isDefault: boolean;
+  published: boolean;
+  compareAtPrice?: number;
+  images: string[];
   productId: string;
   discounts?: IDiscount[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Lightweight variant for listing/search/admin cards — no per-variant stock
 export interface IProductVariantLight {
   id: string;
   sku: string;
   unit: string;
   size: number;
   price: number;
+  stock: number;
+  isDefault: boolean;
+  published: boolean;
+  compareAtPrice?: number;
+  images: string[];
 }
 
 // ============================================================
@@ -180,6 +211,7 @@ interface IProductCore {
   slug: string;
   primaryImage: string;
   otherImages?: string[];
+  videos?: string[];
   brand?: string;
   gender?: string;
   origin?: string;
@@ -207,20 +239,13 @@ interface IProductCore {
   updatedAt: Date;
 }
 
-// ============================================================
-// 1) LISTING — getAllProducts, category pages, new arrivals,
-//    trending, bestsellers, featured (PUBLIC storefront)
-// ============================================================
 export interface IProductListingResponse extends IProductCore {
   discount?: IDiscountLight;
   variants?: IProductVariantLight[];
 }
 
-// ============================================================
-// 1b) ADMIN LISTING — getAllProductsAdmin. Needs category name and
-// the actual variant list (for price range + variant count columns)
-// ============================================================
 export interface IProductAdminListingResponse extends IProductListingResponse {
+  supplier: string;
   category?: {
     categoryName: string;
     imageUrl?: string;
@@ -228,35 +253,32 @@ export interface IProductAdminListingResponse extends IProductListingResponse {
   variants: IProductVariantLight[];
 }
 
-// ============================================================
-// 2) SEARCH — searchProducts (minimal fields for fast autocomplete)
-// ============================================================
 export interface IProductSearchResponse {
   id: string;
   name: string;
   slug: string;
   primaryImage: string;
   accords: string[];
-
   categoryName?: string;
-
   minPrice: number;
   maxPrice: number;
   inStock: boolean;
-
   averageRating: number;
   reviewCount: number;
-
   discount?: IDiscountLight;
 }
 
-// ============================================================
-// 3) DETAIL — getProduct / getProductBySlug (single product page)
-// ============================================================
 export interface IProductDetailResponse extends IProductCore {
   description: string;
   videoUrl?: string;
   otherImages: string[];
+  brand?: string;
+  condition?: string;
+  itemGroupId?: string;
+  googleProductCategory?: string;
+  gender?: string;
+  metaTitle?: string;
+  metaDescription?: string;
 
   perfumeNotes?: {
     top: string[];
@@ -287,10 +309,8 @@ export interface IProductDetailResponse extends IProductCore {
   };
 }
 
-// Kept as an alias so anything still importing the old name doesn't break.
 export type IProductResponse = IProductDetailResponse;
 
-// Analytics Interfaces
 export interface IProductAnalytics {
   totalProducts: number;
   publishedProducts: number;
@@ -312,7 +332,6 @@ export interface IProductAnalytics {
   }>;
 }
 
-// Stock Update Interface
 export interface IStockUpdate {
   productId: string;
   variantId: string;
@@ -320,7 +339,6 @@ export interface IStockUpdate {
   reason?: string;
 }
 
-// Search Result Interface
 export interface IProductSearchResult {
   data: IProductSearchResponse[];
   meta: {
@@ -331,16 +349,36 @@ export interface IProductSearchResult {
   };
 }
 
-// Trending Product Interface — built on the light listing shape
 export interface ITrendingProduct extends IProductListingResponse {
   totalSold: number;
   trendingScore: number;
 }
 
-// Related Products Interface — light listing cards, not full detail
 export interface IRelatedProductsResponse {
   sameBrand: IProductListingResponse[];
   sameCategory: IProductListingResponse[];
   similarAccords: IProductListingResponse[];
   recentlyViewed?: IProductListingResponse[];
+}
+
+export interface ICostLineInput {
+  category: CostCategory;
+  label?: string;
+  amount: number;
+}
+
+export interface IVariantPackagingCostInput {
+  sku: string;
+  costLines: ICostLineInput[];
+}
+
+export interface IStockPurchaseInput {
+  productId: string;
+  quantity: number; // e.g., 5000 (ml)
+  unit?: string;
+  supplier?: string;
+  billNo?: string;
+  note?: string;
+  costLines: ICostLineInput[];
+  createdById?: string; // Admin ID
 }
