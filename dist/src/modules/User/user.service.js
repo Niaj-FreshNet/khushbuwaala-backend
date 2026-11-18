@@ -20,6 +20,7 @@ const client_1 = require("../../../prisma/client");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const http_status_1 = __importDefault(require("http-status"));
 const emails_1 = require("../../helpers/emailSender/emails");
+const client_2 = require("@prisma/client");
 const getAllUsers = (id, queryParams) => __awaiter(void 0, void 0, void 0, function* () {
     const queryBuilder = new QueryBuilder_1.PrismaQueryBuilder(queryParams, ['name']);
     queryBuilder.buildWhere().buildSort().buildPagination().buildSelect();
@@ -33,10 +34,11 @@ const getAllUsers = (id, queryParams) => __awaiter(void 0, void 0, void 0, funct
             name: true,
             email: true,
             role: true,
-            phone: true,
-            imageUrl: true,
-            address: true,
-            district: true,
+            isApproved: true,
+            // 🚨 Include the relation to pull the percentage!
+            investor: {
+                select: { profitSharePercentage: true }
+            },
             createdAt: true,
         };
     }
@@ -133,9 +135,8 @@ const updateUser = (id, data) => __awaiter(void 0, void 0, void 0, function* () 
         updateData.district = String(data.district).trim();
     if (data.imageUrl !== undefined)
         updateData.imageUrl = data.imageUrl;
-    // ✅ Added Role update support so admin promotions/demotions persist
     if (data.role !== undefined) {
-        const validRoles = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+        const validRoles = Object.values(client_2.Role);
         if (!validRoles.includes(data.role)) {
             throw new AppError_1.default(http_status_1.default.BAD_REQUEST, 'Invalid user role specified');
         }

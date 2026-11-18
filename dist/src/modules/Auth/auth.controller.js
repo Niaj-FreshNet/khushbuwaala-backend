@@ -177,6 +177,17 @@ const makeSalesman = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         },
     });
 }));
+const approveOrUpdateUserRole = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
+    const adminId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || ((_b = req.user) === null || _b === void 0 ? void 0 : _b.userId);
+    const result = yield auth_service_1.AuthServices.approveOrUpdateUserRole(adminId, req.body);
+    (0, sendResponse_1.default)(res, {
+        statusCode: 200,
+        success: true,
+        message: "User role and approval updated successfully",
+        data: result,
+    });
+}));
 const socialLogin = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield auth_service_1.AuthServices.socialLogin(req.body);
     // set refresh token in httpOnly cookie
@@ -209,11 +220,16 @@ const getMe = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, 
     });
 }));
 const logout = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    res.clearCookie('refreshToken', {
+    const cookieOptions = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-    });
+        sameSite: 'strict', // 👈 Add "as const" here
+    };
+    // 1. Clear the refresh token
+    res.clearCookie('refreshToken', cookieOptions);
+    // 2. Also clear the access token if your backend sets it as a cookie!
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('access_token', cookieOptions);
     (0, sendResponse_1.default)(res, {
         statusCode: 200,
         success: true,
@@ -231,6 +247,7 @@ exports.AuthController = {
     resendVerifyEmail,
     makeAdmin,
     makeSalesman,
+    approveOrUpdateUserRole,
     socialLogin,
     getMe,
     logout

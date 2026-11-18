@@ -15,8 +15,8 @@ router.get('/packaging/variant/:sku', finance_controller_1.FinanceController.get
 // Stock Purchases & WAC (Procurement Phase)
 router.post('/procurement/purchase/:productId', (0, auth_1.default)('SUPER_ADMIN'), finance_controller_1.FinanceController.receiveStockPurchase);
 router.get('/wac/:productId', (0, auth_1.default)('SUPER_ADMIN'), finance_controller_1.FinanceController.getLiveWAC);
-router.get('/analytics/summary', (0, auth_1.default)('SUPER_ADMIN'), finance_controller_1.FinanceController.getFinancialSummary);
+router.get('/analytics/summary', (0, auth_1.default)('SUPER_ADMIN', 'INVESTOR'), finance_controller_1.FinanceController.getFinancialSummary);
 router.post('/backfill-historical-costs', (0, auth_1.default)('SUPER_ADMIN'), finance_controller_1.FinanceController.backfillHistoricalCosts);
 router.patch('/override-profit/:orderId', (0, auth_1.default)('SUPER_ADMIN'), finance_controller_1.FinanceController.overrideOrderProfit);
-router.get('/ledger', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN'), finance_controller_1.FinanceController.getLedger);
+router.get('/ledger', (0, auth_1.default)('SUPER_ADMIN', 'INVESTOR'), finance_controller_1.FinanceController.getLedger);
 exports.FinanceRoutes = router;

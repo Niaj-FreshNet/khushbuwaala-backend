@@ -23,7 +23,8 @@ router.post('/refresh-token', auth_controller_1.AuthController.refreshToken);
 router.post('/resend-verify-email-token', auth_controller_1.AuthController.resendVerifyEmail);
 router.post('/make-admin', (0, auth_1.default)('SUPER_ADMIN'), auth_controller_1.AuthController.makeAdmin);
 router.post('/make-salesman', (0, auth_1.default)('ADMIN'), auth_controller_1.AuthController.makeSalesman);
-router.get('/get-me', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN', 'SALESMAN', 'USER'), auth_controller_1.AuthController.getMe);
+router.patch('/approve-role', (0, auth_1.default)('SUPER_ADMIN'), auth_controller_1.AuthController.approveOrUpdateUserRole);
+router.get('/get-me', (0, auth_1.default)('ADMIN', 'SUPER_ADMIN', 'SALESMAN', 'INVESTOR', 'USER'), auth_controller_1.AuthController.getMe);
 // Logout route
 router.post('/logout', auth_controller_1.AuthController.logout);
 exports.AuthRoutes = router;

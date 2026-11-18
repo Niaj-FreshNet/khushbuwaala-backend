@@ -7,6 +7,8 @@ import {
   CONTACT_FORM_TEMPLATE,
   ORDER_CONFIRMATION_TEMPLATE,
   ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE,
+  ROLE_REJECTED_TEMPLATE,
+  ROLE_APPROVED_TEMPLATE,
 } from './emailTemplates';
 
 export const sendVerificationEmail = async (to: string, token: string) => {
@@ -237,4 +239,30 @@ export const sendOrderNotificationToAdmin = async (to: string, order: any) => {
     .replace(/{items}/g, itemsHTML);
 
   return await sendEmail([{ email: to }], `New Order Received - #${invoice}`, template);
+};
+
+export const sendRoleApprovalEmail = async (to: string, name: string, role: string) => {
+  const formattedRole = role.replace(/_/g, ' '); // E.g., SUPER_ADMIN -> SUPER ADMIN
+  const template = ROLE_APPROVED_TEMPLATE
+    .replace(/{name}/g, name)
+    .replace(/{role}/g, formattedRole);
+
+  try {
+    return await sendEmail([{ email: to }], 'Khushbuwaala - Account Approved', template);
+  } catch (error: any) {
+    console.error('Failed to send role approval email:', error.message);
+  }
+};
+
+export const sendRoleRejectionEmail = async (to: string, name: string, role: string) => {
+  const formattedRole = role.replace(/_/g, ' ');
+  const template = ROLE_REJECTED_TEMPLATE
+    .replace(/{name}/g, name)
+    .replace(/{role}/g, formattedRole);
+
+  try {
+    return await sendEmail([{ email: to }], 'Khushbuwaala - Account Status Update', template);
+  } catch (error: any) {
+    console.error('Failed to send role rejection email:', error.message);
+  }
 };

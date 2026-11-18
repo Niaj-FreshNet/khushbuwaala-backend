@@ -21,6 +21,7 @@ const client_2 = require("@prisma/client");
 const auth_utils_1 = require("./auth.utils");
 const emails_1 = require("../../helpers/emailSender/emails");
 const AppError_1 = __importDefault(require("../../errors/AppError"));
+// Inside auth.service.ts
 const register = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const email = ((_a = payload.email) !== null && _a !== void 0 ? _a : "").trim().toLowerCase();
@@ -33,37 +34,45 @@ const register = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     const hashedPassword = yield bcrypt_1.default.hash(payload.password, Number(config_1.default.salt_round));
     const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
     const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+    // Determine role requested. If ADMIN, SALESMAN, or INVESTOR, they require Super Admin approval.
+    // Standard users (USER) are auto-approved, while admin/salesman/investor require approval.
+    const requestedRole = payload.role || client_2.Role.USER;
+    const requiresApproval = requestedRole !== client_2.Role.USER;
     // Check if user already exists
     const existingUser = yield client_1.prisma.user.findUnique({
         where: { email },
     });
     let result;
     if (existingUser) {
-        // If user already exists but has no password (created via guest checkout)
         if (existingUser.password && existingUser.isVerified) {
             throw new AppError_1.default(400, "User already exists with this email. Please log in.");
         }
-        // Update the guest-created user with credentials & verification token
         result = yield client_1.prisma.user.update({
             where: { email },
             data: {
                 name: payload.name || existingUser.name,
                 password: hashedPassword,
+                role: requestedRole,
+                isApproved: !requiresApproval, // false for Admin/Salesman/Investor until Super Admin approves
                 verificationToken,
                 verificationTokenExpiry,
-                isVerified: false, // Force verification
+                isVerified: false,
             },
         });
     }
     else {
-        // Brand new user creation
         result = yield client_1.prisma.user.create({
-            data: Object.assign(Object.assign({}, payload), { email, password: hashedPassword, role: payload.role || client_2.Role.USER, verificationToken,
+            data: Object.assign(Object.assign({}, payload), { email, password: hashedPassword, role: requestedRole, isApproved: !requiresApproval, // false until approved by Super Admin
+                verificationToken,
                 verificationTokenExpiry, isVerified: false }),
         });
     }
-    // Send verification email
-    yield (0, emails_1.sendVerificationEmail)(email, verificationToken);
+    try {
+        yield (0, emails_1.sendVerificationEmail)(email, verificationToken);
+    }
+    catch (error) {
+        console.error("Warning: Failed to send verification email to", email, error);
+    }
     return result;
 });
 const verifyEmail = (email, token) => __awaiter(void 0, void 0, void 0, function* () {
@@ -125,6 +134,7 @@ const login = (payload) => __awaiter(void 0, void 0, void 0, function* () {
             password: true,
             role: true,
             isVerified: true,
+            isApproved: true, // 👈 Make sure to select this field to check approval status
             imageUrl: true,
         },
     });
@@ -132,7 +142,11 @@ const login = (payload) => __awaiter(void 0, void 0, void 0, function* () {
         throw new AppError_1.default(404, 'Invalid credentials');
     }
     if (!user.isVerified) {
-        throw new AppError_1.default(401, 'User is not verified');
+        throw new AppError_1.default(401, 'Please verify your email address first.');
+    }
+    // ✅ Check if Super Admin approval is pending for Admin/Salesman/Investor roles
+    if (user.role !== client_2.Role.USER && user.isApproved === false) {
+        throw new AppError_1.default(403, 'Your Access Role Approval is Pending.');
     }
     const isPasswordMatched = yield bcrypt_1.default.compare(payload.password, user === null || user === void 0 ? void 0 : user.password);
     if (!isPasswordMatched) {
@@ -143,9 +157,7 @@ const login = (payload) => __awaiter(void 0, void 0, void 0, function* () {
         userId: user === null || user === void 0 ? void 0 : user.id,
         role: user.role,
     };
-    //create toke and send to the client
     const accessToken = (0, auth_utils_1.createToken)(JwtPayload, config_1.default.access_token_secret, config_1.default.access_token_expires);
-    //refresh token
     const refreshToken = (0, auth_utils_1.createToken)(JwtPayload, config_1.default.refresh_token_secret, config_1.default.refresh_token_expires);
     return {
         user,
@@ -169,7 +181,13 @@ const forgotPassword = (email) => __awaiter(void 0, void 0, void 0, function* ()
     const baseUrl = config_1.default.live_url || 'http://localhost:3000';
     // If your frontend file is at app/reset-password/[token]/page.tsx, structure it like this:
     const link = `${baseUrl}/reset-password/${resetToken}`;
-    yield (0, emails_1.sendPasswordResetEmail)(email, link);
+    try {
+        yield (0, emails_1.sendPasswordResetEmail)(email, link);
+    }
+    catch (error) {
+        console.error("Warning: Failed to send verification email to", email, error);
+        // We don't throw the error here, so the user registration still succeeds
+    }
     yield client_1.prisma.user.update({
         where: { email },
         data: {
@@ -328,6 +346,55 @@ const makeSalesman = (payload) => __awaiter(void 0, void 0, void 0, function* ()
     const refreshToken = (0, auth_utils_1.createToken)(JwtPayload, config_1.default.refresh_token_secret, config_1.default.refresh_token_expires);
     return { result, accessToken, refreshToken };
 });
+const approveOrUpdateUserRole = (adminUserId, 
+// 👇 Add totalInvested and currentBalance here so TypeScript knows they exist
+payload) => __awaiter(void 0, void 0, void 0, function* () {
+    if (!adminUserId) {
+        throw new AppError_1.default(401, "Unauthorized: Admin ID is missing.");
+    }
+    const { userId, role, isApproved, investorProfitPercentage, totalInvested, currentBalance } = payload;
+    const admin = yield client_1.prisma.user.findUnique({ where: { id: adminUserId } });
+    if (!admin || admin.role !== 'SUPER_ADMIN') {
+        throw new AppError_1.default(403, "Only Super Admins can configure roles and investor profiles.");
+    }
+    const targetUser = yield client_1.prisma.user.findUnique({ where: { id: userId } });
+    if (!targetUser)
+        throw new AppError_1.default(404, "User not found");
+    // 🛡️ Transaction guarantees both User and Investor tables update perfectly together
+    const result = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
+        // 3. Update the base User role & approval
+        const updatedUser = yield tx.user.update({
+            where: { id: userId },
+            data: {
+                role: role,
+                isApproved: Boolean(isApproved),
+            },
+            select: { id: true, name: true, email: true, role: true, isApproved: true },
+        });
+        // 4. If they are marked as an INVESTOR, explicitly manage their dedicated profile
+        if (role === 'INVESTOR') {
+            const percentage = Number(investorProfitPercentage) || 0;
+            const capital = Number(totalInvested) || 0;
+            const balance = Number(currentBalance) || 0;
+            yield tx.investor.upsert({
+                where: { userId },
+                update: {
+                    profitSharePercentage: percentage,
+                    totalInvested: capital,
+                    currentBalance: balance
+                },
+                create: {
+                    userId,
+                    profitSharePercentage: percentage,
+                    totalInvested: capital,
+                    currentBalance: balance
+                },
+            });
+        }
+        return updatedUser;
+    }));
+    return result;
+});
 const socialLogin = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     let user = yield client_1.prisma.user.findUnique({ where: { email: payload.email } });
     if (!user) {
@@ -379,6 +446,7 @@ exports.AuthServices = {
     resendVerifyEmail,
     makeAdmin,
     makeSalesman,
+    approveOrUpdateUserRole,
     socialLogin,
     getMe
 };
