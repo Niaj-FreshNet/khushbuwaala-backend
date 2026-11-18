@@ -322,7 +322,7 @@ export const ROLE_APPROVED_TEMPLATE = `
       </p>
       
       <div style="text-align: center; margin: 28px 0;">
-        <a href="${process.env.LIVE_URL || 'http://localhost:3000'}/login" style="background-color: ${BRAND_COLOR}; color: #ffffff; padding: 13px 26px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">Login to Dashboard</a>
+        <a href="https://admin.khushbuwaala.com/login" style="background-color: ${BRAND_COLOR}; color: #ffffff; padding: 13px 26px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">Login to Dashboard</a>
       </div>
     </div>
   </div>
