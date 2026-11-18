@@ -14,7 +14,7 @@ router.get('/packaging/variant/:sku', FinanceController.getPackagingCost);
 router.post('/procurement/purchase/:productId', auth('SUPER_ADMIN'), FinanceController.receiveStockPurchase);
 router.get('/wac/:productId', auth('SUPER_ADMIN'), FinanceController.getLiveWAC);
 
-router.get('/analytics/summary', auth('SUPER_ADMIN'), FinanceController.getFinancialSummary);
+router.get('/analytics/summary', auth('SUPER_ADMIN', 'INVESTOR'), FinanceController.getFinancialSummary);
 
 router.post('/backfill-historical-costs', auth('SUPER_ADMIN'), FinanceController.backfillHistoricalCosts);
 router.patch(
@@ -23,6 +23,6 @@ router.patch(
     FinanceController.overrideOrderProfit
 );
 
-router.get('/ledger', auth('ADMIN', 'SUPER_ADMIN'), FinanceController.getLedger);
+router.get('/ledger', auth('SUPER_ADMIN', 'INVESTOR'), FinanceController.getLedger);
 
 export const FinanceRoutes = router;

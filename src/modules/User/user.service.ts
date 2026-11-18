@@ -5,6 +5,7 @@ import { prisma } from '../../../prisma/client';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import { sendPasswordChangeNotificationEmail } from '../../helpers/emailSender/emails';
+import { Role } from '@prisma/client';
 
 const getAllUsers = async (
   id: string,
@@ -25,10 +26,11 @@ const getAllUsers = async (
       name: true,
       email: true,
       role: true,
-      phone: true,
-      imageUrl: true,
-      address: true,
-      district: true,
+      isApproved: true,
+      // 🚨 Include the relation to pull the percentage!
+      investor: {
+        select: { profitSharePercentage: true }
+      },
       createdAt: true,
     };
   }
@@ -148,12 +150,13 @@ const updateUser = async (id: string, data: any) => {
   if (data.district !== undefined) updateData.district = String(data.district).trim();
   if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
 
-  // ✅ Added Role update support so admin promotions/demotions persist
   if (data.role !== undefined) {
-    const validRoles = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+    const validRoles = Object.values(Role) as string[];
+
     if (!validRoles.includes(data.role)) {
       throw new AppError(httpStatus.BAD_REQUEST, 'Invalid user role specified');
     }
+
     updateData.role = data.role;
   }
 

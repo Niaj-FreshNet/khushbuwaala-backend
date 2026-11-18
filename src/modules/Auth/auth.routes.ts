@@ -33,7 +33,13 @@ router.post('/resend-verify-email-token', AuthController.resendVerifyEmail);
 router.post('/make-admin', auth('SUPER_ADMIN'), AuthController.makeAdmin);
 router.post('/make-salesman', auth('ADMIN'), AuthController.makeSalesman);
 
-router.get('/get-me', auth('ADMIN', 'SUPER_ADMIN', 'SALESMAN', 'USER'), AuthController.getMe);
+router.patch(
+  '/approve-role',
+  auth('SUPER_ADMIN'),
+  AuthController.approveOrUpdateUserRole
+);
+
+router.get('/get-me', auth('ADMIN', 'SUPER_ADMIN', 'SALESMAN', 'INVESTOR', 'USER'), AuthController.getMe);
 
 // Logout route
 router.post('/logout', AuthController.logout);

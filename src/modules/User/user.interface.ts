@@ -7,7 +7,9 @@ export interface IUser {
   district?: string;
   imageUrl?: string;
   role: TuserRole;
+  isVerified?: string;
+  isApproval?: string;
   password?: string;
 }
 
-export type TuserRole = 'USER' | 'SALESMAN' | 'ADMIN' | 'SUPER_ADMIN';
+export type TuserRole = 'USER' | 'SALESMAN' | 'ADMIN' | 'SUPER_ADMIN' | 'INVESTOR';

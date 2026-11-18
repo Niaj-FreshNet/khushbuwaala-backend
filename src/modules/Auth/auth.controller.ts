@@ -197,6 +197,18 @@ const makeSalesman = catchAsync(async (req, res) => {
   });
 });
 
+const approveOrUpdateUserRole = catchAsync(async (req, res) => {
+  const adminId = (req as any).user?.id || (req as any).user?.userId;
+  const result = await AuthServices.approveOrUpdateUserRole(adminId, req.body);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User role and approval updated successfully",
+    data: result,
+  });
+});
+
 const socialLogin = catchAsync(async (req, res) => {
   const result = await AuthServices.socialLogin(req.body);
 
@@ -265,6 +277,7 @@ export const AuthController = {
   resendVerifyEmail,
   makeAdmin,
   makeSalesman,
+  approveOrUpdateUserRole,
   socialLogin,
   getMe,
   logout

@@ -12,7 +12,9 @@ import {
 } from '../../helpers/emailSender/emails';
 import AppError from '../../errors/AppError';
 
-const register = async (payload: IUser) => {
+// Inside auth.service.ts
+
+const register = async (payload: IUser & { role?: Role }) => {
   const email = (payload.email ?? "").trim().toLowerCase();
 
   if (!email) {
@@ -31,6 +33,11 @@ const register = async (payload: IUser) => {
   const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
   const verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
+  // Determine role requested. If ADMIN, SALESMAN, or INVESTOR, they require Super Admin approval.
+  // Standard users (USER) are auto-approved, while admin/salesman/investor require approval.
+  const requestedRole = (payload.role as Role) || Role.USER;
+  const requiresApproval = requestedRole !== Role.USER;
+
   // Check if user already exists
   const existingUser = await prisma.user.findUnique({
     where: { email },
@@ -39,30 +46,30 @@ const register = async (payload: IUser) => {
   let result;
 
   if (existingUser) {
-    // If user already exists but has no password (created via guest checkout)
     if (existingUser.password && existingUser.isVerified) {
       throw new AppError(400, "User already exists with this email. Please log in.");
     }
 
-    // Update the guest-created user with credentials & verification token
     result = await prisma.user.update({
       where: { email },
       data: {
         name: payload.name || existingUser.name,
         password: hashedPassword,
+        role: requestedRole,
+        isApproved: !requiresApproval, // false for Admin/Salesman/Investor until Super Admin approves
         verificationToken,
         verificationTokenExpiry,
-        isVerified: false, // Force verification
+        isVerified: false,
       },
     });
   } else {
-    // Brand new user creation
     result = await prisma.user.create({
       data: {
         ...payload,
         email,
         password: hashedPassword,
-        role: (payload.role as Role) || Role.USER,
+        role: requestedRole,
+        isApproved: !requiresApproval, // false until approved by Super Admin
         verificationToken,
         verificationTokenExpiry,
         isVerified: false,
@@ -70,8 +77,11 @@ const register = async (payload: IUser) => {
     });
   }
 
-  // Send verification email
-  await sendVerificationEmail(email, verificationToken);
+  try {
+    await sendVerificationEmail(email, verificationToken);
+  } catch (error) {
+    console.error("Warning: Failed to send verification email to", email, error);
+  }
 
   return result;
 };
@@ -152,6 +162,7 @@ const login = async (payload: ILoginUser) => {
       password: true,
       role: true,
       isVerified: true,
+      isApproved: true, // 👈 Make sure to select this field to check approval status
       imageUrl: true,
     },
   });
@@ -161,7 +172,12 @@ const login = async (payload: ILoginUser) => {
   }
 
   if (!user.isVerified) {
-    throw new AppError(401, 'User is not verified');
+    throw new AppError(401, 'Please verify your email address first.');
+  }
+
+  // ✅ Check if Super Admin approval is pending for Admin/Salesman/Investor roles
+  if (user.role !== Role.USER && user.isApproved === false) {
+    throw new AppError(403, 'Your Access Role Approval is Pending.');
   }
 
   const isPasswordMatched: boolean = await bcrypt.compare(
@@ -179,14 +195,12 @@ const login = async (payload: ILoginUser) => {
     role: user.role,
   };
 
-  //create toke and send to the client
   const accessToken = createToken(
     JwtPayload,
     config.access_token_secret as string,
     config.access_token_expires as string,
   );
 
-  //refresh token
   const refreshToken = createToken(
     JwtPayload,
     config.refresh_token_secret as string,
@@ -221,7 +235,13 @@ const forgotPassword = async (email: string) => {
   // If your frontend file is at app/reset-password/[token]/page.tsx, structure it like this:
   const link = `${baseUrl}/reset-password/${resetToken}`;
 
-  await sendPasswordResetEmail(email, link);
+
+  try {
+    await sendPasswordResetEmail(email, link);
+  } catch (error) {
+    console.error("Warning: Failed to send verification email to", email, error);
+    // We don't throw the error here, so the user registration still succeeds
+  }
 
   await prisma.user.update({
     where: { email },
@@ -438,6 +458,72 @@ const makeSalesman = async (payload: IUserPayload) => {
   return { result, accessToken, refreshToken };
 };
 
+const approveOrUpdateUserRole = async (
+  adminUserId: string,
+  // 👇 Add totalInvested and currentBalance here so TypeScript knows they exist
+  payload: {
+    userId: string;
+    role: Role;
+    isApproved: boolean;
+    investorProfitPercentage?: number;
+    totalInvested?: number;
+    currentBalance?: number;
+  }
+) => {
+  if (!adminUserId) {
+    throw new AppError(401, "Unauthorized: Admin ID is missing.");
+  }
+
+  const { userId, role, isApproved, investorProfitPercentage, totalInvested, currentBalance } = payload;
+
+  const admin = await prisma.user.findUnique({ where: { id: adminUserId } });
+  if (!admin || admin.role !== 'SUPER_ADMIN') {
+    throw new AppError(403, "Only Super Admins can configure roles and investor profiles.");
+  }
+
+  const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!targetUser) throw new AppError(404, "User not found");
+
+  // 🛡️ Transaction guarantees both User and Investor tables update perfectly together
+  const result = await prisma.$transaction(async (tx) => {
+
+    // 3. Update the base User role & approval
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: {
+        role: role as Role,
+        isApproved: Boolean(isApproved),
+      },
+      select: { id: true, name: true, email: true, role: true, isApproved: true },
+    });
+
+    // 4. If they are marked as an INVESTOR, explicitly manage their dedicated profile
+    if (role === 'INVESTOR') {
+      const percentage = Number(investorProfitPercentage) || 0;
+      const capital = Number(totalInvested) || 0;
+      const balance = Number(currentBalance) || 0;
+
+      await tx.investor.upsert({
+        where: { userId },
+        update: {
+          profitSharePercentage: percentage,
+          totalInvested: capital,
+          currentBalance: balance
+        },
+        create: {
+          userId,
+          profitSharePercentage: percentage,
+          totalInvested: capital,
+          currentBalance: balance
+        },
+      });
+    }
+
+    return updatedUser;
+  });
+
+  return result;
+};
 
 const socialLogin = async (payload: { email: string; name: string }) => {
   let user = await prisma.user.findUnique({ where: { email: payload.email } });
@@ -499,6 +585,7 @@ export const AuthServices = {
   resendVerifyEmail,
   makeAdmin,
   makeSalesman,
+  approveOrUpdateUserRole,
   socialLogin,
   getMe
 };
