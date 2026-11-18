@@ -8,6 +8,8 @@ import { Role } from '@prisma/client';
 import { createToken, verifyToken } from './auth.utils';
 import {
   sendPasswordResetEmail,
+  sendRoleApprovalEmail,
+  sendRoleRejectionEmail,
   sendVerificationEmail,
 } from '../../helpers/emailSender/emails';
 import AppError from '../../errors/AppError';
