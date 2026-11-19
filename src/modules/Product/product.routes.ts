@@ -77,6 +77,12 @@ router.get('/get-best-sellers', ProductController.getBestsellers);
 router.post('/:productId/variant-packaging-cost', ProductController.setVariantPackagingCost);
 router.post('/:productId/purchase', ProductController.receiveStockPurchase);
 
+router.patch(
+  '/quick-cell-update',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ProductController.quickUpdateCell
+);
+
 router.get('/google-shopping-feed.xml', ProductController.generateGoogleShoppingFeed);
 
 export const ProductRoutes = router;

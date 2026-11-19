@@ -1306,6 +1306,173 @@ const addStockPurchaseAndUpdateWAC = async (payload: IStockPurchaseInput) => {
   });
 };
 
+export interface IQuickCellUpdatePayload {
+  entity: 'PRODUCT' | 'VARIANT';
+  id: string;
+  field: string;
+  value: string | number | boolean | null;
+}
+
+const ALLOWED_PRODUCT_FIELDS = ['name', 'published', 'categoryId', 'supplier', 'stock', 'brand'] as const;
+const ALLOWED_VARIANT_FIELDS = [
+  'price',
+  'compareAtPrice',
+  'costPrice',
+  'stock',
+  'published',
+  'sku',
+  'size',
+  'unit',
+] as const;
+
+const quickUpdateCell = async (payload: IQuickCellUpdatePayload) => {
+  const { entity, id, field, value } = payload;
+
+  if (entity === 'PRODUCT') {
+    if (!ALLOWED_PRODUCT_FIELDS.includes(field as (typeof ALLOWED_PRODUCT_FIELDS)[number])) {
+      throw new AppError(400, `Field '${field}' is not editable on Product.`);
+    }
+
+    const existing = await prisma.product.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
+    }
+
+    const data: Record<string, any> = {};
+
+    if (field === 'name') {
+      const cleanName = String(value ?? '').trim();
+      if (!cleanName) {
+        throw new AppError(400, 'Product name cannot be empty.');
+      }
+      data.name = cleanName;
+      data.slug = slugify(cleanName, { lower: true, strict: true });
+    } else if (field === 'published') {
+      data.published = Boolean(value);
+    } else if (field === 'stock') {
+      data.stock = Number(value);
+    } else if (field === 'categoryId') {
+      const category = await prisma.category.findUnique({
+        where: { id: String(value) },
+        select: { id: true },
+      });
+      if (!category) {
+        throw new AppError(404, 'Category not found.');
+      }
+      data.categoryId = String(value);
+    } else {
+      data[field] = value === '' ? null : value;
+    }
+
+    const updatedProduct = await prisma.product.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        published: true,
+        stock: true,
+        supplier: true,
+        categoryId: true,
+        minPrice: true,
+        maxPrice: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      entity: 'PRODUCT',
+      data: updatedProduct,
+    };
+  }
+
+  if (entity === 'VARIANT') {
+    if (!ALLOWED_VARIANT_FIELDS.includes(field as (typeof ALLOWED_VARIANT_FIELDS)[number])) {
+      throw new AppError(400, `Field '${field}' is not editable on ProductVariant.`);
+    }
+
+    const existingVariant = await prisma.productVariant.findUnique({
+      where: { id },
+      select: { id: true, productId: true, sku: true },
+    });
+    if (!existingVariant) {
+      throw new AppError(404, 'Product variant not found.');
+    }
+
+    const data: Record<string, any> = {};
+
+    if (field === 'sku') {
+      const cleanSku = String(value ?? '').trim().toUpperCase();
+      if (!cleanSku) {
+        throw new AppError(400, 'SKU cannot be empty.');
+      }
+      const duplicateSku = await prisma.productVariant.findFirst({
+        where: {
+          sku: cleanSku,
+          id: { not: id },
+        },
+        select: { id: true },
+      });
+      if (duplicateSku) {
+        throw new AppError(400, `SKU '${cleanSku}' is already in use by another variant.`);
+      }
+      data.sku = cleanSku;
+    } else if (field === 'unit') {
+      const cleanUnit = String(value ?? '').trim().toUpperCase();
+      if (!cleanUnit) {
+        throw new AppError(400, 'Unit cannot be empty.');
+      }
+      data.unit = cleanUnit;
+    } else if (field === 'published') {
+      data.published = Boolean(value);
+    } else if (['price', 'compareAtPrice', 'costPrice', 'stock', 'size'].includes(field)) {
+      data[field] = Number(value);
+    } else {
+      data[field] = value;
+    }
+
+    const updatedVariant = await prisma.productVariant.update({
+      where: { id },
+      data,
+    });
+
+    // Keep parent Product minPrice & maxPrice in sync whenever price or published state changes
+    let parentPriceRange: { minPrice: number; maxPrice: number } | undefined;
+    if (field === 'price' || field === 'published') {
+      const activeVariants = await prisma.productVariant.findMany({
+        where: {
+          productId: existingVariant.productId,
+          published: { not: false },
+        },
+        select: { price: true },
+      });
+
+      const prices = activeVariants.map((v) => Number(v.price) || 0);
+      const minPrice = prices.length ? Math.min(...prices) : 0;
+      const maxPrice = prices.length ? Math.max(...prices) : 0;
+
+      await prisma.product.update({
+        where: { id: existingVariant.productId },
+        data: { minPrice, maxPrice },
+      });
+
+      parentPriceRange = { minPrice, maxPrice };
+    }
+
+    return {
+      entity: 'VARIANT',
+      data: updatedVariant,
+      parentPriceRange,
+    };
+  }
+
+  throw new AppError(400, 'Invalid entity type. Expected PRODUCT or VARIANT.');
+};
+
 const generateGoogleShoppingFeed = async (): Promise<string> => {
   // Fetch all published products with their variants and category relations
   const products = await prisma.product.findMany({
@@ -1443,5 +1610,6 @@ export const ProductServices = {
   getStockLogs,
   upsertVariantPackagingCost,
   addStockPurchaseAndUpdateWAC,
+  quickUpdateCell,
   generateGoogleShoppingFeed,
 };

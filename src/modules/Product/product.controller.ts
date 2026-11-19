@@ -430,6 +430,17 @@ const receiveStockPurchase = catchAsync(async (req, res) => {
   });
 });
 
+const quickUpdateCell = catchAsync(async (req, res) => {
+  const result = await ProductServices.quickUpdateCell(req.body);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Cell updated successfully',
+    data: result,
+  });
+});
+
 const generateGoogleShoppingFeed = catchAsync(async (req, res) => {
   const xmlFeed = await ProductServices.generateGoogleShoppingFeed();
   
@@ -462,5 +473,6 @@ export const ProductController = {
   getStockLogs,
   setVariantPackagingCost,
   receiveStockPurchase,
+  quickUpdateCell,
   generateGoogleShoppingFeed,
 };
