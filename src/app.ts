@@ -6,6 +6,8 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 
 const app = express();
+// nginx on the same machine sets X-Forwarded-For: trust it so req.ip is the visitor's IP (rate limits)
+app.set('trust proxy', 'loopback');
 
 const allowedOrigins = [
   'http://localhost:3000',

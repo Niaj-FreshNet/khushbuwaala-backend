@@ -2,6 +2,7 @@
 import { Router } from "express";
 import auth from "../../middlewares/auth";
 import { DiscountController } from "./discount.controller";
+import { limits } from '../../middlewares/rateLimit';
 
 const router = Router();
 
@@ -12,6 +13,6 @@ router.patch("/:id", auth("ADMIN", "SUPER_ADMIN"), DiscountController.updateDisc
 router.delete("/:id", auth("ADMIN", "SUPER_ADMIN"), DiscountController.deleteDiscount);
 
 // Public endpoint – no auth (used by checkout)
-router.post("/apply", DiscountController.applyDiscount);
+router.post("/apply", limits.coupon, DiscountController.applyDiscount);
 
 export const DiscountRoutes = router;

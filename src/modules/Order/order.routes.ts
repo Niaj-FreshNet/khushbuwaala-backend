@@ -2,12 +2,14 @@
 import { Router } from 'express';
 import { OrderController } from './order.controller';
 import auth from '../../middlewares/auth';
+import { limits } from '../../middlewares/rateLimit';
 
 const router = Router();
 
 // Create an order (customer flow)
 router.post(
   '/create-order',
+  limits.createOrder,
   auth('OPTIONAL'),
   OrderController.createOrder
 );
@@ -16,7 +18,7 @@ router.post(
 router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getAllOrders);
 
 // Public order tracking (by ID, invoice, phone, or email)
-router.get('/track/:query', OrderController.trackOrders);
+router.get('/track/:query', limits.track, OrderController.trackOrders);
 
 // Updated to authenticate so Super Admin gets profit data, while normal users/guests can still view via OPTIONAL/Token
 router.get('/get-order-by-id/:id', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER', 'OPTIONAL'), OrderController.getOrderById);
