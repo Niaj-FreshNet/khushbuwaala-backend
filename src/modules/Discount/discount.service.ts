@@ -256,6 +256,8 @@ export const DiscountServices = {
       };
 
       apply(autoDiscount);
+      // Price after the automatic sale only (what the shop already shows as the item price)
+      const autoPrice = Math.round(discountedPrice);
       apply(promoItemDiscount);
 
       // keep no decimals (your preference)
@@ -264,6 +266,7 @@ export const DiscountServices = {
       return {
         ...item,
         originalPrice,
+        autoPrice,
         discountedPrice,
         appliedDiscounts: [autoDiscount, promoItemDiscount].filter(Boolean),
       };
@@ -295,6 +298,12 @@ export const DiscountServices = {
     const itemDiscountAmount = subtotalOriginal - subtotalAfterItemDiscount;
     const totalDiscountAmount = itemDiscountAmount + orderDiscountAmount;
 
+    // What the COUPON itself takes off, on top of automatic sale prices. The storefront subtracts
+    // this from a subtotal that already uses sale prices; `discountAmount` (sale + coupon) made it
+    // subtract the sale twice. Same rounding as server-side order pricing.
+    const couponItemAmount = results.reduce((sum, i) => sum + (i.autoPrice - i.discountedPrice) * i.qty, 0);
+    const couponDiscountAmount = Math.max(0, couponItemAmount + orderDiscountAmount);
+
     return {
       items: results,
       subtotalOriginal,
@@ -302,6 +311,7 @@ export const DiscountServices = {
       orderDiscount: orderDiscount || null,
       orderDiscountAmount,
       discountAmount: totalDiscountAmount,
+      couponDiscountAmount,
       grandTotalAfterDiscount,
     };
   },
