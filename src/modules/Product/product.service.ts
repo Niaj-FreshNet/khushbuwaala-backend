@@ -312,7 +312,8 @@ const getProductBySlug = async (slug: string): Promise<IProductDetailResponse | 
     include: productDetailInclude,
   });
 
-  if (!product) return null;
+  // Hidden (unpublished) products are not shown to customers, even by direct link.
+  if (!product || product.published === false) return null;
 
   const relatedProducts = await prisma.product.findMany({
     where: {
