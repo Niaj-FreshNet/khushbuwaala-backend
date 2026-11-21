@@ -30,12 +30,12 @@ router.post('/reset-password/:token', limits.tokenCheck, AuthController.resetPas
 router.post('/social-login', limits.login, AuthController.socialLogin);
 
 // Protected routes
-router.post('/change-password', auth('ADMIN', 'USER'), AuthController.changePassword);
+router.post('/change-password', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER', 'INVESTOR'), AuthController.changePassword);
 router.post('/refresh-token', AuthController.refreshToken);
 router.post('/resend-verify-email-token', limits.passwordEmail, AuthController.resendVerifyEmail);
 
 router.post('/make-admin', auth('SUPER_ADMIN'), AuthController.makeAdmin);
-router.post('/make-salesman', auth('ADMIN'), AuthController.makeSalesman);
+router.post('/make-salesman', auth('ADMIN', 'SUPER_ADMIN'), AuthController.makeSalesman);
 
 router.patch(
   '/approve-role',

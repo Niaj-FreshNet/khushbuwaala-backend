@@ -89,6 +89,9 @@ const changePassword = async (
   if (!oldPassword || !newPassword) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Both current and new passwords are required');
   }
+  if (String(newPassword).length < 6) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'New password must be at least 6 characters');
+  }
 
   const user = await prisma.user.findUnique({
     where: { id },
@@ -113,7 +116,8 @@ const changePassword = async (
 
   const isPasswordMatched = await bcrypt.compare(oldPassword, user.password);
   if (!isPasswordMatched) {
-    throw new AppError(httpStatus.UNAUTHORIZED, 'Current password is incorrect');
+    // 400, not 401: the admin treats 401 as "session expired" and would sign the user out.
+    throw new AppError(httpStatus.BAD_REQUEST, 'Current password is incorrect');
   }
 
   const isSamePassword = await bcrypt.compare(newPassword, user.password);

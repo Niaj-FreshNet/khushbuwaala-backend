@@ -7,10 +7,10 @@ const router = Router();
 
 router.get('/get-all-users', auth('ADMIN', 'SUPER_ADMIN'), UserController.getAllUsers);
 router.get('/get-user-by-id/:id', auth('ADMIN', 'SUPER_ADMIN'), UserController.getUserByID)
-router.get('/profile', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER'), UserController.getUser);
+router.get('/profile', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER', 'INVESTOR'), UserController.getUser);
 router.patch(
   '/change-password',
-  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER'),
+  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER', 'INVESTOR'),
   UserController.changePassword,
 );
 router.patch(

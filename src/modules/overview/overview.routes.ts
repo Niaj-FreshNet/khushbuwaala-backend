@@ -4,16 +4,16 @@ import { OverviewController } from './overview.controller';
 const router = Router();
 
 // Dashboard Overview
-router.get('/get-overview', auth('ADMIN'), OverviewController.getOverview);
+router.get('/get-overview', auth('ADMIN', 'SUPER_ADMIN'), OverviewController.getOverview);
 router.get(
   '/get-weekly-overview',
-  auth('ADMIN'),
+  auth('ADMIN', 'SUPER_ADMIN'),
   OverviewController.getWeeklyOverview,
 );
 
 router.get(
   '/get-weekly-sales',
-  auth('ADMIN'),
+  auth('ADMIN', 'SUPER_ADMIN'),
   OverviewController.getWeeklySales,
 );
 
