@@ -179,10 +179,17 @@ export const CheckoutController = {
     try {
       const statusRes = await dgepayGateway.checkTransactionStatus(unique_txn_id);
       const txnData = statusRes?.data || statusRes;
-      const isSuccess =
-        txnData?.transaction_status === "SUCCESS" ||
-        txnData?.status === "SUCCESS" ||
-        statusRes?.status === 200;
+
+      // Only an explicit success counts as paid. (`statusRes.status === 200` only meant the status
+      // API answered, so failed or abandoned payments could be marked paid.) Clearly failed →
+      // FAILED; anything unclear → left pending for review, never cancelled or marked paid.
+      const reported = [txnData?.transaction_status, txnData?.txn_status, txnData?.status, statusRes?.data?.transaction_status]
+        .filter((v) => typeof v === "string")
+        .map((v: string) => v.toUpperCase());
+      const reportedAmount = Number(txnData?.amount ?? txnData?.txn_amount ?? txnData?.paid_amount ?? txnData?.total_amount);
+      const amountOk = !Number.isFinite(reportedAmount) || reportedAmount <= 0 || reportedAmount + 1 >= Number(payment.amount);
+      const isSuccess = reported.some((s) => ["SUCCESS", "SUCCESSFUL", "COMPLETED", "PAID"].includes(s)) && amountOk;
+      const isFailed = reported.some((s) => ["FAILED", "FAIL", "CANCELLED", "CANCELED", "DECLINED", "EXPIRED", "REJECTED"].includes(s));
 
       if (isSuccess) {
         let completedOrder: any = null;
@@ -266,6 +273,17 @@ export const CheckoutController = {
         return res.redirect(`${successUrl}?order=${payment.orderId}`);
       }
 
+      if (!isFailed) {
+        // Unclear answer (pending, unknown format, or amount lower than the order): keep the
+        // order open and the payment INITIATED, save the gateway reply for review.
+        console.warn(`[dgepay] payment ${payment.id} not confirmed (status ${reported.join("/") || "none"}, amount ${reportedAmount}) - left for review`);
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { gatewayStatus: "PENDING_REVIEW", gatewayResponse: txnData },
+        });
+        return res.redirect(`${failUrl}?message=payment_pending`);
+      }
+
       // 🔴 AUTO-CANCEL ON FAILED PAYMENT STATUS
       await prisma.$transaction(async (tx) => {
         await tx.payment.update({
@@ -281,18 +299,13 @@ export const CheckoutController = {
 
       return res.redirect(`${failUrl}?message=payment_failed`);
     } catch (err: any) {
-      // 🔴 AUTO-CANCEL ON VERIFICATION EXCEPTION/ERROR
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { id: payment.id },
-          data: { status: "FAILED", gatewayResponse: err?.message },
-        });
-
-        await tx.order.update({
-          where: { id: payment.orderId as string },
-          data: { status: "CANCELED" },
-        });
-      });
+      // Could not reach/verify with the gateway: the customer may well have paid, so do NOT
+      // cancel. Keep it open for review (it used to cancel the order).
+      console.error(`[dgepay] verification error for payment ${payment.id}:`, err?.message);
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { gatewayStatus: "VERIFY_ERROR", gatewayResponse: { error: String(err?.message || err) } },
+      }).catch(() => {});
 
       return res.redirect(`${failUrl}?message=verification_error`);
     }

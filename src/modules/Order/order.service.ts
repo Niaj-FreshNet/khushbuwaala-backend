@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { OrderSource, OrderStatus, Prisma, SaleType } from '@prisma/client';
 import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit } from '../../utils/orderStock';
+import { priceWebsiteOrder } from './orderPricing';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { DiscountServices } from '../Discount/discount.service';
 import { DashboardType, UpdateOrderPayload } from './order.interface';
@@ -266,7 +267,8 @@ const createOrderWithCartItems = async (payload: {
   const [dbCartItems, existingUser] = await Promise.all([
     prisma.cartItem.findMany({
       where: {
-        id: { in: cartItemIds },
+        // `in: undefined` would drop the filter and match every customer's cart
+        id: { in: Array.isArray(cartItemIds) ? cartItemIds : [] },
         OR: [
           { status: 'IN_CART' },
           {
@@ -332,10 +334,40 @@ const createOrderWithCartItems = async (payload: {
     variant: ci.variant,
   }));
 
+  // 2b) WEBSITE orders: the server decides every price (the browser's prices, delivery and
+  // totals were trusted before, so a crafted request could buy at any price).
+  const isWebsite = (orderSource || 'WEBSITE') === 'WEBSITE';
+  const pricing = isWebsite
+    ? await priceWebsiteOrder(
+        cartItems.map((ci) => ({ productId: ci.productId, variantId: ci.variantId, size: ci.size, unit: ci.unit, quantity: ci.quantity })),
+        coupon,
+        shippingAddress?.district || customerInfo?.district
+      )
+    : null;
+  if (pricing) {
+    pricing.lines.forEach((l, i) => {
+      Object.assign(cartItems[i], {
+        productId: l.productId,
+        variantId: l.variantId,
+        size: l.size,
+        unit: l.unit,
+        variant: l.variant,
+        quantity: l.quantity,
+        price: l.unitPrice,
+        originalPrice: l.listPrice,
+        discount: Math.max(0, l.listPrice - l.unitPrice),
+      });
+    });
+    if (Math.abs(Number(amount || 0) - pricing.total) > 1) {
+      console.warn(`[pricing] website order total differs: browser ${amount} vs server ${pricing.total} (coupon ${coupon || '-'})`);
+    }
+  }
+
   const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
-  const discount = Math.max(0, Number(discountAmount || 0));
-  const shipping = Number(shippingCost || 0);
-  const serverAmount = Math.max(0, subtotal) + shipping;
+  // Order-level discount only (item sale prices are already in each line price)
+  const discount = pricing ? pricing.couponDiscount : Math.max(0, Number(discountAmount || 0));
+  const shipping = pricing ? pricing.shipping : Number(shippingCost || 0);
+  const serverAmount = pricing ? pricing.total : Math.max(0, subtotal) + shipping;
 
   const normalizeOrGuestEmail = (email?: string | null) => {
     const e = (email ?? "").trim().toLowerCase();
@@ -409,8 +441,8 @@ const createOrderWithCartItems = async (payload: {
           saleType: saleType || 'SINGLE',
           shippingCost: shipping,
           additionalNotes: additionalNotes || "",
-          coupon: coupon ? String(coupon).trim().toUpperCase() : null,
-          discountAmount: Number(discountAmount || 0),
+          coupon: coupon && (!pricing || pricing.couponApplied) ? String(coupon).trim().toUpperCase() : null,
+          discountAmount: Math.round(discount),
 
           customer: resolvedCustomerId
             ? { connect: { id: resolvedCustomerId } }
