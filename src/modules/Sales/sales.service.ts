@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
+import { dhakaDayEnd, dhakaDayStart } from '../../utils/dhakaTime';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { FinanceServices, snapshotOrderCosts } from '../Finance/finance.service';
 import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit } from '../../utils/orderStock';
@@ -430,12 +431,9 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
 
   if (dateFrom || dateTo) {
     where.orderTime = {};
-    if (dateFrom) (where.orderTime as any).gte = new Date(dateFrom);
-    if (dateTo) {
-      const end = new Date(dateTo);
-      end.setHours(23, 59, 59, 999);
-      (where.orderTime as any).lte = end;
-    }
+    // Bangladesh calendar days (the server runs in UTC; this used to be 06:00–06:00 Dhaka)
+    if (dateFrom) (where.orderTime as any).gte = dhakaDayStart(String(dateFrom));
+    if (dateTo) (where.orderTime as any).lte = dhakaDayEnd(String(dateTo));
   }
 
   if (productId) {

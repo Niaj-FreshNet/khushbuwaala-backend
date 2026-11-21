@@ -1,5 +1,6 @@
 import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
+import { dhakaDayEnd, dhakaDayStart } from '../../utils/dhakaTime';
 import httpStatus from 'http-status';
 import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
@@ -44,12 +45,9 @@ const getAllOrders = async (queryParams: Record<string, unknown>, user?: any) =>
 
   if (dateFrom || dateTo) {
     where.orderTime = {};
-    if (dateFrom) where.orderTime.gte = new Date(String(dateFrom));
-    if (dateTo) {
-      const end = new Date(String(dateTo));
-      end.setHours(23, 59, 59, 999);
-      where.orderTime.lte = end;
-    }
+    // Bangladesh calendar days (the server runs in UTC; this used to be 06:00–06:00 Dhaka)
+    if (dateFrom) where.orderTime.gte = dhakaDayStart(String(dateFrom));
+    if (dateTo) where.orderTime.lte = dhakaDayEnd(String(dateTo));
   }
 
   if (productId) {

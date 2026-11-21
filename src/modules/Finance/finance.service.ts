@@ -485,18 +485,9 @@ export const resolveOrderItemCosts = (order: any) => {
 };
 
 export const getLedgerTransactions = async (query: { startDate?: string; endDate?: string; type?: string }) => {
-    let startUtc: Date;
-    let endUtc: Date;
-
-    if (query.startDate && query.endDate) {
-        startUtc = new Date(query.startDate);
-        endUtc = new Date(query.endDate);
-        endUtc.setHours(23, 59, 59, 999);
-    } else {
-        const now = new Date();
-        startUtc = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-        endUtc = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    }
+    // Same Bangladesh-day range as the summary, so ledger and summary always cover the same period
+    // (this used server UTC days, i.e. 06:00–06:00 Dhaka).
+    const { start: startUtc, end: endUtc } = resolveDhakaRange(query.startDate, query.endDate);
 
     // 1. Fetch Paid Orders (CREDITS)
     const orders = await prisma.order.findMany({
