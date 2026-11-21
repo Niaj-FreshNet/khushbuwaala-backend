@@ -167,19 +167,37 @@ export const snapshotOrderCosts = async (orderId: string) => {
         include: { orderItems: { include: { variant: true } } }
     });
 
-    if (!order || !order.orderItems.length) return;
+    if (!order) return;
+
+    // Older orders: some have no line records (only the JSON item list on the order) and many
+    // lines store product + size but no variantId. Both used to be skipped, so those orders
+    // were missing from Finance (83 orders on 2026-11-22). Fall back sensibly instead.
+    const jsonItems = Array.isArray(order.cartItems) ? (order.cartItems as any[]) : [];
+    const sourceItems: any[] = order.orderItems.length
+        ? order.orderItems
+        : jsonItems.map((ci) => ({ id: undefined, productId: ci.productId, variantId: ci.variantId, size: ci.size, unit: ci.unit, quantity: Number(ci.quantity) || 1, price: Number(ci.price) || 0, variant: null }));
+    if (!sourceItems.length) return;
 
     // Deduplicate order items by ID to avoid duplicate snapshots
     const uniqueItemsMap = new Map();
-    for (const item of order.orderItems) {
-        uniqueItemsMap.set(item.id, item);
-    }
+    sourceItems.forEach((item, i) => uniqueItemsMap.set(item.id ?? `json-${i}`, item));
     const orderItems = Array.from(uniqueItemsMap.values());
 
     const costSnapshots = [];
 
     for (const item of orderItems) {
-        if (!item.productId || !item.variantId || !item.variant) continue;
+        if (!item.productId) continue;
+        // Resolve the size: the linked variant, else the product's variant with the same size (and unit)
+        if (!item.variant && item.variantId) {
+            item.variant = await prisma.productVariant.findUnique({ where: { id: String(item.variantId) } }).catch(() => null);
+        }
+        if (!item.variant && item.size != null) {
+            const candidates = await prisma.productVariant.findMany({ where: { productId: String(item.productId), size: Number(item.size) } });
+            item.variant =
+                candidates.find((v) => !item.unit || String(v.unit).toUpperCase() === String(item.unit).toUpperCase()) ?? candidates[0] ?? null;
+        }
+        if (!item.variant) continue;
+        item.variantId = item.variant.id;
 
         const [productCost, variantPkgCost] = await Promise.all([
             prisma.productCost.findUnique({ where: { productId: item.productId } }),
