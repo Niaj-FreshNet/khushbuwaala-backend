@@ -97,8 +97,10 @@ const getAllProductsAdmin = catchAsync(async (req, res) => {
 // Get Single Product
 const getProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
-  const result = await ProductServices.getProduct(id, isSuperAdmin);
+  const role = (req as any).user?.role;
+  const isSuperAdmin = role === 'SUPER_ADMIN';
+  const isStaff = role === 'ADMIN' || role === 'SUPER_ADMIN';
+  const result = await ProductServices.getProduct(id, isSuperAdmin, isStaff);
 
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, PRODUCT_ERROR_MESSAGES.NOT_FOUND);

@@ -1,6 +1,8 @@
 import { CostCategory } from "@prisma/client";
 
 export interface IProductVariant {
+  id?: string; // existing variant id (edit); omitted for new variants
+  lowStockAlert?: number;
   sku: string;
   unit: string;
   size: number;

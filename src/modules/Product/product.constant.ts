@@ -177,9 +177,21 @@ export const productDetailInclude: Prisma.ProductInclude = {
     orderBy: { createdAt: 'desc' },
   },
   discounts: true, // product-level
+  // Public detail: only sizes that are on sale. Staff use productDetailIncludeStaff.
   variants: {
+    where: { published: true },
     include: {
       discounts: true, // variant-level
+    },
+  },
+};
+
+// Same as productDetailInclude but with every variant (admin product editor).
+export const productDetailIncludeStaff: Prisma.ProductInclude = {
+  ...productDetailInclude,
+  variants: {
+    include: {
+      discounts: true,
     },
   },
 };

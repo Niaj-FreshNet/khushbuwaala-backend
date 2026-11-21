@@ -17,6 +17,7 @@ import {
   IProductSearchResult,
   IVariantPackagingCostInput,
   IStockPurchaseInput,
+  IProductVariant,
 } from './product.interface';
 import {
   productFilterFields,
@@ -25,6 +26,7 @@ import {
   productNestedFilters,
   productRangeFilter,
   productDetailInclude,
+  productDetailIncludeStaff,
   productAdminInclude,
   LEAN_PRODUCT_INCLUDE,
   QUERY_DEFAULTS,
@@ -262,13 +264,20 @@ const getAllProductsAdmin = async (query: IProductQuery, isSuperAdmin = false) =
   return { data: results.map((p: any) => formatProductAdminListingResponse(p, isSuperAdmin)), meta };
 };
 
-const getProduct = async (id: string, isSuperAdmin = false): Promise<IProductDetailResponse | null> => {
+const getProduct = async (
+  id: string,
+  isSuperAdmin = false,
+  isStaff = false
+): Promise<IProductDetailResponse | null> => {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: productDetailInclude,
+    // Staff (product editor) see every size; the public only sees published ones.
+    include: isStaff ? productDetailIncludeStaff : productDetailInclude,
   });
 
   if (!product) return null;
+  // Unpublished products are not visible to customers.
+  if (!isStaff && !product.published) return null;
 
   const relatedProducts = await prisma.product.findMany({
     where: {
@@ -441,33 +450,96 @@ export const updateProduct = async (
         },
       });
 
-      // Replace variants if provided
+      // Sync variants IN PLACE (match by id, then SKU). Variant ids must stay stable:
+      // order lines, stock logs, carts, discounts and combos point at them.
       if (payload.variants?.length) {
-        await tx.productVariant.deleteMany({ where: { productId: id } });
+        const current = await tx.productVariant.findMany({ where: { productId: id } });
+        const byId = new Map(current.map(v => [v.id, v]));
+        const bySku = new Map(current.map(v => [v.sku, v]));
+        const keptIds = new Set<string>();
 
-        await tx.productVariant.createMany({
-          data: payload.variants.map(v => ({
-            sku: v.sku,
-            size: v.size,
-            unit: v.unit,
-            price: v.price,
-            stock: v.stock ?? 0,
-            published: v.published ?? true,
-            isDefault: v.isDefault ?? false,
-            gtin: v.gtin,
-            mpn: v.mpn,
-            barcode: v.barcode,
-            compareAtPrice: v.compareAtPrice,
-            costPrice:
-              isSuperAdmin && v.costPrice !== undefined
-                ? v.costPrice
-                : existingCostBySku.get(v.sku) ?? undefined,
-            weightGrams: v.weightGrams,
-            attributes: v.attributes || {},
-            images: v.images || [],
-            productId: id,
-          })),
+        // Only fields that were actually sent are written, so fields this form doesn't
+        // know about (barcode, gtin, lowStockAlert, ...) are no longer wiped on every edit.
+        const pick = (v: IProductVariant) => ({
+          sku: v.sku,
+          size: v.size,
+          unit: v.unit,
+          price: v.price,
+          ...(v.stock !== undefined && { stock: v.stock }),
+          ...(v.published !== undefined && { published: v.published }),
+          ...(v.isDefault !== undefined && { isDefault: v.isDefault }),
+          ...(v.gtin !== undefined && { gtin: v.gtin }),
+          ...(v.mpn !== undefined && { mpn: v.mpn }),
+          ...(v.barcode !== undefined && { barcode: v.barcode }),
+          ...(v.compareAtPrice !== undefined && { compareAtPrice: v.compareAtPrice }),
+          ...(v.weightGrams !== undefined && { weightGrams: v.weightGrams }),
+          ...(v.lowStockAlert !== undefined && { lowStockAlert: v.lowStockAlert }),
+          ...(v.attributes !== undefined && { attributes: v.attributes }),
+          ...(v.images !== undefined && { images: v.images }),
+          // Cost is SUPER_ADMIN-only; others never change it.
+          ...(isSuperAdmin && v.costPrice !== undefined && { costPrice: v.costPrice }),
         });
+
+        const updates: { id: string; data: ReturnType<typeof pick> }[] = [];
+        const creates: IProductVariant[] = [];
+        for (const v of payload.variants) {
+          const match = (v.id && byId.get(v.id)) || bySku.get(v.sku);
+          if (match && !keptIds.has(match.id)) {
+            keptIds.add(match.id);
+            updates.push({ id: match.id, data: pick(v) });
+          } else {
+            creates.push(v);
+          }
+        }
+
+        // Variants no longer in the form: delete only if nothing references them,
+        // otherwise unpublish so history keeps working and customers no longer see them.
+        const removed = current.filter(v => !keptIds.has(v.id));
+        const removedIds = removed.map(v => v.id);
+        if (removedIds.length) {
+          const [lines, logs, discounts, combos, costs] = await Promise.all([
+            tx.cartItem.findMany({ where: { variantId: { in: removedIds } }, select: { variantId: true } }),
+            tx.stockLog.findMany({ where: { variantId: { in: removedIds } }, select: { variantId: true } }),
+            tx.discount.findMany({ where: { variantId: { in: removedIds } }, select: { variantId: true } }),
+            tx.comboVariant.findMany({ where: { variantId: { in: removedIds } }, select: { variantId: true } }),
+            tx.orderItemCost.findMany({ where: { variantId: { in: removedIds } }, select: { variantId: true } }),
+          ]);
+          const referenced = new Set(
+            [...lines, ...logs, ...discounts, ...combos, ...costs].map(r => r.variantId).filter(Boolean) as string[]
+          );
+          const toHide = removedIds.filter(vid => referenced.has(vid));
+          const toDelete = removedIds.filter(vid => !referenced.has(vid));
+          if (toHide.length) {
+            // Free the SKU too, so the form can reuse it for a new size without a unique clash.
+            for (const vid of toHide) {
+              const old = byId.get(vid)!;
+              await tx.productVariant.update({
+                where: { id: vid },
+                data: { published: false, isDefault: false, ...(payload.variants.some(p => p.sku === old.sku) && { sku: `${old.sku}-ARCHIVED-${vid.slice(-6)}` }) },
+              });
+            }
+          }
+          if (toDelete.length) await tx.productVariant.deleteMany({ where: { id: { in: toDelete } } });
+        }
+
+        for (const u of updates) {
+          await tx.productVariant.update({ where: { id: u.id }, data: u.data });
+        }
+
+        for (const v of creates) {
+          await tx.productVariant.create({
+            data: {
+              ...pick(v),
+              stock: v.stock ?? 0,
+              published: v.published ?? true,
+              isDefault: v.isDefault ?? false,
+              attributes: v.attributes || {},
+              images: v.images || [],
+              costPrice: isSuperAdmin && v.costPrice !== undefined ? v.costPrice : existingCostBySku.get(v.sku) ?? undefined,
+              productId: id,
+            },
+          });
+        }
       }
 
       // ⚡ Update materials concurrently using Promise.all
@@ -553,10 +625,22 @@ const deleteProduct = async (id: string) => {
     throw new AppError(400, PRODUCT_ERROR_MESSAGES.PRODUCT_PUBLISHED_CANNOT_DELETE);
   }
 
+  // Sold products keep their order history: deleting would erase invoice lines.
+  const soldLines = await prisma.cartItem.count({
+    where: { productId: id, status: { not: 'IN_CART' } },
+  });
+  if (soldLines > 0) {
+    throw new AppError(
+      400,
+      `This product appears in ${soldLines} past order line(s), so it can't be deleted without losing sales history. Unpublish it instead to hide it from the shop.`
+    );
+  }
+
   // ⚡ 1. Execute DB transaction with an expanded timeout window (e.g. 15 seconds)
   await prisma.$transaction(
     async (tx) => {
-      await tx.cartItem.deleteMany({ where: { productId: id } });
+      // Only open carts. Lines that belong to orders are sales history and must stay.
+      await tx.cartItem.deleteMany({ where: { productId: id, status: 'IN_CART' } });
       await tx.wishlist.deleteMany({ where: { productId: id } });
       await tx.comboVariant.deleteMany({ where: { productId: id } });
       await tx.review.deleteMany({ where: { productId: id } });
@@ -755,7 +839,7 @@ const searchProducts = async (query: IProductQuery): Promise<IProductSearchResul
 
 const getProductVariants = async (productId: string) => {
   const variants = await prisma.productVariant.findMany({
-    where: { productId },
+    where: { productId, published: true },
     orderBy: [{ size: 'asc' }, { price: 'asc' }],
   });
 
