@@ -22,6 +22,13 @@ const MANUAL_SOURCES: OrderSource[] = [
 
 const INACTIVE_STATUSES = ['CANCELED', 'RETURNED'];
 
+// A salesman may only see/change sales they recorded. Others get "not found" (no hint it exists).
+const assertSalesmanOwns = (sale: { salesmanId?: string | null }, user?: any) => {
+  if (user?.role === 'SALESMAN' && String(sale.salesmanId || '') !== String(user.id)) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
+  }
+};
+
 // Re-create the cost snapshot when a sale is edited or re-activated.
 // Canceled/returned sales are never snapshotted (their profit is resolved at read time).
 const refreshCostSnapshotIfNeeded = async (orderId: string, status: string, force: boolean) => {
@@ -640,6 +647,7 @@ const getSaleById = async (id: string, user?: any) => {
   });
 
   if (!sale) throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
+  assertSalesmanOwns(sale, user);
 
   if (isSuperAdmin) {
     const itemCosts = await prisma.orderItemCost.findMany({
@@ -698,7 +706,8 @@ const getSalesByCustomer = async (phone: string, queryParams: Record<string, unk
 // -------------------------------
 const updateSaleStatus = async (
   id: string,
-  payload: Partial<Pick<Prisma.OrderUpdateInput, 'status' | 'isPaid'>>
+  payload: Partial<Pick<Prisma.OrderUpdateInput, 'status' | 'isPaid'>>,
+  user?: any
 ) => {
   const data: Prisma.OrderUpdateInput = {};
   if (payload.status) data.status = payload.status as OrderStatus;
@@ -707,6 +716,7 @@ const updateSaleStatus = async (
   const updated = await prisma.$transaction(async (tx) => {
     const existing = await tx.order.findUnique({ where: { id } });
     if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
+    assertSalesmanOwns(existing, user);
     if (payload.status) await syncStockForStatusChange(tx, existing, String(payload.status));
 
     return tx.order.update({
@@ -739,6 +749,7 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
     include: { orderItems: true },
   });
   if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
+  assertSalesmanOwns(existing, user);
 
   const updated = await prisma.$transaction(
     async (tx) => {

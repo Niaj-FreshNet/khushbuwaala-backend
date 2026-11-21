@@ -72,7 +72,7 @@ const getSalesByCustomer = catchAsync(async (req: Request, res: Response) => {
 const updateSaleStatus = catchAsync(async (req: Request, res: Response) => {
   const saleId = req.params.id;
   const payload = req.body; // e.g., { status: "DELIVERED" }
-  const result = await SaleServices.updateSaleStatus(saleId, payload);
+  const result = await SaleServices.updateSaleStatus(saleId, payload, req.user);
 
   sendResponse(res, {
     statusCode: result ? 200 : 400,

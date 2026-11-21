@@ -169,8 +169,13 @@ const login = async (payload: ILoginUser) => {
     },
   });
 
-  if (!user) {
-    throw new AppError(404, 'Invalid credentials');
+  // Same answer for "no such account" and "wrong password", and the password is checked
+  // before anything about the account (verified / approval) is revealed.
+  const isPasswordMatched: boolean =
+    !!user?.password && !!payload.password && (await bcrypt.compare(String(payload.password), user.password));
+
+  if (!user || !isPasswordMatched) {
+    throw new AppError(401, 'Invalid email or password');
   }
 
   if (!user.isVerified) {
@@ -180,15 +185,6 @@ const login = async (payload: ILoginUser) => {
   // ✅ Check if Super Admin approval is pending for Admin/Salesman/Investor roles
   if (user.role !== Role.USER && user.isApproved === false) {
     throw new AppError(403, 'Your Access Role Approval is Pending.');
-  }
-
-  const isPasswordMatched: boolean = await bcrypt.compare(
-    payload.password,
-    user?.password!,
-  );
-
-  if (!isPasswordMatched) {
-    throw new AppError(401, 'Invalid credentials');
   }
 
   const JwtPayload = {
@@ -220,31 +216,26 @@ const forgotPassword = async (email: string) => {
   if (!email) {
     throw new AppError(400, 'Email is required');
   }
+  email = String(email).trim().toLowerCase(); // accounts are stored lower-case
   const user = await prisma.user.findUnique({
     where: { email },
   });
 
+  // Same answer whether or not the account exists (don't reveal who is registered).
   if (!user) {
-    throw new AppError(400, 'User not found with this email');
+    return true;
   }
 
   const resetToken = crypto.randomBytes(32).toString('hex');
   const tokenExpiry = new Date(Date.now() + 1000 * 60 * 15); // 15 minutes
 
-  // Fallback to localhost if config.live_url is missing or undefined
-  const baseUrl = config.live_url || 'http://localhost:3000';
+  const baseUrl = config.live_url || 'https://khushbuwaala.com';
 
   // If your frontend file is at app/reset-password/[token]/page.tsx, structure it like this:
   const link = `${baseUrl}/reset-password/${resetToken}`;
 
 
-  try {
-    await sendPasswordResetEmail(email, link);
-  } catch (error) {
-    console.error("Warning: Failed to send verification email to", email, error);
-    // We don't throw the error here, so the user registration still succeeds
-  }
-
+  // Save the token first, so the emailed link always works.
   await prisma.user.update({
     where: { email },
     data: {
@@ -252,6 +243,12 @@ const forgotPassword = async (email: string) => {
       resetTokenExpiry: tokenExpiry,
     },
   });
+
+  try {
+    await sendPasswordResetEmail(email, link);
+  } catch (error) {
+    console.error('Warning: failed to send password reset email', error);
+  }
 
   return true;
 };

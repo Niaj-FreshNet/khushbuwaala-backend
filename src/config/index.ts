@@ -30,5 +30,6 @@ export default {
     smtp_email: process.env.SMTP_EMAIL,
     smtp_app_pass: process.env.SMTP_PASS,
   },
-  live_url: process.env.Frontend_Live_URL,
+  // .env uses FRONTEND_LIVE_URL; the old name never matched, so reset links pointed at localhost.
+  live_url: process.env.FRONTEND_LIVE_URL || process.env.Frontend_Live_URL || process.env.CLIENT_URL,
 };

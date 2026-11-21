@@ -15,7 +15,7 @@ router.post(
 );
 
 // Admin order management (Ensures req.user is populated with role)
-router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'), OrderController.getAllOrders);
+router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN'), OrderController.getAllOrders);
 
 // Public order tracking (by ID, invoice, phone, or email)
 router.get('/track/:query', limits.track, OrderController.trackOrders);
@@ -25,17 +25,17 @@ router.get('/get-order-by-id/:id', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USE
 
 router.patch(
   '/update-order-status/:id',
-  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  auth('SUPER_ADMIN', 'ADMIN'),
   OrderController.updateOrderStatus,
 );
 router.patch(
   '/update-payment-status/:id',
-  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  auth('SUPER_ADMIN', 'ADMIN'),
   OrderController.updatePaymentStatus,
 );
 router.patch(
   '/update-order/:id',
-  auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN'),
+  auth('SUPER_ADMIN', 'ADMIN'),
   OrderController.updateOrder,
 );
 

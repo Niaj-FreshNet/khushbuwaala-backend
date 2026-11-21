@@ -75,7 +75,7 @@ const forgotPassword = catchAsync(async (req, res) => {
     statusCode: isok ? 200 : 400,
     success: isok,
     message: isok
-      ? 'Password Reset Link Sent To Your Email Successfully!'
+      ? 'If an account exists for this email, a password reset link has been sent.'
       : 'Password Reset Link Sent To Your Email Failed',
   });
 });

@@ -22,6 +22,10 @@ export const sendOrderToSteadfast = async (req: Request, res: Response, next: Ne
             },
         });
 
+        const actor = (req as any).user;
+        if (order && actor?.role === 'SALESMAN' && String(order.salesmanId || '') !== String(actor.id)) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
         if (!order) {
             throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
         }
