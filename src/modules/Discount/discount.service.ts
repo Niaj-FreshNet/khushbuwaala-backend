@@ -183,18 +183,23 @@ export const DiscountServices = {
               ...(normalizedCode
                 ? [{ code: { equals: normalizedCode } }]
                 : []),
+              // Unset fields are MISSING in MongoDB (not null): match both, or the
+              // automatic sales (saved with no code/dates) are never found.
               { code: null },
+              { code: { isSet: false } },
             ],
           },
           {
             OR: [
               { startDate: null },
+              { startDate: { isSet: false } },
               { startDate: { lte: now } },
             ],
           },
           {
             OR: [
               { endDate: null },
+              { endDate: { isSet: false } },
               { endDate: { gte: now } },
             ],
           },
@@ -232,13 +237,10 @@ export const DiscountServices = {
       const originalPrice = item.price;
       let discountedPrice = originalPrice;
 
-      const autoDiscount = allDiscounts.find(d =>
-        !d.code &&
-        (d.scope === "PRODUCT" || d.scope === "VARIANT") &&
-        (d.scope === "VARIANT"
-          ? d.variantId === item.variantId
-          : d.productId === item.productId)
-      );
+      // Size-specific sale first, else product-wide (same order as server-side order pricing)
+      const autoDiscount =
+        allDiscounts.find(d => !d.code && d.scope === "VARIANT" && d.variantId === item.variantId) ||
+        allDiscounts.find(d => !d.code && d.scope === "PRODUCT" && d.productId === item.productId);
 
       const promoItemDiscount = allDiscounts.find(d =>
         normalizedCode &&
