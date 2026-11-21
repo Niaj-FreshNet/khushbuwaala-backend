@@ -100,7 +100,9 @@ const addStockPurchaseAndUpdateWAC = async (payload: IStockPurchaseInput) => {
 
         const currentCostData = await tx.productCost.findUnique({ where: { productId } });
 
-        const currentStock = product.stock || 0;
+        // Negative stock (sold before stock was recorded) must not drag the average cost down/negative.
+        const currentStock = Math.max(0, product.stock || 0);
+        if (!(Number(quantity) > 0)) throw new AppError(httpStatus.BAD_REQUEST, 'Quantity must be greater than 0');
         const currentAvgCost = currentCostData?.avgCostPerUnit || 0;
 
         // Calculate New WAC
@@ -449,7 +451,10 @@ export const calculateOrderFinancials = (order: any) => {
     const isCod = !isShowroom && (String(order.method || "").toLowerCase().includes("cash") || String(order.method || "").toLowerCase().includes("cod"));
     const codCharge = isCod ? Math.round(productBill * 0.01) : 0;
 
-    const validBill = !isCanceledOrReturned ? (isShowroom ? Number(order.amount || productBill) : productBill) : 0;
+    // Sales figure = what the customer pays for products: item lines minus order discounts
+    // (coupons / extra discount), the same rule the Finance summary uses.
+    const billAfterDiscount = Math.max(0, productBill - (Number(order.discountAmount) || 0));
+    const validBill = !isCanceledOrReturned ? (isShowroom ? Number(order.amount || billAfterDiscount) : billAfterDiscount) : 0;
     const isValidOrderCount = !isCanceledOrReturned ? 1 : 0;
 
     let netReceivable = 0;

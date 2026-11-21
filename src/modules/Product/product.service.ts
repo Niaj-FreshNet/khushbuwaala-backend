@@ -1339,7 +1339,9 @@ const addStockPurchaseAndUpdateWAC = async (payload: IStockPurchaseInput) => {
 
     const currentCostData = await tx.productCost.findUnique({ where: { productId } });
 
-    const currentStock = product.stock || 0;
+    // Negative stock (sold before stock was recorded) must not drag the average cost down/negative.
+    const currentStock = Math.max(0, product.stock || 0);
+    if (!(Number(quantity) > 0)) throw new AppError(400, 'Quantity must be greater than 0');
     const currentAvgCost = currentCostData?.avgCostPerUnit || 0;
 
     // 2. Calculate New Weighted Average Cost (WAC)
