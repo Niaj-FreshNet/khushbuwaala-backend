@@ -349,6 +349,9 @@ model Order {
   deliveryCharge Float?  @default(0)
   courierStatus  String?
 
+  // true once this order's stock has been put back (canceled/returned). See utils/orderStock.ts
+  stockReturned Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

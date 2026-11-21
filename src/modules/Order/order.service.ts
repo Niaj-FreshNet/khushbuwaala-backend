@@ -3,7 +3,8 @@ import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
-import { OrderSource, Prisma, SaleType } from '@prisma/client';
+import { OrderSource, OrderStatus, Prisma, SaleType } from '@prisma/client';
+import { syncStockForStatusChange, returnStockBeforeDelete } from '../../utils/orderStock';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { DiscountServices } from '../Discount/discount.service';
 import { DashboardType, UpdateOrderPayload } from './order.interface';
@@ -377,7 +378,8 @@ const createOrderWithCartItems = async (payload: {
             ),
           tx.order.updateMany({
             where: { id: { in: failedOnlineOrderIds }, isPaid: false },
-            data: { status: 'CANCELED' },
+            // Stock was just put back above; record that so it is never returned twice.
+            data: { status: 'CANCELED', stockReturned: true },
           }),
         ]);
       }
@@ -559,11 +561,18 @@ const createOrderWithCartItems = async (payload: {
 };
 
 const updateOrderStatus = async (orderId: string, payload: Record<string, unknown>) => {
-  const order = await prisma.order.update({
-    where: { id: orderId },
-    data: payload,
-  });
-  return order;
+  // Only the status may change here (this used to write the whole request body into the order).
+  const status = String(payload?.status || '').toUpperCase();
+  if (!(Object.values(OrderStatus) as string[]).includes(status)) {
+    throw new AppError(httpStatus.BAD_REQUEST, `Invalid order status: ${payload?.status}`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+    await syncStockForStatusChange(tx, existing, status);
+    return tx.order.update({ where: { id: orderId }, data: { status: status as OrderStatus } });
+  }, { maxWait: 10000, timeout: 15000 });
 };
 
 const updatePaymentStatus = async (orderId: string, payload: Record<string, unknown>) => {
@@ -599,7 +608,10 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
     async (tx) => {
       const data: any = {};
 
-      if (payload.status !== undefined) data.status = payload.status;
+      if (payload.status !== undefined) {
+        data.status = payload.status;
+        await syncStockForStatusChange(tx, existing, String(payload.status));
+      }
 
       if (payload.isPaid !== undefined) {
         if (typeof payload.isPaid !== 'boolean') {
@@ -1252,6 +1264,14 @@ const deleteOrder = async (orderId: string) => {
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // 0️⃣ Put stock back if this order still holds it
+    await returnStockBeforeDelete(tx, existing);
+
+    // Child rows that require the order (otherwise the delete is rejected)
+    await tx.orderItemCost.deleteMany({ where: { orderId } });
+    await tx.orderDiscount.deleteMany({ where: { orderId } });
+    await tx.orderExtraCost.deleteMany({ where: { orderId } });
+
     // 1️⃣ Delete associated cart items tied to this order
     await tx.cartItem.deleteMany({
       where: { orderId },
@@ -1266,7 +1286,7 @@ const deleteOrder = async (orderId: string) => {
     return await tx.order.delete({
       where: { id: orderId },
     });
-  });
+  }, { maxWait: 10000, timeout: 15000 });
 
   return result;
 };

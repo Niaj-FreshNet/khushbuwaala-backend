@@ -10,6 +10,7 @@ import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { FinanceServices, snapshotOrderCosts } from '../Finance/finance.service';
+import { syncStockForStatusChange, returnStockBeforeDelete } from '../../utils/orderStock';
 
 // Treat “sales” as orders with a non-WEBSITE orderSource
 const MANUAL_SOURCES: OrderSource[] = [
@@ -702,19 +703,25 @@ const updateSaleStatus = async (
   if (payload.status) data.status = payload.status as OrderStatus;
   if (typeof payload.isPaid === 'boolean') data.isPaid = payload.isPaid;
 
-  const updated = await prisma.order.update({
-    where: { id },
-    data,
-    include: {
-      salesman: { select: { id: true, name: true, imageUrl: true, email: true } },
-      orderItems: {
-        include: {
-          product: { select: { id: true, name: true, primaryImage: true } },
-          variant: true,
+  const updated = await prisma.$transaction(async (tx) => {
+    const existing = await tx.order.findUnique({ where: { id } });
+    if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
+    if (payload.status) await syncStockForStatusChange(tx, existing, String(payload.status));
+
+    return tx.order.update({
+      where: { id },
+      data,
+      include: {
+        salesman: { select: { id: true, name: true, imageUrl: true, email: true } },
+        orderItems: {
+          include: {
+            product: { select: { id: true, name: true, primaryImage: true } },
+            variant: true,
+          },
         },
       },
-    },
-  });
+    });
+  }, { maxWait: 10000, timeout: 15000 });
 
   // Re-activated sale (e.g. CANCELED -> PENDING) with no snapshot → rebuild it
   await refreshCostSnapshotIfNeeded(id, String(updated.status), false);
@@ -736,7 +743,10 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
     async (tx) => {
       const data: any = {};
 
-      if (payload.status !== undefined) data.status = payload.status;
+      if (payload.status !== undefined) {
+        data.status = payload.status;
+        await syncStockForStatusChange(tx, existing, String(payload.status));
+      }
       if (payload.isPaid !== undefined) data.isPaid = payload.isPaid;
       if (payload.method !== undefined) data.method = payload.method ?? null;
       if (payload.orderSource !== undefined) data.orderSource = payload.orderSource;
@@ -861,6 +871,9 @@ const deleteSale = async (id: string) => {
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // Put the stock back if this sale still holds it (was never done before)
+    await returnStockBeforeDelete(tx, existing);
+
     // Delete associated CartItems
     await tx.cartItem.deleteMany({
       where: { orderId: id },
@@ -877,7 +890,7 @@ const deleteSale = async (id: string) => {
     });
 
     return deletedOrder;
-  });
+  }, { maxWait: 10000, timeout: 15000 });
 
   return result;
 };
