@@ -45,7 +45,8 @@ router.get("/dashboard/monthly-sales", auth('ADMIN', 'SUPER_ADMIN'), OrderContro
 router.get('/get-all-customers', auth('SUPER_ADMIN', 'ADMIN'), OrderController.getAllCustomers);
 
 // User orders (customer)
-router.get('/get-user-orders/:id', OrderController.getUserOrders);
+// Staff only: lists any customer's orders (was public).
+router.get('/get-user-orders/:id', auth('ADMIN', 'SUPER_ADMIN'), OrderController.getUserOrders);
 router.get('/my-orders', auth("USER", "SUPER_ADMIN", "ADMIN", "SALESMAN"), OrderController.getMyOrders);
 router.get('/my-orders/:id', auth('USER'), OrderController.getMyOrderByID);
 

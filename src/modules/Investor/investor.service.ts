@@ -145,9 +145,17 @@ const updateWithdrawalStatus = async (
     });
 
     if (!withdrawal) throw new AppError(httpStatus.NOT_FOUND, "Withdrawal not found.");
-    if (withdrawal.status !== 'PENDING' && status !== 'COMPLETED') {
-        throw new AppError(httpStatus.BAD_REQUEST, `Cannot change status from ${withdrawal.status}.`);
+
+    // Allowed moves only. The balance is deducted exactly once: when money is committed
+    // (PENDING → APPROVED, or PENDING → COMPLETED in one step).
+    const allowed: Record<string, string[]> = {
+        PENDING: ['APPROVED', 'REJECTED', 'COMPLETED'],
+        APPROVED: ['COMPLETED'],
+    };
+    if (!(allowed[withdrawal.status] || []).includes(status)) {
+        throw new AppError(httpStatus.BAD_REQUEST, `Cannot change a ${withdrawal.status} withdrawal to ${status}.`);
     }
+    const deductNow = withdrawal.status === 'PENDING' && (status === 'APPROVED' || status === 'COMPLETED');
 
     return await prisma.$transaction(async (tx) => {
         // 1. Update the withdrawal record
@@ -160,9 +168,11 @@ const updateWithdrawalStatus = async (
             }
         });
 
-        // 2. If it is being APPROVED, deduct the amount from the investor's balance
-        if (status === 'APPROVED') {
-            if (withdrawal.investor.currentBalance < withdrawal.amount) {
+        // 2. Deduct once, when the money is committed. Read the balance inside the transaction
+        //    so two approvals at the same time can't both pass the check.
+        if (deductNow) {
+            const investor = await tx.investor.findUnique({ where: { id: withdrawal.investorId } });
+            if (!investor || investor.currentBalance < withdrawal.amount) {
                 throw new AppError(httpStatus.BAD_REQUEST, "Investor has insufficient balance for this withdrawal.");
             }
 
@@ -174,7 +184,7 @@ const updateWithdrawalStatus = async (
             });
         }
 
-        // Note: If REJECTED, we don't touch the balance. If COMPLETED, it was already deducted during APPROVAL.
+        // REJECTED never touches the balance; APPROVED → COMPLETED was already deducted on approval.
         return updatedWithdrawal;
     });
 };

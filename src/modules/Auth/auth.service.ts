@@ -501,22 +501,26 @@ const approveOrUpdateUserRole = async (
 
     // 2. If they are marked as an INVESTOR, explicitly manage their dedicated profile
     if (role === 'INVESTOR') {
-      const percentage = Number(investorProfitPercentage) || 0;
-      const capital = Number(totalInvested) || 0;
-      const balance = Number(currentBalance) || 0;
+      // Only change the money fields that were actually sent. The role screen sends just the
+      // profit %, and treating the missing ones as 0 used to wipe an investor's capital/balance.
+      const num = (v: unknown) =>
+        v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) ? undefined : Number(v);
+      const percentage = num(investorProfitPercentage);
+      const capital = num(totalInvested);
+      const balance = num(currentBalance);
 
       await tx.investor.upsert({
         where: { userId },
         update: {
-          profitSharePercentage: percentage,
-          totalInvested: capital,
-          currentBalance: balance
+          ...(percentage !== undefined && { profitSharePercentage: percentage }),
+          ...(capital !== undefined && { totalInvested: capital }),
+          ...(balance !== undefined && { currentBalance: balance }),
         },
         create: {
           userId,
-          profitSharePercentage: percentage,
-          totalInvested: capital,
-          currentBalance: balance
+          profitSharePercentage: percentage ?? 0,
+          totalInvested: capital ?? 0,
+          currentBalance: balance ?? 0,
         },
       });
     }

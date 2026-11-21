@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import express from 'express';
 import * as steadfastController from './steadfast.controller';
+import auth from '../../middlewares/auth';
 
 const router = Router();
 
-router.post('/send-order/:orderId', steadfastController.sendOrderToSteadfast);
-router.get('/balance', steadfastController.getBalance);
+// Booking a courier costs money and reveals customer data: staff only (both were public).
+router.post('/send-order/:orderId', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), steadfastController.sendOrderToSteadfast);
+router.get('/balance', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.getBalance);
 
 router.post(
     '/webhook',

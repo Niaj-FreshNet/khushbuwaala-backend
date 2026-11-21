@@ -63,6 +63,11 @@ const createSale = async (
     shippingCost?: number;
     discountAmount?: number;
     additionalNotes?: string;
+    // Field names sent by the admin sale forms (aliases of the ones above).
+    deliveryCharge?: number;
+    discount?: number;
+    status?: string;
+    saleTime?: string;
     customerInfo?: {
       name?: string;
       phone?: string;
@@ -70,6 +75,7 @@ const createSale = async (
       address?: string;
       district?: string;
       thana?: string;
+      reference?: string;
     } | null;
   },
   userId?: string | null
@@ -86,27 +92,96 @@ const createSale = async (
     orderSource,
     platform,
     platformNote,
-    shippingCost,
-    discountAmount,
     additionalNotes,
     customerInfo,
   } = payload;
 
-  // 1️⃣ Fetch valid cart items
-  const dbCartItems = await prisma.cartItem.findMany({
-    where: { id: { in: cartItemIds }, status: 'IN_CART' },
-    include: { product: true, variant: true },
-  });
+  // Accept both naming styles so no caller silently loses data.
+  const shippingCost = payload.shippingCost ?? payload.deliveryCharge;
+  const discountAmount = payload.discountAmount ?? payload.discount;
 
-  if (dbCartItems.length === 0) {
+  const requestedStatus = String(payload.status || '').toUpperCase();
+  if (requestedStatus && !(Object.values(OrderStatus) as string[]).includes(requestedStatus)) {
+    throw new AppError(httpStatus.BAD_REQUEST, `Invalid sale status: ${payload.status}`);
+  }
+
+  let saleTime: Date | undefined;
+  if (payload.saleTime) {
+    saleTime = new Date(payload.saleTime);
+    if (Number.isNaN(saleTime.getTime())) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Invalid sale time');
+    }
+  }
+
+  const noteParts = [
+    additionalNotes?.trim(),
+    platformNote?.trim() ? `Platform: ${platformNote.trim()}` : '',
+    customerInfo?.reference?.trim() ? `Reference: ${customerInfo.reference.trim()}` : '',
+  ].filter(Boolean);
+
+  // 1️⃣ Fetch valid cart items
+  // Only look up when ids are given: `in: undefined` would make Prisma drop the filter
+  // and return every IN_CART row in the shop.
+  const dbCartItems =
+    Array.isArray(cartItemIds) && cartItemIds.length > 0
+      ? await prisma.cartItem.findMany({
+          where: { id: { in: cartItemIds }, status: 'IN_CART' },
+          include: { product: true, variant: true },
+        })
+      : [];
+
+  // Direct mode: the admin sale forms send `items` (unit price, qty, variant) and no cart ids.
+  // Lines are then created inside the sale transaction, so no stray IN_CART rows are left behind
+  // and nothing can merge into an older cart row (which used to inflate quantities).
+  const directMode = (!cartItemIds || cartItemIds.length === 0) && Array.isArray(items) && items.length > 0;
+
+  if (!directMode && dbCartItems.length === 0) {
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
+  }
+
+  let directVariants = new Map<string, any>();
+  if (directMode) {
+    const variantIds = [...new Set(items!.map((it) => it.variantId).filter(Boolean))] as string[];
+    const variants = await prisma.productVariant.findMany({
+      where: { id: { in: variantIds } },
+      include: { product: true },
+    });
+    directVariants = new Map(variants.map((v) => [v.id, v]));
   }
 
   // 2️⃣ Resolve quantities and prices from payload or DB fallback.
   // Every resolved item is tied to exactly ONE real cart item (no duplicates).
   const usedIds = new Set<string>();
 
-  const cartItems = items && items.length > 0 ? items.map((it) => {
+  const cartItems = directMode ? items!.map((it) => {
+    const variant = it.variantId ? directVariants.get(it.variantId) : null;
+    if (it.variantId && !variant) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'A selected product size no longer exists. Please reselect it.');
+    }
+    const productId = String(variant?.productId || it.productId || '');
+    if (!productId) throw new AppError(httpStatus.BAD_REQUEST, 'Each item needs a product.');
+
+    const quantity = Math.max(1, Math.floor(Number(it.quantity) || 1));
+    const price = Number(it.price);
+    if (!Number.isFinite(price) || price < 0) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Each item needs a valid unit price.');
+    }
+    const originalPrice = Number(it.originalPrice ?? variant?.price ?? price);
+
+    return {
+      id: undefined as string | undefined,
+      productId,
+      variantId: variant?.id || null,
+      size: variant?.size ?? null,
+      unit: variant?.unit ?? null,
+      quantity,
+      price, // UNIT selling price
+      originalPrice,
+      discount: Math.max(0, originalPrice - price),
+      product: variant?.product,
+      variant,
+    };
+  }) : items && items.length > 0 ? items.map((it) => {
     const dbItem =
       dbCartItems.find((ci) => it.cartItemId && String(ci.id) === String(it.cartItemId)) ??
       dbCartItems.find(
@@ -157,8 +232,10 @@ const createSale = async (
   }));
 
   const subtotal = cartItems.reduce((sum, ci) => sum + Number(ci.price) * Number(ci.quantity), 0);
-  const shipping = Number(shippingCost || 0);
-  const serverAmount = amount ? Number(amount) : Math.max(0, subtotal) + shipping;
+  const shipping = Math.max(0, Number(shippingCost || 0));
+  // Order.discountAmount is an Int column; a decimal value would make Prisma reject the sale.
+  const discountValue = Math.max(0, Math.round(Number(discountAmount || 0)));
+  const serverAmount = amount ? Number(amount) : Math.max(0, subtotal - discountValue) + shipping;
   const invoice = await generateInvoice();
 
   const safeProductIds = [...new Set(cartItems.map((ci) => ci.productId).filter(Boolean))] as string[];
@@ -174,12 +251,14 @@ const createSale = async (
           saleType: saleType || SaleType.SINGLE,
           amount: serverAmount,
           shippingCost: shipping,
-          discountAmount: Number(discountAmount || 0),
+          discountAmount: discountValue,
           isPaid: isPaid || false,
           method: method || 'cash',
           orderSource: orderSource || OrderSource.SHOWROOM,
           platform: platform || platformNote || '',
-          additionalNotes: additionalNotes || '',
+          additionalNotes: noteParts.join(' | '),
+          ...(requestedStatus ? { status: requestedStatus as OrderStatus } : {}),
+          ...(saleTime ? { orderTime: saleTime } : {}),
           name: customerInfo?.name || null,
           phone: customerInfo?.phone || null,
           email: customerInfo?.email || null,
@@ -215,21 +294,30 @@ const createSale = async (
         },
       });
 
-      // Attach the existing cart items to the order with the final qty/price
+      // Attach the cart items to the order with the final qty/price (create them in direct mode)
       await Promise.all(
-        cartItems.map((item) =>
-          tx.cartItem.update({
-            where: { id: item.id },
-            data: {
-              orderId: created.id,
-              status: 'ORDERED',
-              quantity: item.quantity,
-              price: Number(item.price),
-              originalPrice: Number(item.originalPrice),
-              discount: Number(item.discount),
-            },
-          })
-        )
+        cartItems.map((item) => {
+          const lineData = {
+            orderId: created.id,
+            status: 'ORDERED' as const,
+            quantity: item.quantity,
+            price: Number(item.price),
+            originalPrice: Number(item.originalPrice),
+            discount: Number(item.discount),
+          };
+          if (!item.id) {
+            return tx.cartItem.create({
+              data: {
+                ...lineData,
+                productId: item.productId,
+                variantId: item.variantId || null,
+                size: item.size != null ? Math.round(Number(item.size)) : null,
+                unit: item.unit || null,
+              },
+            });
+          }
+          return tx.cartItem.update({ where: { id: item.id }, data: lineData });
+        })
       );
 
       // Stock updates & stock logs
@@ -251,7 +339,7 @@ const createSale = async (
           return tx.stockLog.create({
             data: {
               productId: item.productId,
-              variantId: item.variantId || '',
+              variantId: item.variantId || null,
               change: -(variantSize * qty),
               reason: 'SALE',
             },
@@ -655,7 +743,7 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
       if (payload.platform !== undefined) {
         const cleanPlatform = String(payload.platform || '').trim();
 
-        if (!cleanPlatform || cleanPlatform.toLowerCase() === 'SHOWROOM') {
+        if (!cleanPlatform || cleanPlatform.toUpperCase() === 'SHOWROOM') {
           data.platform = '';
           data.orderSource = OrderSource.SHOWROOM;
         } else {
@@ -669,7 +757,7 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
         }
       }
       if (payload.shippingCost !== undefined) data.shippingCost = Number(payload.shippingCost);
-      if (payload.discountAmount !== undefined) data.discountAmount = Math.max(0, Number(payload.discountAmount));
+      if (payload.discountAmount !== undefined) data.discountAmount = Math.max(0, Math.round(Number(payload.discountAmount) || 0));
       if (payload.additionalNotes !== undefined) data.additionalNotes = payload.additionalNotes ?? null;
       if (payload.amount !== undefined) data.amount = Number(payload.amount);
       if (payload.name !== undefined) data.name = payload.name;

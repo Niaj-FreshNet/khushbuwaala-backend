@@ -27,7 +27,10 @@ const allowedOrigins = [
 app.use((req: Request, res: Response, next: NextFunction): void => {
   const origin = req.headers.origin as string;
 
-  if (origin && (allowedOrigins.includes(origin) || origin.includes('localhost'))) {
+  // Exact localhost origins only (any port). `origin.includes('localhost')` also matched
+  // sites like https://localhost.evil.com, which could then call the API with credentials.
+  const isLocalDev = !!origin && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (origin && (allowedOrigins.includes(origin) || isLocalDev)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   } else {
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
