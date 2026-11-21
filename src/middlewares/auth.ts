@@ -63,7 +63,7 @@ const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
           (req as any).user = null;
           return next();
         }
-        throw new AppError(httpStatus.NOT_FOUND, "User not found");
+        throw new AppError(httpStatus.UNAUTHORIZED, "Account no longer exists. Please log in again.");
       }
 
       // ✅ Role protection (unchanged behavior)
@@ -76,6 +76,11 @@ const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
       (req as any).user = user;
       return next();
     } catch (error: any) {
+      // "Logged in but not allowed" (403) and "user not found" must stay as they are.
+      // Turning them into 401 made the admin think the session expired and log the user out.
+      if (error instanceof AppError && error.statusCode !== httpStatus.UNAUTHORIZED) {
+        throw error;
+      }
       console.error("❌ Token verification failed:", error?.message);
 
       if (allowVisitor) {
