@@ -11,13 +11,20 @@ const getAllUsers = async (
   id: string,
   queryParams: Record<string, unknown>,
 ) => {
-  const queryBuilder = new PrismaQueryBuilder(queryParams, ['name']);
+  // staffOnly=true: every non-customer account (the role screen used to get only the newest 10
+  // accounts and then hide customers, so older staff/investors were missing).
+  const { staffOnly, ...rest } = queryParams;
+  const queryBuilder = new PrismaQueryBuilder(rest, ['name', 'email', 'phone']);
   queryBuilder.buildWhere().buildSort().buildPagination().buildSelect();
 
   const prismaQuery = queryBuilder.getQuery();
 
   prismaQuery.where = {
-    AND: [prismaQuery.where || {}, { NOT: { id } }],
+    AND: [
+      prismaQuery.where || {},
+      { NOT: { id } },
+      ...(String(staffOnly) === 'true' ? [{ role: { not: 'USER' as const } }] : []),
+    ],
   };
 
   if (!prismaQuery.select) {
@@ -25,6 +32,7 @@ const getAllUsers = async (
       id: true,
       name: true,
       email: true,
+      phone: true,
       role: true,
       isApproved: true,
       // 🚨 Include the relation to pull the percentage!

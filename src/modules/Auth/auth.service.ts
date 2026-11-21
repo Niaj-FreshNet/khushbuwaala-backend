@@ -481,6 +481,11 @@ const approveOrUpdateUserRole = async (
 
   const targetUser = await prisma.user.findUnique({ where: { id: userId } });
   if (!targetUser) throw new AppError(404, "User not found");
+  // Super Admin accounts are never created or changed from this screen (prevents locking the
+  // shop out by demoting the only Super Admin).
+  if (targetUser.role === 'SUPER_ADMIN' || (role as string) === 'SUPER_ADMIN') {
+    throw new AppError(403, "Super Admin accounts can't be changed here.");
+  }
 
   // Track the previous status so we don't spam emails if the status didn't actually change
   const wasAlreadyApproved = targetUser.isApproved;
