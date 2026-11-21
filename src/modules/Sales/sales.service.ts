@@ -10,7 +10,7 @@ import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { FinanceServices, snapshotOrderCosts } from '../Finance/finance.service';
-import { syncStockForStatusChange, returnStockBeforeDelete } from '../../utils/orderStock';
+import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit } from '../../utils/orderStock';
 
 // Treat “sales” as orders with a non-WEBSITE orderSource
 const MANUAL_SOURCES: OrderSource[] = [
@@ -417,6 +417,9 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
     ...(source ? { orderSource: source as OrderSource } : { orderSource: { in: MANUAL_SOURCES } }),
   };
 
+  // A salesman only ever sees the sales they recorded.
+  if (user?.role === 'SALESMAN') where.salesmanId = user.id;
+
   if (status && status !== 'ALL') where.status = status as OrderStatus;
   if (payment === 'PAID') where.isPaid = true;
   if (payment === 'DUE') where.isPaid = false;
@@ -780,6 +783,8 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
       }
 
       if (payload.orderItems && Array.isArray(payload.orderItems)) {
+        // Stock follows the edit: only the net change per product is applied.
+        await rebalanceStockForItemEdit(tx, orderId, async () => {
         const incomingItems = payload.orderItems;
         const existingItems = existing.orderItems;
         const incomingItemIds = incomingItems.map((i: any) => i.id).filter((id: string) => id && !id.startsWith('temp_'));
@@ -827,6 +832,7 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
         );
 
         data.productIds = [...new Set(safeProductIds)];
+        });
       }
 
       return await tx.order.update({

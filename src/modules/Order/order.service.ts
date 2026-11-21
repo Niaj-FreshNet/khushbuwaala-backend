@@ -4,7 +4,7 @@ import httpStatus from 'http-status';
 import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { OrderSource, OrderStatus, Prisma, SaleType } from '@prisma/client';
-import { syncStockForStatusChange, returnStockBeforeDelete } from '../../utils/orderStock';
+import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit } from '../../utils/orderStock';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { DiscountServices } from '../Discount/discount.service';
 import { DashboardType, UpdateOrderPayload } from './order.interface';
@@ -662,7 +662,9 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
 
       // 🔄 HANDLE ORDER ITEMS UPDATE IF PROVIDED IN PAYLOAD
       if (payload.orderItems && Array.isArray(payload.orderItems)) {
-        const incomingItems = payload.orderItems;
+        // Stock follows the edit: only the net change per product is applied.
+        await rebalanceStockForItemEdit(tx, orderId, async () => {
+        const incomingItems = payload.orderItems!; // checked above
         const existingItems = existing.orderItems; // fetched with include: { orderItems: true }
 
         const incomingItemIds = incomingItems
@@ -718,6 +720,7 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
         );
 
         data.productIds = [...new Set(safeProductIds)];
+        });
       }
 
       if (Object.keys(data).length === 0) {
