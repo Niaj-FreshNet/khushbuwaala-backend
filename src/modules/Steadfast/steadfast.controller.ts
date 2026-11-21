@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import * as steadfastService from './steadfast.service';
 import { prisma } from '../../../prisma/client';
+import { syncStockForStatusChange } from '../../utils/orderStock';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 
@@ -94,35 +95,52 @@ export const getBalance = async (req: Request, res: Response, next: NextFunction
 
 export const handleWebhook = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const signature = req.headers['x-signature'] as string;
         const secretToken = process.env.STEADFAST_SECRET_TOKEN;
+        if (!secretToken) return res.status(503).send('Webhook not configured');
 
-        const rawBody = (req as any).rawBody || Buffer.from(JSON.stringify(req.body));
-        const expectedSignature = crypto
-            .createHmac('sha256', secretToken as string)
-            .update(rawBody)
-            .digest('hex');
+        // Exact bytes Steadfast sent (captured by express.json verify in app.ts)
+        const rawBody: Buffer = Buffer.isBuffer((req as any).rawBody)
+            ? (req as any).rawBody
+            : Buffer.from(JSON.stringify(req.body ?? {}));
 
-        if (
-            !signature ||
-            signature.length !== expectedSignature.length ||
-            !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
-        ) {
+        const safeEqual = (a: string, b: string) =>
+            a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+        // Accept an HMAC-SHA256 signature of the body, or a Bearer token equal to the secret.
+        const signature = String(req.headers['x-signature'] || '');
+        const expectedSignature = crypto.createHmac('sha256', secretToken).update(rawBody).digest('hex');
+        const bearer = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
+        if (!(signature && safeEqual(signature, expectedSignature)) && !(bearer && safeEqual(bearer, secretToken))) {
             return res.status(401).send('Unauthorized webhook signature');
         }
 
-        const event = req.body;
+        const event = req.body || {};
 
-        if (event.notification_type === 'delivery_status') {
-            const { invoice, status, delivery_charge } = event;
+        if (event.notification_type === 'delivery_status' && event.invoice) {
+            const courierStatus = String(event.status || '').toLowerCase();
+            const deliveryCharge = event.delivery_charge;
 
-            await prisma.order.updateMany({
-                where: { invoice },
-                data: {
-                    courierStatus: status,
-                    ...(delivery_charge !== undefined ? { deliveryCharge: Number(delivery_charge) } : {}),
-                },
-            });
+            // Courier outcome → our order status (final states are never moved backwards).
+            const nextStatus =
+                courierStatus === 'delivered' || courierStatus === 'partial_delivered' ? 'DELIVERED'
+                : courierStatus === 'cancelled' ? 'RETURNED'
+                : null;
+
+            const orders = await prisma.order.findMany({ where: { invoice: String(event.invoice) } });
+            for (const order of orders) {
+                await prisma.$transaction(async (tx) => {
+                    const data: any = {
+                        courierStatus: event.status,
+                        ...(deliveryCharge !== undefined && deliveryCharge !== null && { deliveryCharge: Number(deliveryCharge) }),
+                    };
+                    const isFinal = ['COMPLETED', 'CANCELED', 'RETURNED'].includes(order.status);
+                    if (nextStatus && !isFinal && order.status !== nextStatus) {
+                        await syncStockForStatusChange(tx, order, nextStatus); // RETURNED puts stock back once
+                        data.status = nextStatus;
+                    }
+                    await tx.order.update({ where: { id: order.id }, data });
+                }, { maxWait: 10000, timeout: 15000 });
+            }
         }
 
         return res.status(200).json({ status: 'success' });

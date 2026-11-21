@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import express from 'express';
 import * as steadfastController from './steadfast.controller';
 import auth from '../../middlewares/auth';
 
@@ -9,19 +8,8 @@ const router = Router();
 router.post('/send-order/:orderId', auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'), steadfastController.sendOrderToSteadfast);
 router.get('/balance', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.getBalance);
 
-router.post(
-    '/webhook',
-    express.raw({ type: 'application/json' }),
-    (req, res, next) => {
-        (req as any).rawBody = req.body;
-        try {
-            req.body = JSON.parse(req.body.toString());
-        } catch (e) {
-            req.body = {};
-        }
-        next();
-    },
-    steadfastController.handleWebhook
-);
+// Raw body is captured by the global express.json({ verify }) in app.ts.
+// (A route-level express.raw never ran after the global JSON parser, so every call crashed.)
+router.post('/webhook', steadfastController.handleWebhook);
 
 export const SteadfastRoutes = router;

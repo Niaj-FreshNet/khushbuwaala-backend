@@ -57,7 +57,15 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 });
 
 // 2️⃣ Body Parsers & Cookies
-app.use(express.json());
+// Keep the exact request bytes: webhooks (Steadfast) verify signatures over the raw body,
+// which is gone once JSON is parsed.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as any).rawBody = buf;
+    },
+  })
+);
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
