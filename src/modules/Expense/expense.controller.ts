@@ -1,3 +1,4 @@
+import { EXPENSE_CATEGORIES } from './expense.constant';
 import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
@@ -52,6 +53,15 @@ const updateExpenseStatus = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const updateExpense = catchAsync(async (req: Request, res: Response) => {
+  const result = await ExpenseServices.updateExpense(req.params.id, req.body);
+  sendResponse(res, { statusCode: 200, success: true, message: 'Expense updated successfully', data: result });
+});
+
+const getExpenseCategories = catchAsync(async (_req: Request, res: Response) => {
+  sendResponse(res, { statusCode: 200, success: true, message: 'Expense categories', data: EXPENSE_CATEGORIES });
+});
+
 const deleteExpense = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const result = await ExpenseServices.deleteExpense(id);
@@ -80,6 +90,8 @@ export const ExpenseController = {
   getAllExpenses,
   getExpenseById,
   updateExpenseStatus,
+  updateExpense,
+  getExpenseCategories,
   deleteExpense,
   getExpenseAnalytics,
 };

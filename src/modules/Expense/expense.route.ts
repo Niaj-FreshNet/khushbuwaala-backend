@@ -32,6 +32,20 @@ router.patch(
   ExpenseController.updateExpenseStatus
 );
 
+// Category list (for forms and filters)
+router.get(
+  '/categories',
+  auth('SALESMAN', 'ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.getExpenseCategories
+);
+
+// Full edit (amount, title, date, category, ...): admins only
+router.patch(
+  '/update-expense/:id',
+  auth('ADMIN', 'SUPER_ADMIN'),
+  ExpenseController.updateExpense
+);
+
 // Delete expense (Required for frontend single/bulk delete)
 router.delete(
   '/:id',

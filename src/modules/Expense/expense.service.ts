@@ -3,6 +3,17 @@ import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { prisma } from '../../../prisma/client';
 import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
+import { dhakaDayEnd, dhakaDayStart } from '../../utils/dhakaTime';
+import { EXPENSE_CATEGORY_VALUES, UNCATEGORIZED } from './expense.constant';
+
+const normalizeCategory = (value: unknown): string | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const v = String(value).toUpperCase();
+  if (!EXPENSE_CATEGORY_VALUES.includes(v)) {
+    throw new AppError(httpStatus.BAD_REQUEST, `Unknown expense category: ${value}`);
+  }
+  return v;
+};
 
 const createExpense = async (
   payload: {
@@ -14,10 +25,13 @@ const createExpense = async (
     isPaid?: boolean;
     status?: ExpenseStatus;
     reference?: string;
+    category?: string;
   },
   userId: string
 ) => {
   const { expenseTime, title, description, amount, method, isPaid, status, reference } = payload;
+  const category = normalizeCategory(payload.category);
+  if (!(Number(amount) > 0)) throw new AppError(httpStatus.BAD_REQUEST, 'Amount must be greater than 0');
 
   const expense = await prisma.expense.create({
     data: {
@@ -29,6 +43,7 @@ const createExpense = async (
       isPaid: isPaid ?? false,
       status: status || 'PENDING',
       reference: reference || '',
+      category,
       expenseById: userId,
     },
     include: {
@@ -40,7 +55,8 @@ const createExpense = async (
 };
 
 const getAllExpenses = async (queryParams: Record<string, unknown>) => {
-  const { searchTerm, status, isPaid, method, dateFrom, dateTo, ...rest } = queryParams as {
+  const { searchTerm, status, isPaid, method, dateFrom, dateTo, category, ...rest } = queryParams as {
+    category?: string;
     searchTerm?: string;
     status?: string;
     isPaid?: string | boolean;
@@ -69,6 +85,14 @@ const getAllExpenses = async (queryParams: Record<string, unknown>) => {
     where.method = method;
   }
 
+  if (category && category !== 'ALL') {
+    if (category === UNCATEGORIZED) {
+      where.AND = [{ OR: [{ category: null }, { category: { isSet: false } }] }];
+    } else {
+      where.category = String(category).toUpperCase();
+    }
+  }
+
   if (isPaid !== undefined && isPaid !== 'ALL') {
     where.isPaid = isPaid === 'true' || isPaid === true;
   }
@@ -76,14 +100,9 @@ const getAllExpenses = async (queryParams: Record<string, unknown>) => {
   // Financial Period Alignment
   if (dateFrom || dateTo) {
     where.expenseTime = {};
-    if (dateFrom) {
-      (where.expenseTime as any).gte = new Date(dateFrom);
-    }
-    if (dateTo) {
-      const endDateTime = new Date(dateTo);
-      endDateTime.setHours(23, 59, 59, 999);
-      (where.expenseTime as any).lte = endDateTime;
-    }
+    // Calendar days in Bangladesh time (the server runs in UTC)
+    if (dateFrom) (where.expenseTime as any).gte = dhakaDayStart(String(dateFrom));
+    if (dateTo) (where.expenseTime as any).lte = dhakaDayEnd(String(dateTo));
   }
 
   // Fuzzy Search
@@ -153,6 +172,47 @@ const updateExpenseStatus = async (
   return updated;
 };
 
+// Full edit (admins): fix the amount, title, date, category, etc.
+const updateExpense = async (id: string, payload: Record<string, unknown>) => {
+  const existing = await prisma.expense.findUnique({ where: { id } });
+  if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
+
+  const data: Prisma.ExpenseUpdateInput = {};
+  if (payload.title !== undefined) {
+    const t = String(payload.title).trim();
+    if (!t) throw new AppError(httpStatus.BAD_REQUEST, 'Title is required');
+    data.title = t;
+  }
+  if (payload.description !== undefined) data.description = String(payload.description ?? '');
+  if (payload.reference !== undefined) data.reference = String(payload.reference ?? '');
+  if (payload.method !== undefined) data.method = String(payload.method);
+  if (payload.amount !== undefined) {
+    const a = Number(payload.amount);
+    if (!(a > 0)) throw new AppError(httpStatus.BAD_REQUEST, 'Amount must be greater than 0');
+    data.amount = a;
+  }
+  if (payload.expenseTime !== undefined) {
+    const d = new Date(String(payload.expenseTime));
+    if (Number.isNaN(d.getTime())) throw new AppError(httpStatus.BAD_REQUEST, 'Invalid expense time');
+    data.expenseTime = d;
+  }
+  if (payload.category !== undefined) data.category = normalizeCategory(payload.category);
+  if (payload.status !== undefined) {
+    const st = String(payload.status).toUpperCase();
+    if (!(Object.values(ExpenseStatus) as string[]).includes(st)) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Invalid status');
+    }
+    data.status = st as ExpenseStatus;
+  }
+  if (typeof payload.isPaid === 'boolean') data.isPaid = payload.isPaid;
+
+  return prisma.expense.update({
+    where: { id },
+    data,
+    include: { expenseBy: { select: { id: true, name: true } } },
+  });
+};
+
 const deleteExpense = async (id: string) => {
   const expense = await prisma.expense.findUnique({ where: { id } });
   if (!expense) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
@@ -172,15 +232,11 @@ const getExpenseAnalytics = async (queryParams: Record<string, unknown>) => {
 
   if (startDate || endDate) {
     where.expenseTime = {};
-    if (startDate) (where.expenseTime as any).gte = new Date(startDate);
-    if (endDate) {
-      const endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
-      (where.expenseTime as any).lte = endDateTime;
-    }
+    if (startDate) (where.expenseTime as any).gte = dhakaDayStart(String(startDate));
+    if (endDate) (where.expenseTime as any).lte = dhakaDayEnd(String(endDate));
   }
 
-  const [count, sum, byStatus] = await Promise.all([
+  const [count, sum, byStatus, byCategory] = await Promise.all([
     prisma.expense.count({ where }),
     prisma.expense.aggregate({ where, _sum: { amount: true } }),
     prisma.expense.groupBy({
@@ -189,12 +245,24 @@ const getExpenseAnalytics = async (queryParams: Record<string, unknown>) => {
       _sum: { amount: true },
       where,
     }),
+    prisma.expense.groupBy({
+      by: ['category'],
+      _count: { _all: true },
+      _sum: { amount: true },
+      where: { ...where, status: 'COMPLETED' },
+    }),
   ]);
 
   return {
     totalExpenses: count,
     totalAmount: sum._sum.amount ?? 0,
     byStatus,
+    // Completed expenses per category
+    byCategory: byCategory.map((c) => ({
+      category: c.category ?? UNCATEGORIZED,
+      count: c._count._all,
+      amount: c._sum.amount ?? 0,
+    })),
   };
 };
 
@@ -203,6 +271,7 @@ export const ExpenseServices = {
   getAllExpenses,
   getExpenseById,
   updateExpenseStatus,
+  updateExpense,
   deleteExpense,
   getExpenseAnalytics,
 };

@@ -477,6 +477,8 @@ model Expense {
   description String?
   reference   String?
   status      ExpenseStatus @default(PENDING)
+  // One of EXPENSE_CATEGORIES (modules/Expense/expense.constant.ts); null = uncategorized
+  category    String?
 
   expenseById String? @db.ObjectId
   expenseBy   User?   @relation(fields: [expenseById], references: [id])
