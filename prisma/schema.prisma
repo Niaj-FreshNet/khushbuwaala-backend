@@ -707,10 +707,36 @@ model InvestorMonthlyProfit {
   companyNetProfit Float
   shareAmount      Float
   isDistributed    Boolean  @default(false)
+  // Audit: % used and when/who credited it (set on SUPER_ADMIN approval)
+  sharePercentage  Float?
+  distributedAt    DateTime?
+  distributedById  String?  @db.ObjectId
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([investorId, year, month])
   @@map("investor_monthly_profits")
+}
+
+enum LedgerAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// An investor's request to view the full company ledger. Each view window needs a
+// SUPER_ADMIN approval and expires (DECISIONS D-007).
+model LedgerAccessRequest {
+  id           String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String             @db.ObjectId
+  status       LedgerAccessStatus @default(PENDING)
+  reason       String?
+  requestedAt  DateTime           @default(now())
+  decidedAt    DateTime?
+  decidedById  String?            @db.ObjectId
+  expiresAt    DateTime?
+
+  @@index([userId, status])
+  @@map("ledger_access_requests")
 }

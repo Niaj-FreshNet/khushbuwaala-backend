@@ -2,6 +2,8 @@ import httpStatus from 'http-status';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { InvestorServices } from './investor.service';
+import { InvestorProfitServices } from './investorProfit.service';
+import { LedgerAccessServices } from './ledgerAccess.service';
 
 const getInvestorDashboard = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query;
@@ -81,7 +83,55 @@ const updateWithdrawalStatus = catchAsync(async (req, res) => {
     });
 });
 
+const uid = (req: any) => req.user?.id || req.user?.userId;
+
+// ---- Monthly profit share (SUPER_ADMIN) ----
+const previewProfitMonth = catchAsync(async (req, res) => {
+    const year = Number(req.query.year), month = Number(req.query.month);
+    const result = await InvestorProfitServices.previewMonth(year, month);
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Profit share preview', data: result });
+});
+
+const approveProfitMonth = catchAsync(async (req, res) => {
+    const year = Number(req.body?.year), month = Number(req.body?.month);
+    const result = await InvestorProfitServices.approveMonth(year, month, uid(req));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: `Credited ${result.credited.length} investor(s)`, data: result });
+});
+
+// ---- Ledger access (investor requests, SUPER_ADMIN decides) ----
+const requestLedgerAccess = catchAsync(async (req, res) => {
+    const result = await LedgerAccessServices.requestAccess(uid(req), req.body?.reason);
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Request sent to the Super Admin', data: result });
+});
+
+const myLedgerAccess = catchAsync(async (req, res) => {
+    const result = await LedgerAccessServices.myStatus(uid(req));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Ledger access status', data: result });
+});
+
+const listLedgerAccess = catchAsync(async (req, res) => {
+    const result = await LedgerAccessServices.listRequests(req.query.status as string | undefined);
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Ledger access requests', data: result });
+});
+
+const decideLedgerAccess = catchAsync(async (req, res) => {
+    const result = await LedgerAccessServices.decide(req.params.id, req.body?.status, req.body?.hours, uid(req));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: `Request ${String(result.status).toLowerCase()}`, data: result });
+});
+
+const revokeLedgerAccess = catchAsync(async (req, res) => {
+    const result = await LedgerAccessServices.revoke(req.params.id);
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Access ended', data: result });
+});
+
 export const InvestorController = {
+    previewProfitMonth,
+    approveProfitMonth,
+    requestLedgerAccess,
+    myLedgerAccess,
+    listLedgerAccess,
+    decideLedgerAccess,
+    revokeLedgerAccess,
     getInvestorDashboard,
     requestWithdrawal,
     getAllInvestors,

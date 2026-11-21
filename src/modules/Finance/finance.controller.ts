@@ -3,6 +3,7 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import AppError from '../../errors/AppError';
 import { FinanceServices } from './finance.service';
+import { LedgerAccessServices } from '../Investor/ledgerAccess.service';
 
 const setVariantPackagingCost = catchAsync(async (req, res) => {
     const { sku } = req.params;
@@ -107,6 +108,11 @@ const overrideOrderProfit = catchAsync(async (req, res) => {
 });
 
 const getLedger = catchAsync(async (req, res) => {
+    // Investors see the full ledger only during a Super-Admin-approved window (D-007)
+    const user = (req as any).user;
+    if (user?.role === 'INVESTOR' && !(await LedgerAccessServices.hasActiveAccess(user.id))) {
+        throw new AppError(httpStatus.FORBIDDEN, 'LEDGER_ACCESS_REQUIRED: request access from the Super Admin to view the full ledger.');
+    }
     const result = await FinanceServices.getLedgerTransactions(req.query);
     sendResponse(res, 
         { statusCode: 200, 
