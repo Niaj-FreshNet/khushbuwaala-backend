@@ -652,7 +652,22 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
       if (payload.isPaid !== undefined) data.isPaid = payload.isPaid;
       if (payload.method !== undefined) data.method = payload.method ?? null;
       if (payload.orderSource !== undefined) data.orderSource = payload.orderSource;
-      if (payload.platform !== undefined) data.platform = payload.platform;
+      if (payload.platform !== undefined) {
+        const cleanPlatform = String(payload.platform || '').trim();
+
+        if (!cleanPlatform || cleanPlatform.toLowerCase() === 'SHOWROOM') {
+          data.platform = '';
+          data.orderSource = OrderSource.SHOWROOM;
+        } else {
+          data.platform = cleanPlatform;
+          data.orderSource = OrderSource.MANUAL;
+        }
+      } else if (payload.orderSource !== undefined) {
+        data.orderSource = payload.orderSource;
+        if (payload.orderSource === OrderSource.SHOWROOM) {
+          data.platform = '';
+        }
+      }
       if (payload.shippingCost !== undefined) data.shippingCost = Number(payload.shippingCost);
       if (payload.discountAmount !== undefined) data.discountAmount = Math.max(0, Number(payload.discountAmount));
       if (payload.additionalNotes !== undefined) data.additionalNotes = payload.additionalNotes ?? null;

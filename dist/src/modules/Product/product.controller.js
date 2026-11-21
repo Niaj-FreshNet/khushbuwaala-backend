@@ -344,6 +344,15 @@ const receiveStockPurchase = (0, catchAsync_1.default)((req, res) => __awaiter(v
         data: result,
     });
 }));
+const quickUpdateCell = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const result = yield product_service_1.ProductServices.quickUpdateCell(req.body);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Cell updated successfully',
+        data: result,
+    });
+}));
 const generateGoogleShoppingFeed = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const xmlFeed = yield product_service_1.ProductServices.generateGoogleShoppingFeed();
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
@@ -374,5 +383,6 @@ exports.ProductController = {
     getStockLogs,
     setVariantPackagingCost,
     receiveStockPurchase,
+    quickUpdateCell,
     generateGoogleShoppingFeed,
 };

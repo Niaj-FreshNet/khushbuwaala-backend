@@ -7,8 +7,8 @@ const router = express.Router();
 // NOTE: You should protect all of these with auth(Role.ADMIN, Role.SUPER_ADMIN)
 
 // Packaging Costs (Setup Phase)
-router.post('/packaging/variant/:sku', auth('ADMIN', 'SUPER_ADMIN'), FinanceController.setVariantPackagingCost);
-router.get('/packaging/variant/:sku', FinanceController.getPackagingCost);
+router.post('/packaging/variant/:sku', auth('SUPER_ADMIN'), FinanceController.setVariantPackagingCost);
+router.get('/packaging/variant/:sku', auth('SUPER_ADMIN'), FinanceController.getPackagingCost);
 
 // Stock Purchases & WAC (Procurement Phase)
 router.post('/procurement/purchase/:productId', auth('SUPER_ADMIN'), FinanceController.receiveStockPurchase);

@@ -34,7 +34,7 @@ import slugify from 'slugify';
 import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
 
 // Create Product
-export const createProduct = async (payload: IProduct): Promise<IProductDetailResponse> => {
+export const createProduct = async (payload: IProduct, isSuperAdmin = false): Promise<IProductDetailResponse> => {
   const slug = slugify(payload.name, { lower: true, strict: true });
 
   // 1. Run category and SKU duplicate validation concurrently
@@ -100,7 +100,7 @@ export const createProduct = async (payload: IProduct): Promise<IProductDetailRe
             mpn: v.mpn,
             barcode: v.barcode,
             compareAtPrice: v.compareAtPrice,
-            costPrice: v.costPrice,
+            costPrice: isSuperAdmin ? v.costPrice : undefined, // only Super Admin can set cost
             weightGrams: v.weightGrams,
             attributes: v.attributes || {},
             images: v.images || [],
@@ -241,7 +241,7 @@ const getAllProducts = async (query: IProductQuery) => {
   return { data: results.map(formatProductListingResponse), meta };
 };
 
-const getAllProductsAdmin = async (query: IProductQuery) => {
+const getAllProductsAdmin = async (query: IProductQuery, isSuperAdmin = false) => {
   const queryBuilder = new QueryBuilder(query, prisma.product);
 
   if (query.stock === 'in') queryBuilder.rawFilter({ stock: { gt: 0 } });
@@ -259,10 +259,10 @@ const getAllProductsAdmin = async (query: IProductQuery) => {
   const meta = await queryBuilder.countTotal();
   results = applySorting(results, query.sortBy);
 
-  return { data: results.map(formatProductAdminListingResponse), meta };
+  return { data: results.map((p: any) => formatProductAdminListingResponse(p, isSuperAdmin)), meta };
 };
 
-const getProduct = async (id: string): Promise<IProductDetailResponse | null> => {
+const getProduct = async (id: string, isSuperAdmin = false): Promise<IProductDetailResponse | null> => {
   const product = await prisma.product.findUnique({
     where: { id },
     include: productDetailInclude,
@@ -285,7 +285,7 @@ const getProduct = async (id: string): Promise<IProductDetailResponse | null> =>
     orderBy: { salesCount: 'desc' },
   });
 
-  const formattedProduct = formatProductAdminDetailResponse(product);
+  const formattedProduct = formatProductAdminDetailResponse(product, isSuperAdmin);
 
   return {
     ...formattedProduct,
@@ -334,7 +334,8 @@ const getProductBySlug = async (slug: string): Promise<IProductDetailResponse | 
 
 export const updateProduct = async (
   id: string,
-  payload: IUpdateProduct
+  payload: IUpdateProduct,
+  isSuperAdmin = false
 ): Promise<IProductDetailResponse> => {
   // 1. Fetch product and category existence check concurrently if categoryId is updated
   const [existingProduct, categoryExists] = await Promise.all([
@@ -358,6 +359,11 @@ export const updateProduct = async (
   if (payload.categoryId && !categoryExists) {
     throw new AppError(404, 'Category not found');
   }
+
+  // Cost is protected: variants are re-created on every edit, so carry the stored cost over by SKU
+  const existingCostBySku = new Map<string, number | null>(
+    existingProduct.variants.map((v) => [v.sku, v.costPrice ?? null])
+  );
 
   let primaryImage = existingProduct.primaryImage;
   let otherImages = existingProduct.otherImages;
@@ -452,7 +458,10 @@ export const updateProduct = async (
             mpn: v.mpn,
             barcode: v.barcode,
             compareAtPrice: v.compareAtPrice,
-            costPrice: v.costPrice,
+            costPrice:
+              isSuperAdmin && v.costPrice !== undefined
+                ? v.costPrice
+                : existingCostBySku.get(v.sku) ?? undefined,
             weightGrams: v.weightGrams,
             attributes: v.attributes || {},
             images: v.images || [],
@@ -970,29 +979,25 @@ const formatProductListingResponse = (product: any): IProductListingResponse => 
   };
 };
 
-const formatProductAdminListingResponse = (product: any): IProductAdminListingResponse => {
+const formatProductAdminListingResponse = (product: any, isSuperAdmin = false): IProductAdminListingResponse => {
   const base = formatProductListingResponse(product);
   const variants = product.variants || [];
 
   return {
     ...base,
     supplier: product.supplier || null,
+    brand: product.brand || null,
+    categoryId: product.categoryId,
     category: product.category,
     variants: variants.map((v: any) => ({
-      id: v.id,
-      sku: v.sku,
-      unit: v.unit,
-      size: v.size,
-      price: v.price,
-      stock: v.stock,
-      isDefault: v.isDefault,
-      published: v.published ?? true,
-      compareAtPrice: v.compareAtPrice,
-      images: v.images || [],
+      id: v.id, sku: v.sku, unit: v.unit, size: v.size, price: v.price, stock: v.stock,
+      isDefault: v.isDefault, published: v.published ?? true,
+      compareAtPrice: v.compareAtPrice, images: v.images || [],
+      lowStockAlert: v.lowStockAlert, barcode: v.barcode, gtin: v.gtin, mpn: v.mpn, weightGrams: v.weightGrams,
+      ...(isSuperAdmin ? { costPrice: v.costPrice ?? null } : {}),
     })),
-  };
+  } as any;
 };
-
 const formatProductSearchResponse = (product: any): IProductSearchResponse => {
   const variants = product.variants || [];
   const prices = variants.map((v: any) => v.price);
@@ -1071,7 +1076,9 @@ const formatProductDetailResponse = (product: any): IProductDetailResponse => {
     supplier: product.supplier,
 
     discounts: product.discounts || [],
-    variants: variants.map((v: any) => ({
+    // costPrice is never exposed in this (public) response
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    variants: variants.map(({ costPrice: _hiddenCost, ...v }: any) => ({
       ...v,
       images: v.images || [],
       discounts: v.discounts || [],
@@ -1097,7 +1104,7 @@ const formatProductDetailResponse = (product: any): IProductDetailResponse => {
   };
 };
 
-const formatProductAdminDetailResponse = (product: any): IProductDetailResponse => {
+const formatProductAdminDetailResponse = (product: any, isSuperAdmin = false): IProductDetailResponse => {
   const variants = product.variants || [];
   const prices = variants.map((v: any) => v.price);
   const reviews = product.Review || [];
@@ -1155,8 +1162,9 @@ const formatProductAdminDetailResponse = (product: any): IProductDetailResponse 
     discounts: product.discounts || [],
 
     // ⚡ Explicitly preserve variant publication status for admin views
-    variants: variants.map((v: any) => ({
+    variants: variants.map(({ costPrice, ...v }: any) => ({
       ...v,
+      ...(isSuperAdmin ? { costPrice: costPrice ?? null } : {}), // cost only for Super Admin
       published: v.published ?? true,
       images: v.images || [],
       discounts: v.discounts || [],
@@ -1315,17 +1323,11 @@ export interface IQuickCellUpdatePayload {
 
 const ALLOWED_PRODUCT_FIELDS = ['name', 'published', 'categoryId', 'supplier', 'stock', 'brand'] as const;
 const ALLOWED_VARIANT_FIELDS = [
-  'price',
-  'compareAtPrice',
-  'costPrice',
-  'stock',
-  'published',
-  'sku',
-  'size',
-  'unit',
+  'price', 'compareAtPrice', 'costPrice', 'stock', 'published', 'sku', 'size', 'unit',
+  'lowStockAlert', 'barcode', 'gtin', 'mpn', 'weightGrams',
 ] as const;
 
-const quickUpdateCell = async (payload: IQuickCellUpdatePayload) => {
+const quickUpdateCell = async (payload: IQuickCellUpdatePayload, isSuperAdmin = false) => {
   const { entity, id, field, value } = payload;
 
   if (entity === 'PRODUCT') {
@@ -1395,6 +1397,10 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload) => {
       throw new AppError(400, `Field '${field}' is not editable on ProductVariant.`);
     }
 
+    if (field === 'costPrice' && !isSuperAdmin) {
+      throw new AppError(403, 'Only Super Admin can edit cost price.');
+    }
+
     const existingVariant = await prisma.productVariant.findUnique({
       where: { id },
       select: { id: true, productId: true, sku: true },
@@ -1429,8 +1435,10 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload) => {
       data.unit = cleanUnit;
     } else if (field === 'published') {
       data.published = Boolean(value);
-    } else if (['price', 'compareAtPrice', 'costPrice', 'stock', 'size'].includes(field)) {
+    } else if (['price', 'compareAtPrice', 'costPrice', 'stock', 'size', 'lowStockAlert', 'weightGrams'].includes(field)) {
       data[field] = Number(value);
+    } else if (['barcode', 'gtin', 'mpn'].includes(field)) {
+      data[field] = String(value ?? '').trim() || null;
     } else {
       data[field] = value;
     }
@@ -1473,110 +1481,278 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload) => {
   throw new AppError(400, 'Invalid entity type. Expected PRODUCT or VARIANT.');
 };
 
+
+const escapeXml = (value: unknown): string => {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+};
+
+const stripHtml = (value: string): string => {
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<\/?[^>]+(>|$)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
 const generateGoogleShoppingFeed = async (): Promise<string> => {
-  // Fetch all published products with their variants and category relations
   const products = await prisma.product.findMany({
     where: { published: true },
     include: {
       variants: true,
-      category: { select: { categoryName: true } },
+      category: {
+        select: { categoryName: true },
+      },
     },
   });
 
-  const domain = process.env.FRONTEND_LIVE_URL || 'https://khushbuwaala.com';
+  const domain = (
+    process.env.FRONTEND_LIVE_URL || "https://khushbuwaala.com"
+  ).replace(/\/+$/, "");
+
+  const defaultCategory =
+    "Health & Beauty > Personal Care > Cosmetics > Perfume";
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+
   xml += `<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n`;
   xml += `  <channel>\n`;
-  xml += `    <title>Khushbuwaala Product Catalog</title>\n`;
-  xml += `    <link>${domain}</link>\n`;
-  xml += `    <description>Bespoke fragrances, attars, and custom perfumes catalog</description>\n`;
+  xml += `    <title>${escapeXml("Khushbuwaala Product Catalog")}</title>\n`;
+  xml += `    <link>${escapeXml(domain)}</link>\n`;
+  xml += `    <description>${escapeXml(
+    "Bespoke fragrances, attars, and custom perfumes catalog"
+  )}</description>\n`;
+
+  // Helper to generate common XML fields
+  const addCommonFields = (
+    product: any,
+    itemId: string,
+    title: string,
+    description: string,
+    link: string,
+    imageLink: string,
+    price: string,
+    availability: string,
+    brand: string,
+    category: string,
+    gender: string,
+    ageGroup: string
+  ) => {
+    xml += `    <item>\n`;
+
+    xml += `      <g:id>${escapeXml(itemId)}</g:id>\n`;
+    xml += `      <g:title>${escapeXml(title)}</g:title>\n`;
+    xml += `      <g:description>${escapeXml(description)}</g:description>\n`;
+    xml += `      <g:link>${escapeXml(link)}</g:link>\n`;
+    xml += `      <g:image_link>${escapeXml(imageLink)}</g:image_link>\n`;
+
+    xml += `      <g:condition>${escapeXml(
+      product.condition || "new"
+    )}</g:condition>\n`;
+
+    xml += `      <g:availability>${escapeXml(
+      availability
+    )}</g:availability>\n`;
+
+    xml += `      <g:price>${escapeXml(price)}</g:price>\n`;
+    xml += `      <g:brand>${escapeXml(brand)}</g:brand>\n`;
+
+    xml += `      <g:google_product_category>${escapeXml(
+      category
+    )}</g:google_product_category>\n`;
+
+    xml += `      <g:gender>${escapeXml(gender)}</g:gender>\n`;
+    xml += `      <g:age_group>${escapeXml(ageGroup)}</g:age_group>\n`;
+
+    // Additional product images
+    const additionalImages = product.otherImages || [];
+
+    for (const imgLink of additionalImages.slice(0, 10)) {
+      if (imgLink) {
+        xml += `      <g:additional_image_link>${escapeXml(
+          imgLink
+        )}</g:additional_image_link>\n`;
+      }
+    }
+
+    // Product videos
+    for (const videoLink of product.videos || []) {
+      if (videoLink) {
+        xml += `      <g:video_link>${escapeXml(
+          videoLink
+        )}</g:video_link>\n`;
+      }
+    }
+    // GTIN and shipping weight are added separately per variant/product
+    xml += `    </item>\n`;
+  };
 
   for (const product of products) {
     const parentId = product.id;
-    const brand = product.brand || 'Khushbuwaala';
-    const category = product.category?.categoryName || 'Health & Beauty > Personal Care > Cosmetics > Perfume';
-    const description = (product.description || '').replace(/<\/?[^>]+(>|$)/g, "").trim(); // Safe HTML strip
+    const brand = product.brand || "Khushbuwaala";
+    const category =
+      product.googleProductCategory ||
+      product.category?.categoryName ||
+      defaultCategory;
 
-    // Collect additional image links for Google Merchant Center g:additional_image_link
-    const additionalImages = (product.otherImages || []).slice(0, 10); // Google allows up to 10 additional images
+    const description = stripHtml(product.description || "");
 
-    // Collect product showcase videos for g:video_link
+    const gender = product.gender?.toLowerCase() || "unisex";
+    const ageGroup = product.bestFor?.join(", ") || "all";
+
     const productVideos = product.videos || [];
 
     if (product.variants && product.variants.length > 0) {
       for (const variant of product.variants) {
-        // Skip unpublished variants if they are explicitly marked false
+        // Skip unpublished variants
         if (variant.published === false) continue;
 
-        const variantImages = variant.images?.length ? variant.images : [product.primaryImage];
-        const primaryVariantImage = variantImages[0] || product.primaryImage;
-        const variantAdditionalImages = [...variantImages.slice(1), ...additionalImages].slice(0, 10);
+        const variantImages = variant.images?.length
+          ? variant.images
+          : [product.primaryImage];
+
+        const primaryVariantImage =
+          variantImages[0] || product.primaryImage;
+
+        const variantAdditionalImages = [
+          ...variantImages.slice(1),
+          ...(product.otherImages || []),
+        ].filter(Boolean).slice(0, 10);
 
         const variantUrl = `${domain}/products/${product.slug}?variant=${variant.id}`;
-        const availability = (variant.stock > 0 || product.stock > 0) ? 'in_stock' : 'out_of_stock';
+
+        const availability =
+          variant.stock > 0 || product.stock > 0
+            ? "in_stock"
+            : "out_of_stock";
+
         const priceStr = `${variant.price.toFixed(2)} BDT`;
-        const regularPriceStr = variant.compareAtPrice ? `${variant.compareAtPrice.toFixed(2)} BDT` : priceStr;
+
+        const compareAtPrice = variant.compareAtPrice;
+
+        const hasSalePrice =
+          compareAtPrice != null && compareAtPrice > variant.price;
+
+        const regularPriceStr = hasSalePrice
+          ? `${compareAtPrice!.toFixed(2)} BDT`
+          : priceStr;
+
+        const title = `${product.name} - ${variant.size}${variant.unit}`;
 
         xml += `    <item>\n`;
-        xml += `      <g:id>${variant.sku}</g:id>\n`;
-        xml += `      <g:title><![CDATA[${product.name} - ${variant.size}${variant.unit}]]></g:title>\n`;
-        xml += `      <g:description><![CDATA[${description}]]></g:description>\n`;
-        xml += `      <g:link>${variantUrl}</g:link>\n`;
-        xml += `      <g:image_link>${primaryVariantImage}</g:image_link>\n`;
 
-        // Additional Images
+        xml += `      <g:id>${escapeXml(variant.sku)}</g:id>\n`;
+        xml += `      <g:title>${escapeXml(title)}</g:title>\n`;
+        xml += `      <g:description>${escapeXml(description)}</g:description>\n`;
+        xml += `      <g:link>${escapeXml(variantUrl)}</g:link>\n`;
+
+        if (primaryVariantImage) {
+          xml += `      <g:image_link>${escapeXml(
+            primaryVariantImage
+          )}</g:image_link>\n`;
+        }
+
+        // Variant-specific additional images
         for (const imgLink of variantAdditionalImages) {
-          xml += `      <g:additional_image_link>${imgLink}</g:additional_image_link>\n`;
+          xml += `      <g:additional_image_link>${escapeXml(
+            imgLink
+          )}</g:additional_image_link>\n`;
         }
 
-        // Showcase Videos
-        for (const vidLink of productVideos) {
-          xml += `      <g:video_link>${vidLink}</g:video_link>\n`;
+        // Condition
+        xml += `      <g:condition>${escapeXml(
+          product.condition || "new"
+        )}</g:condition>\n`;
+
+        // Availability
+        xml += `      <g:availability>${escapeXml(
+          availability
+        )}</g:availability>\n`;
+
+        // Price
+        xml += `      <g:price>${escapeXml(
+          regularPriceStr
+        )}</g:price>\n`;
+
+        // Sale price
+        if (hasSalePrice) {
+          xml += `      <g:sale_price>${escapeXml(
+            priceStr
+          )}</g:sale_price>\n`;
         }
 
-        xml += `      <g:condition>${product.condition || 'new'}</g:condition>\n`;
-        xml += `      <g:availability>${availability}</g:availability>\n`;
-        xml += `      <g:price>${regularPriceStr}</g:price>\n`;
-        if (variant.compareAtPrice) {
-          xml += `      <g:sale_price>${priceStr}</g:sale_price>\n`;
+        // Brand
+        xml += `      <g:brand>${escapeXml(brand)}</g:brand>\n`;
+
+        // Group variants together
+        xml += `      <g:item_group_id>${escapeXml(
+          parentId
+        )}</g:item_group_id>\n`;
+
+        // Google product category
+        xml += `      <g:google_product_category>${escapeXml(
+          category
+        )}</g:google_product_category>\n`;
+
+        // Gender and age group
+        xml += `      <g:gender>${escapeXml(gender)}</g:gender>\n`;
+        xml += `      <g:age_group>${escapeXml(ageGroup)}</g:age_group>\n`;
+
+        // GTIN
+        if (variant.gtin) {
+          xml += `      <g:gtin>${escapeXml(
+            variant.gtin
+          )}</g:gtin>\n`;
         }
-        xml += `      <g:brand><![CDATA[${brand}]]></g:brand>\n`;
-        xml += `      <g:item_group_id>${parentId}</g:item_group_id>\n`;
-        xml += `      <g:google_product_category><![CDATA[${product.googleProductCategory || category}]]></g:google_product_category>\n`;
-        xml += `      <g:gender>${product.gender?.toLowerCase() || 'unisex'}</g:gender>\n`;
-        xml += `      <g:age_group>${product.bestFor?.join(', ') || 'all'}</g:age_group>\n`;
-        xml += `      <g:meta_title><![CDATA[${product.metaTitle || product.name}]]></g:meta_title>\n`;
-        xml += `      <g:meta_description><![CDATA[${product.metaDescription || description}]]></g:meta_description>\n`;
-        if (variant.gtin) xml += `      <g:gtin>${variant.gtin}</g:gtin>\n`;
-        if (variant.weightGrams) xml += `      <g:shipping_weight>${variant.weightGrams} g</g:shipping_weight>\n`;
+
+        // Shipping weight
+        if (variant.weightGrams) {
+          xml += `      <g:shipping_weight>${escapeXml(
+            `${variant.weightGrams} g`
+          )}</g:shipping_weight>\n`;
+        }
+
+        // Product videos
+        for (const videoLink of productVideos) {
+          if (videoLink) {
+            xml += `      <g:video_link>${escapeXml(
+              videoLink
+            )}</g:video_link>\n`;
+          }
+        }
+
         xml += `    </item>\n`;
       }
     } else {
-      // Fallback for products without variants
-      const availability = product.stock > 0 ? 'in_stock' : 'out_of_stock';
-      xml += `    <item>\n`;
-      xml += `      <g:id>${product.id}</g:id>\n`;
-      xml += `      <g:title><![CDATA[${product.name}]]></g:title>\n`;
-      xml += `      <g:description><![CDATA[${description}]]></g:description>\n`;
-      xml += `      <g:link>${domain}/products/${product.slug}</g:link>\n`;
-      xml += `      <g:image_link>${product.primaryImage}</g:image_link>\n`;
+      // Products without variants
+      const availability =
+        product.stock > 0 ? "in_stock" : "out_of_stock";
 
-      for (const imgLink of additionalImages) {
-        xml += `      <g:additional_image_link>${imgLink}</g:additional_image_link>\n`;
-      }
+      const link = `${domain}/products/${product.slug}`;
 
-      for (const vidLink of productVideos) {
-        xml += `      <g:video_link>${vidLink}</g:video_link>\n`;
-      }
+      const price = `${product.minPrice.toFixed(2)} BDT`;
 
-      xml += `      <g:condition>${product.condition || 'new'}</g:condition>\n`;
-      xml += `      <g:availability>${availability}</g:availability>\n`;
-      xml += `      <g:price>${product.minPrice.toFixed(2)} BDT</g:price>\n`;
-      xml += `      <g:brand><![CDATA[${brand}]]></g:brand>\n`;
-      xml += `      <g:google_product_category><![CDATA[${category}]]></g:google_product_category>\n`;
-      xml += `      <g:gender>${product.gender?.toLowerCase() || 'unisex'}</g:gender>\n`;
-      xml += `    </item>\n`;
+      const imageLink = product.primaryImage || "";
+
+      addCommonFields(
+        product,
+        product.id,
+        product.name,
+        description,
+        link,
+        imageLink,
+        price,
+        availability,
+        brand,
+        category,
+        gender,
+        ageGroup
+      );
     }
   }
 

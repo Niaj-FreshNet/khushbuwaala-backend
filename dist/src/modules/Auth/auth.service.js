@@ -346,9 +346,7 @@ const makeSalesman = (payload) => __awaiter(void 0, void 0, void 0, function* ()
     const refreshToken = (0, auth_utils_1.createToken)(JwtPayload, config_1.default.refresh_token_secret, config_1.default.refresh_token_expires);
     return { result, accessToken, refreshToken };
 });
-const approveOrUpdateUserRole = (adminUserId, 
-// 👇 Add totalInvested and currentBalance here so TypeScript knows they exist
-payload) => __awaiter(void 0, void 0, void 0, function* () {
+const approveOrUpdateUserRole = (adminUserId, payload) => __awaiter(void 0, void 0, void 0, function* () {
     if (!adminUserId) {
         throw new AppError_1.default(401, "Unauthorized: Admin ID is missing.");
     }
@@ -360,9 +358,10 @@ payload) => __awaiter(void 0, void 0, void 0, function* () {
     const targetUser = yield client_1.prisma.user.findUnique({ where: { id: userId } });
     if (!targetUser)
         throw new AppError_1.default(404, "User not found");
-    // 🛡️ Transaction guarantees both User and Investor tables update perfectly together
+    // Track the previous status so we don't spam emails if the status didn't actually change
+    const wasAlreadyApproved = targetUser.isApproved;
     const result = yield client_1.prisma.$transaction((tx) => __awaiter(void 0, void 0, void 0, function* () {
-        // 3. Update the base User role & approval
+        // 1. Update the base User role & approval
         const updatedUser = yield tx.user.update({
             where: { id: userId },
             data: {
@@ -371,7 +370,7 @@ payload) => __awaiter(void 0, void 0, void 0, function* () {
             },
             select: { id: true, name: true, email: true, role: true, isApproved: true },
         });
-        // 4. If they are marked as an INVESTOR, explicitly manage their dedicated profile
+        // 2. If they are marked as an INVESTOR, explicitly manage their dedicated profile
         if (role === 'INVESTOR') {
             const percentage = Number(investorProfitPercentage) || 0;
             const capital = Number(totalInvested) || 0;
@@ -393,6 +392,17 @@ payload) => __awaiter(void 0, void 0, void 0, function* () {
         }
         return updatedUser;
     }));
+    // 📧 3. Dispatch the Email Notification (Non-blocking)
+    // We only send the email if the approval status actually changed during this update
+    if (wasAlreadyApproved !== isApproved) {
+        if (isApproved) {
+            // Don't await these so the API responds instantly to the admin
+            (0, emails_1.sendRoleApprovalEmail)(result.email, result.name || "User", result.role);
+        }
+        else {
+            (0, emails_1.sendRoleRejectionEmail)(result.email, result.name || "User", result.role);
+        }
+    }
     return result;
 });
 const socialLogin = (payload) => __awaiter(void 0, void 0, void 0, function* () {

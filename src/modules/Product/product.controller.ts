@@ -50,7 +50,8 @@ const createProduct = catchAsync(async (req, res) => {
   };
   // console.log("parsed data:", parsedData)
 
-  const result = await ProductServices.createProduct(parsedData as IProduct);
+  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const result = await ProductServices.createProduct(parsedData as IProduct, isSuperAdmin);
 
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
@@ -80,8 +81,9 @@ const getAllProducts = catchAsync(async (req, res) => {
 // Get All Products (Admin)
 const getAllProductsAdmin = catchAsync(async (req, res) => {
   const query = parseProductQuery(req.query);
+  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
 
-  const result = await ProductServices.getAllProductsAdmin(query);
+  const result = await ProductServices.getAllProductsAdmin(query, isSuperAdmin);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -95,7 +97,8 @@ const getAllProductsAdmin = catchAsync(async (req, res) => {
 // Get Single Product
 const getProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const result = await ProductServices.getProduct(id);
+  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const result = await ProductServices.getProduct(id, isSuperAdmin);
 
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
@@ -165,7 +168,8 @@ const updateProduct = catchAsync(async (req, res) => {
     newImages: newImageUrls,
   };
 
-  const result = await ProductServices.updateProduct(id, parsedData as IUpdateProduct);
+  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const result = await ProductServices.updateProduct(id, parsedData as IUpdateProduct, isSuperAdmin);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -409,7 +413,7 @@ const setVariantPackagingCost = catchAsync(async (req, res) => {
 // Receive Stock Purchase (Procurement)
 const receiveStockPurchase = catchAsync(async (req, res) => {
   const { productId } = req.params;
-  
+
   const payload = {
     ...req.body,
     productId,
@@ -431,7 +435,8 @@ const receiveStockPurchase = catchAsync(async (req, res) => {
 });
 
 const quickUpdateCell = catchAsync(async (req, res) => {
-  const result = await ProductServices.quickUpdateCell(req.body);
+  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const result = await ProductServices.quickUpdateCell(req.body, isSuperAdmin);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -443,7 +448,7 @@ const quickUpdateCell = catchAsync(async (req, res) => {
 
 const generateGoogleShoppingFeed = catchAsync(async (req, res) => {
   const xmlFeed = await ProductServices.generateGoogleShoppingFeed();
-  
+
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
   res.status(httpStatus.OK).send(xmlFeed);
 });

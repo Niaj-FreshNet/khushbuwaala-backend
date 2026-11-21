@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE = exports.ORDER_CONFIRMATION_TEMPLATE = exports.CONTACT_FORM_TEMPLATE = exports.WELCOME_EMAIL_TEMPLATE = exports.PASSWORD_RESET_SUCCESS_TEMPLATE = exports.PASSWORD_RESET_REQUEST_TEMPLATE = exports.VERIFICATION_EMAIL_TEMPLATE = void 0;
+exports.ROLE_REJECTED_TEMPLATE = exports.ROLE_APPROVED_TEMPLATE = exports.ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE = exports.ORDER_CONFIRMATION_TEMPLATE = exports.CONTACT_FORM_TEMPLATE = exports.WELCOME_EMAIL_TEMPLATE = exports.PASSWORD_RESET_SUCCESS_TEMPLATE = exports.PASSWORD_RESET_REQUEST_TEMPLATE = exports.VERIFICATION_EMAIL_TEMPLATE = void 0;
 const BRAND_COLOR = '#1b382b'; // Deep botanical emerald
 const ACCENT_COLOR = '#4a7c59'; // Soft laurel / sage accent
 const BG_COLOR = '#F6F8F6'; // Cool clean background
@@ -290,6 +290,63 @@ exports.ORDER_NOTIFICATION_TO_ADMIN_TEMPLATE = `
       <div style="margin-top: 24px; padding: 12px; background-color: ${BG_COLOR}; border-radius: 6px; text-align: center; font-size: 12px; color: #6B7280;">
         Update order fulfillment and status inside your admin dashboard.
       </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+exports.ROLE_APPROVED_TEMPLATE = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Khushbuwaala - Role Approved</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 32px 12px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid ${BORDER_COLOR}; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+    <div style="background-color: ${BRAND_COLOR}; padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+    </div>
+    <div style="padding: 36px 30px; text-align: center;">
+      <div style="background-color: #E8F0EA; color: ${BRAND_COLOR}; width: 56px; height: 56px; line-height: 56px; border-radius: 50%; display: inline-block; font-size: 24px; margin-bottom: 16px;">
+        ✓
+      </div>
+      <h2 style="margin: 0 0 12px; font-size: 19px; color: #111827; font-weight: 600;">Account Approved</h2>
+      <p style="margin: 0 0 20px; color: #4B5563; font-size: 14px; text-align: center;">
+        Hello {name}, your access role as <strong>{role}</strong> has been officially approved by the Super Admin.
+      </p>
+      
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="https://admin.khushbuwaala.com/login" style="background-color: ${BRAND_COLOR}; color: #ffffff; padding: 13px 26px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">Login to Dashboard</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+exports.ROLE_REJECTED_TEMPLATE = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Khushbuwaala - Role Update</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; background-color: ${BG_COLOR}; margin: 0; padding: 32px 12px;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid ${BORDER_COLOR}; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+    <div style="background-color: ${BRAND_COLOR}; padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600;">Khushbuwaala</h1>
+    </div>
+    <div style="padding: 36px 30px; text-align: center;">
+      <div style="background-color: #FEE2E2; color: #DC2626; width: 56px; height: 56px; line-height: 56px; border-radius: 50%; display: inline-block; font-size: 24px; margin-bottom: 16px;">
+        ✕
+      </div>
+      <h2 style="margin: 0 0 12px; font-size: 19px; color: #111827; font-weight: 600;">Account Update</h2>
+      <p style="margin: 0 0 20px; color: #4B5563; font-size: 14px; text-align: center;">
+        Hello {name}, your access role request for <strong>{role}</strong> is currently pending or has been denied by the administration.
+      </p>
+      <p style="margin: 0; color: #6B7280; font-size: 13px; text-align: center;">
+        If you believe this is a mistake, please contact the Super Admin directly.
+      </p>
     </div>
   </div>
 </body>

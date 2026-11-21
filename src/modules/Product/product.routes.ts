@@ -11,7 +11,7 @@ const router = Router();
 // Product CRUD Operations
 router.post(
   '/create-product',
-  // auth('ADMIN', 'SUPER_ADMIN'),
+  auth('ADMIN', 'SUPER_ADMIN'),
   upload.array('images', 10), // Max 10 images
   parseJsonFields,
   validateRequest(ProductValidation.createProductZodSchema),
@@ -26,7 +26,8 @@ router.get(
   ProductController.getAllProductsAdmin
 );
 
-router.get('/get-product/:id', ProductController.getProduct);
+// OPTIONAL: stays readable without login, but reads the user so Super Admin can see cost
+router.get('/get-product/:id', auth('OPTIONAL'), ProductController.getProduct);
 
 router.get('/get-product-by-slug/:slug', ProductController.getProductBySlug);
 
@@ -74,8 +75,8 @@ router.get('/get-product-analytics', auth('ADMIN', 'SUPER_ADMIN'), ProductContro
 router.get('/get-low-stock-products', auth('ADMIN', 'SUPER_ADMIN'), ProductController.getLowStockProducts);
 router.get('/get-best-sellers', ProductController.getBestsellers);
 
-router.post('/:productId/variant-packaging-cost', ProductController.setVariantPackagingCost);
-router.post('/:productId/purchase', ProductController.receiveStockPurchase);
+router.post('/:productId/variant-packaging-cost', auth('SUPER_ADMIN'), ProductController.setVariantPackagingCost);
+router.post('/:productId/purchase', auth('SUPER_ADMIN'), ProductController.receiveStockPurchase);
 
 router.patch(
   '/quick-cell-update',

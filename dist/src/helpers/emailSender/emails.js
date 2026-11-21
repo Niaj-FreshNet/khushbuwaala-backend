@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOrderNotificationToAdmin = exports.sendOrderConfirmationEmail = exports.sendFeedbackEmail = exports.sendPasswordChangeNotificationEmail = exports.sendPasswordResetSuccessEmail = exports.sendPasswordResetEmail = exports.sendWelcomeEmail = exports.sendVerificationEmail = void 0;
+exports.sendRoleRejectionEmail = exports.sendRoleApprovalEmail = exports.sendOrderNotificationToAdmin = exports.sendOrderConfirmationEmail = exports.sendFeedbackEmail = exports.sendPasswordChangeNotificationEmail = exports.sendPasswordResetSuccessEmail = exports.sendPasswordResetEmail = exports.sendWelcomeEmail = exports.sendVerificationEmail = void 0;
 const email_config_1 = require("./email.config");
 const emailTemplates_1 = require("./emailTemplates");
 const sendVerificationEmail = (to, token) => __awaiter(void 0, void 0, void 0, function* () {
@@ -174,3 +174,29 @@ const sendOrderNotificationToAdmin = (to, order) => __awaiter(void 0, void 0, vo
     return yield (0, email_config_1.sendEmail)([{ email: to }], `New Order Received - #${invoice}`, template);
 });
 exports.sendOrderNotificationToAdmin = sendOrderNotificationToAdmin;
+const sendRoleApprovalEmail = (to, name, role) => __awaiter(void 0, void 0, void 0, function* () {
+    const formattedRole = role.replace(/_/g, ' '); // E.g., SUPER_ADMIN -> SUPER ADMIN
+    const template = emailTemplates_1.ROLE_APPROVED_TEMPLATE
+        .replace(/{name}/g, name)
+        .replace(/{role}/g, formattedRole);
+    try {
+        return yield (0, email_config_1.sendEmail)([{ email: to }], 'Khushbuwaala - Account Approved', template);
+    }
+    catch (error) {
+        console.error('Failed to send role approval email:', error.message);
+    }
+});
+exports.sendRoleApprovalEmail = sendRoleApprovalEmail;
+const sendRoleRejectionEmail = (to, name, role) => __awaiter(void 0, void 0, void 0, function* () {
+    const formattedRole = role.replace(/_/g, ' ');
+    const template = emailTemplates_1.ROLE_REJECTED_TEMPLATE
+        .replace(/{name}/g, name)
+        .replace(/{role}/g, formattedRole);
+    try {
+        return yield (0, email_config_1.sendEmail)([{ email: to }], 'Khushbuwaala - Account Status Update', template);
+    }
+    catch (error) {
+        console.error('Failed to send role rejection email:', error.message);
+    }
+});
+exports.sendRoleRejectionEmail = sendRoleRejectionEmail;
