@@ -69,6 +69,18 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
 
   if (!user) throw new AppError(httpStatus.NOT_FOUND, 'User not found');
 
+  // Who may edit whom: yourself always; ADMIN may also edit customer (USER) accounts;
+  // SUPER_ADMIN may edit anyone. (There was no check: any customer could edit any account.)
+  const actor = (req as any).user;
+  const isSelf = actor?.id === userId;
+  const canEdit =
+    isSelf ||
+    actor?.role === 'SUPER_ADMIN' ||
+    (actor?.role === 'ADMIN' && user.role === 'USER');
+  if (!canEdit) {
+    throw new AppError(httpStatus.FORBIDDEN, 'You can only update your own profile.');
+  }
+
   // ✅ Destructure email and district alongside other fields
   const { name, email, phone, contact, address, district } = req.body;
   let imageUrl = user.imageUrl;
@@ -117,7 +129,9 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
     address,
     district,
     imageUrl,
-    role: req.body.role,
+    // `role` is deliberately NOT accepted here: role changes go through
+    // PATCH /auth/approve-role (SUPER_ADMIN only). Accepting it let customers make
+    // themselves SUPER_ADMIN.
   };
 
   const result = await UserServices.updateUser(userId, updatedData);

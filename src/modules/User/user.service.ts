@@ -150,15 +150,7 @@ const updateUser = async (id: string, data: any) => {
   if (data.district !== undefined) updateData.district = String(data.district).trim();
   if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
 
-  if (data.role !== undefined) {
-    const validRoles = Object.values(Role) as string[];
-
-    if (!validRoles.includes(data.role)) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Invalid user role specified');
-    }
-
-    updateData.role = data.role;
-  }
+  // Role is never changed through profile updates (see PATCH /auth/approve-role).
 
   if (data.email !== undefined) {
     const cleanEmail = String(data.email).trim().toLowerCase();
