@@ -176,6 +176,14 @@ const getOrderById = async (idOrInvoice: string, user?: any) => {
 
   if (!order) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
 
+  // Invoice numbers are short and guessable, so looking up by invoice is limited to staff and
+  // the customer who owns the order. The 24-character order id (used in invoice links) stays open.
+  const isStaff = ['SUPER_ADMIN', 'ADMIN', 'SALESMAN'].includes(String(user?.role));
+  const lookedUpById = isMongoId && order.id === param;
+  if (!lookedUpById && !isStaff && (!user?.id || order.customerId !== user.id)) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+  }
+
   // 🚀 FOOL-PROOF FIX: Attach costs manually for the single order
   if (isSuperAdmin) {
     const itemCosts = await prisma.orderItemCost.findMany({
@@ -1139,24 +1147,30 @@ const trackOrders = async (queryParam: string) => {
   const cleanDigits = param.replace(/\D/g, "");
   const isMongoId = /^[0-9a-fA-F]{24}$/.test(param);
 
-  // 1️⃣ Build MongoDB raw filter to search root fields AND nested JSON fields (shipping/billing)
+  // 1️⃣ Exact matches only. The visitor's text is never used as a pattern (".*" used to return
+  // every order with customer details). Email is matched whole, ignoring capital letters.
+  const escapeRegex = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const exactEmail = { $regex: `^${escapeRegex(param)}$`, $options: "i" };
   const rawOrConditions: any[] = [
-    { invoice: { $regex: param, $options: "i" } },
-    { email: { $regex: param, $options: "i" } },
-    { "shipping.email": { $regex: param, $options: "i" } },
-    { "billing.email": { $regex: param, $options: "i" } },
+    { invoice: param },
+    ...(param.includes("@")
+      ? [{ email: exactEmail }, { "shipping.email": exactEmail }, { "billing.email": exactEmail }]
+      : []),
   ];
 
   if (isMongoId) {
     rawOrConditions.push({ _id: { $oid: param } });
   }
 
-  // If user searched a phone number (e.g. at least 6 digits)
-  if (cleanDigits.length >= 6) {
+  // Phone: the whole number must match (its last 10 digits, whatever the formatting:
+  // +880, spaces, dashes). Built only from digits, so it can't be abused as a pattern.
+  if (cleanDigits.length >= 10 && !param.includes("@")) {
+    const last10 = cleanDigits.slice(-10);
+    const phonePattern = { $regex: `${last10.split("").join("\\D*")}$` };
     rawOrConditions.push(
-      { phone: { $regex: cleanDigits, $options: "i" } },
-      { "shipping.phone": { $regex: cleanDigits, $options: "i" } },
-      { "billing.phone": { $regex: cleanDigits, $options: "i" } }
+      { phone: phonePattern },
+      { "shipping.phone": phonePattern },
+      { "billing.phone": phonePattern }
     );
   }
 
@@ -1167,6 +1181,7 @@ const trackOrders = async (queryParam: string) => {
     },
     options: {
       projection: { _id: 1 },
+      limit: 20,
     },
   })) as unknown as Array<{ _id: { $oid: string } | string }>;
 
