@@ -93,11 +93,13 @@ export const decideCourierOutcome = (
         review = `Steadfast says ${sf === 'partial_delivered' ? 'returned with the delivery charge paid' : 'returned unpaid'}${cod !== null ? ` (collected ${money(cod)})` : ''}, but the order is ${current}${order.isPaid ? ' and paid' : ''}. Check and correct.`;
       } else {
         if (current !== target) next = target; // includes RETURNED <-> CANCELED (stock already back, no movement)
-        data.returnChargeCollected = cod !== null ? Math.max(0, cod) : target === 'CANCELED' ? Number(order.shippingCost) || 0 : 0;
+        // Steadfast cod_amount: on partial_delivered the rider changes it to what was actually
+        // collected; on cancelled it is still the BOOKED amount (nothing was collected).
+        data.returnChargeCollected = target === 'RETURNED' ? 0 : cod !== null ? Math.max(0, cod) : Number(order.shippingCost) || 0;
         // Far more than a delivery charge means the customer KEPT some items (a real partial
         // delivery): the money is kept as collected, and a person records the kept items.
         const charge = Number(order.shippingCost) || 120;
-        review = cod !== null && cod > Math.max(2 * charge, 250)
+        review = target === 'CANCELED' && cod !== null && cod > Math.max(2 * charge, 250)
           ? `Steadfast collected ${money(cod)} on this returned parcel, far more than a delivery charge (${money(charge)}). If the customer kept some items, record them as a sale.`
           : null;
       }
@@ -126,7 +128,11 @@ export const applyCourierOutcome = async (orderId: string, o: Outcome) => {
       if (!taken) { data.consignmentId = Number(o.consignmentId); notes.push(`consignment ${order.consignmentId ?? '-'} -> ${o.consignmentId}`); }
     }
     if (o.trackingCode && o.trackingCode !== order.trackingCode) data.trackingCode = o.trackingCode;
-    if (cod !== null) data.courierCodCollected = cod;
+    // Money actually collected: delivered / partial_delivered amounts; a cancelled parcel collected
+    // nothing (its cod_amount is the booked amount). In-between states carry the booked amount only.
+    const sfNow = String(o.status || '').toLowerCase();
+    if (cod !== null && (sfNow === 'delivered' || sfNow === 'partial_delivered')) data.courierCodCollected = cod;
+    if (sfNow === 'cancelled') data.courierCodCollected = 0;
 
     const decided = decideCourierOutcome(order, o, cod);
     Object.assign(data, decided.data);

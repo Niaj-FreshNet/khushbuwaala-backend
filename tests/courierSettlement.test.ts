@@ -51,8 +51,9 @@ test('partial_delivered -> CANCELED with the amount the rider collected (also co
   assert.equal(decideCourierOutcome(cod, { status: 'partial_delivered' }, null).data.returnChargeCollected, 120); // no amount sent: the delivery charge
 });
 
-test('cancelled -> RETURNED, nothing collected (courier fee is the loss)', () => {
+test('cancelled -> RETURNED, nothing collected even if cod_amount still shows the booked amount', () => {
   assert.deepEqual(decideCourierOutcome(cod, { status: 'cancelled' }, 0), { next: 'RETURNED', data: { returnChargeCollected: 0 }, review: null });
+  assert.deepEqual(decideCourierOutcome(cod, { status: 'cancelled' }, 770), { next: 'RETURNED', data: { returnChargeCollected: 0 }, review: null });
 });
 
 test('conflicts are never changed automatically, only flagged', () => {
