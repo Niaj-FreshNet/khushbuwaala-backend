@@ -32,10 +32,13 @@ const createExpense = async (
   const { expenseTime, title, description, amount, method, isPaid, status, reference } = payload;
   const category = normalizeCategory(payload.category);
   if (!(Number(amount) > 0)) throw new AppError(httpStatus.BAD_REQUEST, 'Amount must be greater than 0');
+  // No date = now; a date that can't be read is the caller's mistake (it used to crash with a 500)
+  const when = expenseTime ? new Date(expenseTime) : new Date();
+  if (Number.isNaN(when.getTime())) throw new AppError(httpStatus.BAD_REQUEST, 'Expense date is not valid');
 
   const expense = await prisma.expense.create({
     data: {
-      expenseTime: new Date(expenseTime),
+      expenseTime: when,
       title,
       description: description || '',
       amount: Number(amount),
