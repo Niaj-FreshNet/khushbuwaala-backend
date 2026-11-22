@@ -94,7 +94,12 @@ export const decideCourierOutcome = (
       } else {
         if (current !== target) next = target; // includes RETURNED <-> CANCELED (stock already back, no movement)
         data.returnChargeCollected = cod !== null ? Math.max(0, cod) : target === 'CANCELED' ? Number(order.shippingCost) || 0 : 0;
-        review = null;
+        // Far more than a delivery charge means the customer KEPT some items (a real partial
+        // delivery): the money is kept as collected, and a person records the kept items.
+        const charge = Number(order.shippingCost) || 120;
+        review = cod !== null && cod > Math.max(2 * charge, 250)
+          ? `Steadfast collected ${money(cod)} on this returned parcel, far more than a delivery charge (${money(charge)}). If the customer kept some items, record them as a sale.`
+          : null;
       }
     }
 

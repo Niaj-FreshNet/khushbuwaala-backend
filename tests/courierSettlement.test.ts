@@ -63,3 +63,11 @@ test('conflicts are never changed automatically, only flagged', () => {
   assert.equal(sold.next, null);
   assert.match(String(sold.review), /returned unpaid/);
 });
+
+test('partial_delivered with far more than a delivery charge: kept items -> flagged for a person', () => {
+  const r = decideCourierOutcome(cod, { status: 'partial_delivered' }, 1080);
+  assert.equal(r.next, 'CANCELED');
+  assert.equal(r.data.returnChargeCollected, 1080);
+  assert.match(String(r.review), /kept some items/);
+  assert.equal(decideCourierOutcome(cod, { status: 'partial_delivered' }, 150).review, null); // a bit extra is normal
+});
