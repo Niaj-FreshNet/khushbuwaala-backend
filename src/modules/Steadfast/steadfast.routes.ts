@@ -12,4 +12,11 @@ router.get('/balance', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.getBala
 // (A route-level express.raw never ran after the global JSON parser, so every call crashed.)
 router.post('/webhook', steadfastController.handleWebhook);
 
+// Courier settlement (D-026): payouts ("Cleared"), sync, things to check
+router.get('/payouts', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.getPayouts);
+router.post('/sync', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.syncCourier);
+router.get('/sync/last', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.lastCourierSync);
+router.get('/review', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.getCourierReview);
+router.patch('/review/:orderId/resolve', auth('ADMIN', 'SUPER_ADMIN'), steadfastController.resolveCourierReview);
+
 export const SteadfastRoutes = router;

@@ -4,6 +4,7 @@ import { prisma } from '../prisma/client';
 import app from './app';
 import config from './config';
 import { Server } from 'http';
+import { startCourierSyncSchedule } from './modules/Steadfast/courierSync';
 
 let server: Server;
 
@@ -16,6 +17,7 @@ async function main() {
 
     server = app.listen(port, () => {
       console.log(`🚀 Server is running on ${port}`);
+      startCourierSyncSchedule(); // Steadfast statuses + payouts every 30 min (production only)
     });
   } catch (error) {
     console.error('❌ Failed to connect to the database', error);

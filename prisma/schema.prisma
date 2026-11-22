@@ -357,6 +357,13 @@ model Order {
   // Net result of a courier return = returnChargeCollected - courier fee (deliveryCharge, else estimate).
   returnChargeCollected Float?
 
+  // Courier settlement (D-026): the Steadfast payout ("Cleared") that paid this parcel to us
+  courierPayoutId     String?
+  courierPaidAt       DateTime?
+  courierCodCollected Float?    // what Steadfast collected for this parcel (cod_amount)
+  courierReview       String?   // set when Steadfast and our order disagree; a person must check
+  courierSyncedAt     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -747,6 +754,32 @@ model InvestorAdjustment {
 
   @@index([investorId, createdAt])
   @@map("investor_adjustments")
+}
+
+// A Steadfast payment to us ("Payments" in the Steadfast panel). parcels = the consignments it
+// settled, each matched to our order when possible. Synced every 30 min (courierSync.ts).
+model CourierPayout {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  provider         String    @default("STEADFAST")
+  payoutId         String    @unique // e.g. SFC-33238369
+  amount           Float     // cash collected from customers in this payout
+  method           String?   // Bank / Bkash / Nagad / Cash
+  dueBills         Float     @default(0) // our due bills deducted (e.g. return charges)
+  paidBills        Float     @default(0)
+  charges          Float     @default(0) // Steadfast COD charge
+  total            Float     // net sent to us
+  statusLabel      String    // ready / paid
+  courierCreatedAt DateTime?
+  readyAt          DateTime?
+  paidAt           DateTime?
+  parcels          Json
+  parcelCount      Int       @default(0)
+  matchedCount     Int       @default(0)
+  processed        Boolean   @default(false)
+  syncedAt         DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+
+  @@map("courier_payouts")
 }
 
 model LedgerAccessRequest {

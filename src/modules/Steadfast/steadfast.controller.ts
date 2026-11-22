@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import * as steadfastService from './steadfast.service';
 import { prisma } from '../../../prisma/client';
-import { syncStockForStatusChange } from '../../utils/orderStock';
+import { applyCourierOutcome, getLastCourierSync, runCourierSync } from './courierSync';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 
@@ -28,6 +28,11 @@ export const sendOrderToSteadfast = async (req: Request, res: Response, next: Ne
         }
         if (!order) {
             throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+        }
+        // Booking twice creates a second parcel and a second delivery charge (it happened: #239839,
+        // #529134). Re-booking needs { force: true }, e.g. after Steadfast cancelled the first one.
+        if (order.consignmentId && !(req.body && req.body.force === true)) {
+            throw new AppError(httpStatus.CONFLICT, `Already booked with Steadfast (consignment ${order.consignmentId}). Book again only if that parcel was cancelled.`);
         }
 
         const shippingInfo = (order.shipping as any) || {};
@@ -120,49 +125,98 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
 
         const event = req.body || {};
 
-        if (event.notification_type === 'delivery_status' && event.invoice) {
-            const courierStatus = String(event.status || '').toLowerCase();
-            const deliveryCharge = event.delivery_charge;
-            const codAmount = event.cod_amount === undefined || event.cod_amount === null ? undefined : Number(event.cod_amount);
-
-            // Courier outcome -> our order status (owner's rule, D-025). Final states are never moved backwards.
-            //  delivered          -> DELIVERED (sale)
-            //  partial_delivered  -> CANCELED: customer refused but paid the delivery charge; parcel back, stock back
-            //  cancelled          -> RETURNED: refused and did not pay; parcel back, stock back, courier fee is a loss
-            //  *_approval_pending, in_review, pending, hold, unknown -> courier status only (wait for Steadfast)
-            const nextStatus =
-                courierStatus === 'delivered' ? 'DELIVERED'
-                : courierStatus === 'partial_delivered' ? 'CANCELED'
-                : courierStatus === 'cancelled' ? 'RETURNED'
-                : null;
-            const isReturnOutcome = nextStatus === 'CANCELED' || nextStatus === 'RETURNED';
-
-            const orders = await prisma.order.findMany({ where: { invoice: String(event.invoice) } });
-            for (const order of orders) {
-                await prisma.$transaction(async (tx) => {
-                    const data: any = {
-                        courierStatus: event.status,
-                        ...(deliveryCharge !== undefined && deliveryCharge !== null && { deliveryCharge: Number(deliveryCharge) }),
-                    };
-                    const isFinal = ['COMPLETED', 'CANCELED', 'RETURNED'].includes(order.status);
-                    if (nextStatus && !isFinal && order.status !== nextStatus) {
-                        await syncStockForStatusChange(tx, order, nextStatus); // CANCELED/RETURNED put stock back once
-                        data.status = nextStatus;
-                    }
-                    // What the rider collected on a returned parcel (exact amount from Steadfast). Recorded
-                    // even when the order was already closed by hand, as long as it is closed as a return.
-                    const endsAsReturn = (data.status || order.status) === 'CANCELED' || (data.status || order.status) === 'RETURNED';
-                    if (isReturnOutcome && endsAsReturn) {
-                        data.returnChargeCollected = codAmount !== undefined && Number.isFinite(codAmount)
-                            ? Math.max(0, codAmount)
-                            : nextStatus === 'CANCELED' ? Number(order.shippingCost) || 0 : 0;
-                    }
-                    await tx.order.update({ where: { id: order.id }, data });
-                }, { maxWait: 10000, timeout: 15000 });
+        // delivery_status carries the outcome; tracking_update only a message (courier status kept).
+        if (event.invoice || event.consignment_id) {
+            const where: any = event.invoice
+                ? { invoice: String(event.invoice).replace(/^#/, '').trim() }
+                : { consignmentId: Number(event.consignment_id) };
+            const orders = await prisma.order.findMany({ where, select: { id: true } });
+            for (const o of orders) {
+                if (event.notification_type === 'tracking_update' || !event.status) {
+                    await prisma.order.update({ where: { id: o.id }, data: { courierSyncedAt: new Date() } });
+                    continue;
+                }
+                // Same rules as the status and payout sync (courierSync.ts, D-025/D-026)
+                await applyCourierOutcome(o.id, {
+                    status: String(event.status),
+                    codAmount: event.cod_amount,
+                    deliveryCharge: event.delivery_charge,
+                    consignmentId: event.consignment_id ? Number(event.consignment_id) : null,
+                });
             }
         }
 
         return res.status(200).json({ status: 'success' });
+    } catch (error: any) {
+        next(error);
+    }
+};
+
+// ---- Courier settlement (D-026) ----
+export const syncCourier = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const who = (req as any).user?.name || (req as any).user?.email || 'staff';
+        const result = await runCourierSync(`manual (${who})`, { full: req.body?.full === true });
+        res.status(result.ok ? 200 : 502).json({ success: result.ok, message: result.ok ? 'Synced with Steadfast' : result.error, data: result });
+    } catch (error: any) {
+        next(error);
+    }
+};
+
+export const lastCourierSync = async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true, data: getLastCourierSync() });
+};
+
+export const getPayouts = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+        const [rows, total, sums] = await Promise.all([
+            prisma.courierPayout.findMany({ orderBy: [{ paidAt: 'desc' }, { courierCreatedAt: 'desc' }], skip: (page - 1) * limit, take: limit }),
+            prisma.courierPayout.count(),
+            prisma.courierPayout.aggregate({ _sum: { amount: true, charges: true, dueBills: true, total: true, parcelCount: true } }),
+        ]);
+        // Our invoice + status for every matched parcel on this page
+        const ids = [...new Set(rows.flatMap((r) => ((r.parcels as any[]) || []).map((p) => p.orderId).filter(Boolean)))];
+        const orders = await prisma.order.findMany({
+            where: { id: { in: ids as string[] } },
+            select: { id: true, invoice: true, status: true, isPaid: true, amount: true, courierReview: true },
+        });
+        const byId = new Map(orders.map((o) => [o.id, o]));
+        const data = rows.map((r) => ({
+            ...r,
+            parcels: ((r.parcels as any[]) || []).map((p) => ({ ...p, order: p.orderId ? byId.get(p.orderId) || null : null })),
+        }));
+        res.status(200).json({
+            success: true,
+            meta: { page, limit, total, totalPage: Math.ceil(total / limit) },
+            totals: sums._sum,
+            lastSync: getLastCourierSync(),
+            data,
+        });
+    } catch (error: any) {
+        next(error);
+    }
+};
+
+export const getCourierReview = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await prisma.order.findMany({
+            where: { courierReview: { not: null } },
+            select: { id: true, invoice: true, status: true, isPaid: true, amount: true, method: true, courierStatus: true, courierCodCollected: true, courierPayoutId: true, courierReview: true, orderTime: true, name: true },
+            orderBy: { orderTime: 'desc' },
+        });
+        res.status(200).json({ success: true, data: data.filter((o) => o.courierReview) });
+    } catch (error: any) {
+        next(error);
+    }
+};
+
+/** A person checked a review note: clear it (the order itself is edited as usual). */
+export const resolveCourierReview = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await prisma.order.update({ where: { id: req.params.orderId }, data: { courierReview: null } });
+        res.status(200).json({ success: true, message: 'Marked as checked' });
     } catch (error: any) {
         next(error);
     }
