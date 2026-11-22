@@ -214,8 +214,27 @@ export const snapshotOrderCosts = async (orderId: string) => {
 
     const costSnapshots = [];
 
+    // Re-snapshot after an edit: a line that was already costed keeps its frozen cost (same line,
+    // same size); only new or changed-size lines are costed at today's average. Otherwise editing
+    // one item re-priced the whole order's history.
+    const previous = await prisma.orderItemCost.findMany({ where: { orderId } });
+    const frozenByLine = new Map(previous.filter((p) => p.cartItemId).map((p) => [String(p.cartItemId), p]));
+
     for (const item of orderItems) {
         if (!item.productId) continue;
+        const frozen = item.id ? frozenByLine.get(String(item.id)) : undefined;
+        if (frozen && (!item.variantId || !frozen.variantId || String(frozen.variantId) === String(item.variantId))) {
+            const qty = Number(item.quantity) || 1;
+            const revenue = Number(item.price) * qty;
+            costSnapshots.push({
+                orderId: order.id, cartItemId: item.id, productId: item.productId, variantId: frozen.variantId,
+                quantity: qty, sellingUnitPrice: Number(item.price),
+                liquidUnitCost: frozen.liquidUnitCost, packagingUnitCost: frozen.packagingUnitCost, unitCost: frozen.unitCost,
+                totalCost: frozen.unitCost * qty, totalRevenue: revenue, profit: revenue - frozen.unitCost * qty,
+                costMissing: frozen.costMissing,
+            });
+            continue;
+        }
         // Resolve the size: the linked variant, else the product's variant with the same size (and unit)
         if (!item.variant && item.variantId) {
             item.variant = await prisma.productVariant.findUnique({ where: { id: String(item.variantId) } }).catch(() => null);

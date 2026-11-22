@@ -784,6 +784,20 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
     { timeout: 15000 }
   );
 
+  // Finance reads the frozen cost snapshot: rebuild it when items or money changed (sales already
+  // did this; website-order edits left Finance on the old items, e.g. #857211 on 2026-11-23).
+  const moneyChanged = ['orderItems', 'amount', 'discountAmount', 'shippingCost', 'status'].some((k) => (payload as any)[k] !== undefined);
+  if (moneyChanged && !['CANCELED', 'RETURNED'].includes(String(updated.status))) {
+    await snapshotOrderCosts(updated.id).catch((err) => console.error('❌ Failed to refresh order cost snapshot:', err));
+  }
+
+  // A Steadfast "collected ≠ order total" note is settled once the edited total matches (D-026)
+  if (updated.courierReview && /^Steadfast collected .* but the order total is/.test(updated.courierReview)
+    && updated.courierCodCollected != null && Math.abs(Number(updated.amount) - Number(updated.courierCodCollected)) < 1) {
+    await prisma.order.update({ where: { id: updated.id }, data: { courierReview: null } });
+    (updated as any).courierReview = null;
+  }
+
   const customerData = updated.customer || {
     id: null,
     name: updated.name || null,
