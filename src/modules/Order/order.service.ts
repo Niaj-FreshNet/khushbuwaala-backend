@@ -590,11 +590,28 @@ const updateOrderStatus = async (orderId: string, payload: Record<string, unknow
     throw new AppError(httpStatus.BAD_REQUEST, `Invalid order status: ${payload?.status}`);
   }
 
+  // Optional, for a parcel that came back from the courier: the delivery charge the customer
+  // still paid (CANCELED = paid, RETURNED = not paid). null clears it.
+  let returnCharge: number | null | undefined;
+  if (payload && 'returnChargeCollected' in payload) {
+    const v = payload.returnChargeCollected;
+    if (v === null || v === '') returnCharge = null;
+    else {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) throw new AppError(httpStatus.BAD_REQUEST, 'Delivery charge collected must be 0 or more');
+      if (status !== 'CANCELED' && status !== 'RETURNED') throw new AppError(httpStatus.BAD_REQUEST, 'Delivery charge collected only applies to a cancelled or returned order');
+      returnCharge = n;
+    }
+  }
+
   return prisma.$transaction(async (tx) => {
     const existing = await tx.order.findUnique({ where: { id: orderId } });
     if (!existing) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
     await syncStockForStatusChange(tx, existing, status);
-    return tx.order.update({ where: { id: orderId }, data: { status: status as OrderStatus } });
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status: status as OrderStatus, ...(returnCharge !== undefined && { returnChargeCollected: returnCharge }) },
+    });
   }, { maxWait: 10000, timeout: 15000 });
 };
 

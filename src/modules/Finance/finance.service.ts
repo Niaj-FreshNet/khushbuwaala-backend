@@ -40,10 +40,31 @@ const resolveDhakaRange = (startDate?: string, endDate?: string) => {
 };
 
 export const resolveCourierCharge = (order: any): number => {
+    // The courier's real fee when Steadfast told us (webhook delivery_charge), else the estimate
+    const actual = Number(order.deliveryCharge) || 0;
+    if (actual > 0) return actual;
     const shipping = Number(order.shippingCost) || 0;
     if (shipping > 0) return shipping;
     const isDhaka = String(order.shipping?.district || '').toLowerCase().includes('dhaka');
     return isDhaka ? COURIER_FALLBACK.DHAKA : COURIER_FALLBACK.OUTSIDE;
+};
+
+/**
+ * Courier return ("return to origin"): the parcel went out with the courier and came back.
+ *  - RETURNED: customer refused and did NOT pay the delivery charge -> we lose the courier fee.
+ *  - CANCELED with returnChargeCollected set: customer refused but paid the delivery charge
+ *    (Steadfast "partial_delivered" in this shop) -> collected - fee, usually about 0.
+ * Other CANCELED orders never cost a courier fee (cancelled before shipping).
+ * Showroom sales never have one.
+ */
+export const courierReturnResult = (order: any) => {
+    const status = String(order.status || '').toUpperCase();
+    const collectedSet = order.returnChargeCollected !== null && order.returnChargeCollected !== undefined;
+    const isReturn = order.orderSource !== 'SHOWROOM' && (status === 'RETURNED' || (status === 'CANCELED' && collectedSet));
+    if (!isReturn) return null;
+    const fee = resolveCourierCharge(order);
+    const collected = Math.max(0, Number(order.returnChargeCollected) || 0);
+    return { fee, collected, net: collected - fee };
 };
 
 const isCodMethod = (method?: string | null) => {
@@ -260,11 +281,8 @@ export const reverseOrderCosts = async (orderId: string) => {
 export const getFinancialSummary = async (query: { startDate?: string; endDate?: string }) => {
     const { start: startUtc, end: endUtc } = resolveDhakaRange(query.startDate, query.endDate);
 
-    const orders = await prisma.order.findMany({
-        where: {
-            orderTime: { gte: startUtc, lte: endUtc },
-            status: { notIn: ['CANCELED'] },
-        },
+    const periodOrders = await prisma.order.findMany({
+        where: { orderTime: { gte: startUtc, lte: endUtc } },
         select: {
             id: true,
             status: true,
@@ -273,11 +291,15 @@ export const getFinancialSummary = async (query: { startDate?: string; endDate?:
             shippingCost: true,
             discountAmount: true,
             shipping: true,
+            deliveryCharge: true,
+            returnChargeCollected: true,
         },
     });
+    // Plain cancellations (never shipped) are left out; courier returns count for their fee.
+    const orders = periodOrders.filter((o) => o.status !== 'CANCELED' || courierReturnResult(o));
 
-    const returnedOrders = orders.filter((o) => o.status === 'RETURNED');
-    const validOrders = orders.filter((o) => o.status !== 'RETURNED');
+    const returnedOrders = orders.filter((o) => o.status === 'RETURNED' || o.status === 'CANCELED');
+    const validOrders = orders.filter((o) => o.status !== 'RETURNED' && o.status !== 'CANCELED');
     const validOrderIds = validOrders.map((o) => o.id);
 
     const [itemCosts, expenses, stockPurchases] = await Promise.all([
@@ -335,14 +357,17 @@ export const getFinancialSummary = async (query: { startDate?: string; endDate?:
     const grossProfit = totalRevenue - totalCOGS;
 
     // ---- Fulfillment costs (courier-based orders only; showroom has none) ----
-    let returnedCourierLoss = 0;
+    let returnedCourierLoss = 0;     // courier fees paid on parcels that came back
+    let returnChargesCollected = 0;  // delivery charges customers still paid on those returns
     let freeShippingCourierCost = 0;
     let codFees = 0;
     let totalShippingCollected = 0;
 
     for (const o of returnedOrders) {
-        if (o.orderSource === 'SHOWROOM') continue;
-        returnedCourierLoss += resolveCourierCharge(o);
+        const r = courierReturnResult(o);
+        if (!r) continue;
+        returnedCourierLoss += r.fee;
+        returnChargesCollected += r.collected;
     }
 
     for (const o of validOrders) {
@@ -359,7 +384,7 @@ export const getFinancialSummary = async (query: { startDate?: string; endDate?:
         }
     }
 
-    const totalFulfillmentCosts = returnedCourierLoss + freeShippingCourierCost + codFees;
+    const totalFulfillmentCosts = returnedCourierLoss - returnChargesCollected + freeShippingCourierCost + codFees;
 
     const totalOperatingExpenses = expenses.reduce((s, e) => s + e.amount, 0);
     const netProfit = grossProfit - totalFulfillmentCosts - totalOperatingExpenses;
@@ -378,6 +403,8 @@ export const getFinancialSummary = async (query: { startDate?: string; endDate?:
             grossProfit,
             grossMarginPercentage: pct(grossProfit),
             returnedCourierLoss,
+            returnChargesCollected,
+            netReturnLoss: returnedCourierLoss - returnChargesCollected,
             freeShippingCourierCost,
             codFees,
             totalFulfillmentCosts,
@@ -391,7 +418,8 @@ export const getFinancialSummary = async (query: { startDate?: string; endDate?:
             totalPackagingCost,
             expenseCount: expenses.length,
             orderCount: validOrders.length,     // valid (not canceled / returned)
-            returnedCount: returnedOrders.length,
+            returnedCount: returnedOrders.filter((o) => o.status === 'RETURNED').length,
+            courierReturnCount: returnedOrders.length, // RETURNED + charge-paid courier returns (CANCELED)
             missingCostItemCount,
             missingCostOrderCount: missingCostOrders.size,
             unsyncedOrderCount: validOrders.filter((o) => !revenueByOrder.has(o.id)).length,
@@ -489,8 +517,9 @@ export const calculateOrderFinancials = (order: any) => {
         netReceivable = !isCanceledOrReturned ? Number(order.amount || productBill) : 0;
     } else if (isDeliveredOrCompleted && order.isPaid === true) {
         netReceivable = Math.max(0, productBill - effectiveDeliveryDeduction - codCharge);
-    } else if (orderStatus === "RETURNED") {
-        netReceivable = -courierDeliveryCharge;
+    } else if (courierReturnResult(order)) {
+        // Parcel came back: collected delivery charge minus the courier fee
+        netReceivable = courierReturnResult(order)!.net;
     } else {
         netReceivable = 0;
     }
@@ -507,11 +536,9 @@ export const calculateOrderFinancials = (order: any) => {
 
 export const resolveOrderItemCosts = (order: any) => {
     const status = String(order.status || "").toUpperCase();
-    if (status === "CANCELED") return [{ profit: 0 }];
-    if (status === "RETURNED") {
-        const f = calculateOrderFinancials(order);
-        return [{ profit: -f.courierDeliveryCharge }];
-    }
+    const ret = courierReturnResult(order);
+    if (ret) return [{ profit: ret.net }];
+    if (status === "CANCELED" || status === "RETURNED") return [{ profit: 0 }];
     return order.orderItemCosts || [];
 };
 
@@ -529,6 +556,12 @@ export const getLedgerTransactions = async (query: { startDate?: string; endDate
         },
         select: { id: true, invoice: true, orderTime: true, amount: true, method: true, customer: { select: { name: true } } }
     });
+
+    // 1b. Courier returns: fee paid (DEBIT) and delivery charge the customer still paid (CREDIT)
+    const returnOrders = (await prisma.order.findMany({
+        where: { orderTime: { gte: startUtc, lte: endUtc }, status: { in: ['CANCELED', 'RETURNED'] } },
+        select: { id: true, invoice: true, orderTime: true, status: true, orderSource: true, shippingCost: true, deliveryCharge: true, returnChargeCollected: true, shipping: true },
+    })).filter((o) => courierReturnResult(o));
 
     // 2. Fetch Completed Expenses (DEBITS)
     const expenses = await prisma.expense.findMany({
@@ -560,6 +593,18 @@ export const getLedgerTransactions = async (query: { startDate?: string; endDate
             method: o.method || 'Unknown',
             amount: o.amount,
             reference: o.invoice
+        });
+    });
+
+    returnOrders.forEach((o) => {
+        const r = courierReturnResult(o)!;
+        if (r.fee > 0) ledger.push({
+            id: `${o.id}-rfee`, date: o.orderTime, type: 'DEBIT', source: 'RETURN',
+            description: `Courier fee, returned parcel #${o.invoice}`, method: 'Courier', amount: r.fee, reference: o.invoice,
+        });
+        if (r.collected > 0) ledger.push({
+            id: `${o.id}-rcol`, date: o.orderTime, type: 'CREDIT', source: 'RETURN',
+            description: `Delivery charge paid on return #${o.invoice}`, method: 'Courier', amount: r.collected, reference: o.invoice,
         });
     });
 

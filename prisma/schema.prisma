@@ -352,6 +352,11 @@ model Order {
   // true once this order's stock has been put back (canceled/returned). See utils/orderStock.ts
   stockReturned Boolean @default(false)
 
+  // Courier return (parcel came back): the delivery charge the customer still paid the rider.
+  // Set => a courier return (CANCELED = charge paid, RETURNED = not paid). null/missing = not a courier return.
+  // Net result of a courier return = returnChargeCollected - courier fee (deliveryCharge, else estimate).
+  returnChargeCollected Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

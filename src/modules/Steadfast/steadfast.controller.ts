@@ -123,12 +123,19 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
         if (event.notification_type === 'delivery_status' && event.invoice) {
             const courierStatus = String(event.status || '').toLowerCase();
             const deliveryCharge = event.delivery_charge;
+            const codAmount = event.cod_amount === undefined || event.cod_amount === null ? undefined : Number(event.cod_amount);
 
-            // Courier outcome → our order status (final states are never moved backwards).
+            // Courier outcome -> our order status (owner's rule, D-025). Final states are never moved backwards.
+            //  delivered          -> DELIVERED (sale)
+            //  partial_delivered  -> CANCELED: customer refused but paid the delivery charge; parcel back, stock back
+            //  cancelled          -> RETURNED: refused and did not pay; parcel back, stock back, courier fee is a loss
+            //  *_approval_pending, in_review, pending, hold, unknown -> courier status only (wait for Steadfast)
             const nextStatus =
-                courierStatus === 'delivered' || courierStatus === 'partial_delivered' ? 'DELIVERED'
+                courierStatus === 'delivered' ? 'DELIVERED'
+                : courierStatus === 'partial_delivered' ? 'CANCELED'
                 : courierStatus === 'cancelled' ? 'RETURNED'
                 : null;
+            const isReturnOutcome = nextStatus === 'CANCELED' || nextStatus === 'RETURNED';
 
             const orders = await prisma.order.findMany({ where: { invoice: String(event.invoice) } });
             for (const order of orders) {
@@ -139,8 +146,16 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
                     };
                     const isFinal = ['COMPLETED', 'CANCELED', 'RETURNED'].includes(order.status);
                     if (nextStatus && !isFinal && order.status !== nextStatus) {
-                        await syncStockForStatusChange(tx, order, nextStatus); // RETURNED puts stock back once
+                        await syncStockForStatusChange(tx, order, nextStatus); // CANCELED/RETURNED put stock back once
                         data.status = nextStatus;
+                    }
+                    // What the rider collected on a returned parcel (exact amount from Steadfast). Recorded
+                    // even when the order was already closed by hand, as long as it is closed as a return.
+                    const endsAsReturn = (data.status || order.status) === 'CANCELED' || (data.status || order.status) === 'RETURNED';
+                    if (isReturnOutcome && endsAsReturn) {
+                        data.returnChargeCollected = codAmount !== undefined && Number.isFinite(codAmount)
+                            ? Math.max(0, codAmount)
+                            : nextStatus === 'CANCELED' ? Number(order.shippingCost) || 0 : 0;
                     }
                     await tx.order.update({ where: { id: order.id }, data });
                 }, { maxWait: 10000, timeout: 15000 });
