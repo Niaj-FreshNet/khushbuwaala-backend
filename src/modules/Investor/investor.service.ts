@@ -98,25 +98,94 @@ const getAllInvestors = async () => {
     });
 };
 
+type InvestorMoney = { profitSharePercentage?: number; totalInvested?: number; currentBalance?: number };
+const MONEY_FIELDS = ['totalInvested', 'currentBalance', 'profitSharePercentage'] as const;
+
+/** A number that was actually sent (blank / missing = leave unchanged). */
+export const sentNumber = (v: unknown, label: string) => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) throw new AppError(httpStatus.BAD_REQUEST, `${label} must be a number, 0 or more`);
+    return n;
+};
+
+/** Record each changed money field, inside the same transaction as the change. */
+export const logInvestorAdjustments = async (
+    tx: any,
+    investorId: string,
+    before: InvestorMoney,
+    after: InvestorMoney,
+    source: 'MANAGE_INVESTORS' | 'ROLE_MANAGER',
+    byId?: string,
+    note?: string
+) => {
+    for (const field of MONEY_FIELDS) {
+        const b = Number(before[field] ?? 0);
+        const a = after[field];
+        if (a === undefined || a === b) continue;
+        await tx.investorAdjustment.create({ data: { investorId, field, before: b, after: a, source, byId: byId || null, note: note || null } });
+    }
+};
+
 const updateInvestorData = async (
     investorId: string,
-    payload: { profitSharePercentage: number; totalInvested: number; currentBalance: number }
+    payload: { profitSharePercentage?: unknown; totalInvested?: unknown; currentBalance?: unknown; note?: string },
+    byId?: string
 ) => {
-    const { profitSharePercentage, totalInvested, currentBalance } = payload;
+    // Only fields that were sent change. (Number(undefined) used to save NaN.)
+    const next: InvestorMoney = {
+        profitSharePercentage: sentNumber(payload.profitSharePercentage, 'Profit share %'),
+        totalInvested: sentNumber(payload.totalInvested, 'Total invested'),
+        currentBalance: sentNumber(payload.currentBalance, 'Current balance'),
+    };
+    if (next.profitSharePercentage !== undefined && next.profitSharePercentage > 100) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'Profit share % cannot be above 100');
+    }
 
-    const investor = await prisma.investor.findUnique({ where: { id: investorId } });
-    if (!investor) throw new AppError(httpStatus.NOT_FOUND, "Investor not found");
+    return await prisma.$transaction(async (tx) => {
+        const investor = await tx.investor.findUnique({ where: { id: investorId } });
+        if (!investor) throw new AppError(httpStatus.NOT_FOUND, "Investor not found");
 
-    return await prisma.investor.update({
-        where: { id: investorId },
-        data: {
-            profitSharePercentage: Number(profitSharePercentage),
-            totalInvested: Number(totalInvested),
-            currentBalance: Number(currentBalance),
-        },
+        await logInvestorAdjustments(tx, investorId, investor, next, 'MANAGE_INVESTORS', byId, payload.note);
+        return tx.investor.update({
+            where: { id: investorId },
+            data: Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined)),
+            include: { user: { select: { name: true, email: true } } },
+        });
+    });
+};
+
+/**
+ * Reconciliation (SUPER_ADMIN): each investor's stored balance next to what the records explain:
+ * manual balance changes + credited monthly profit - approved/completed withdrawals.
+ * What is left is the opening balance typed in by hand before records existed (2026-11-22).
+ */
+const reconcileInvestors = async () => {
+    const investors = await prisma.investor.findMany({
         include: {
-            user: { select: { name: true, email: true } }
-        }
+            user: { select: { name: true, email: true } },
+            withdrawals: { select: { amount: true, status: true } },
+            monthlyProfits: { select: { shareAmount: true, isDistributed: true } },
+        },
+    });
+    const adjustments = await prisma.investorAdjustment.findMany({ orderBy: { createdAt: 'asc' } });
+    const round = (n: number) => Math.round(n * 100) / 100;
+    return investors.map((inv) => {
+        const withdrawn = inv.withdrawals.filter((w) => w.status === 'APPROVED' || w.status === 'COMPLETED').reduce((s, w) => s + w.amount, 0);
+        const credited = inv.monthlyProfits.filter((m) => m.isDistributed).reduce((s, m) => s + m.shareAmount, 0);
+        const mine = adjustments.filter((a) => a.investorId === inv.id);
+        const manual = mine.filter((a) => a.field === 'currentBalance').reduce((s, a) => s + (a.after - a.before), 0);
+        return {
+            investorId: inv.id,
+            name: inv.user?.name,
+            totalInvested: inv.totalInvested,
+            currentBalance: inv.currentBalance,
+            creditedProfit: round(credited),
+            withdrawn: round(withdrawn),
+            manualBalanceChanges: round(manual),
+            openingBalance: round(inv.currentBalance - manual - credited + withdrawn),
+            adjustments: mine,
+        };
     });
 };
 
@@ -194,6 +263,7 @@ export const InvestorServices = {
     requestWithdrawal,
     getAllInvestors,
     updateInvestorData,
+    reconcileInvestors,
     getAllWithdrawals,
     updateWithdrawalStatus,
 };

@@ -19,7 +19,7 @@ const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
     // Supports:
     // - "Bearer <token>"
     // - "<token>" (non-standard but sometimes used)
-    let token =
+    const token =
       (authHeader
         ? authHeader.toLowerCase().startsWith("bearer ")
           ? authHeader.slice(7).trim()

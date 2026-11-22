@@ -17,8 +17,11 @@ const createExpense = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// Salesmen work with their own expenses only
+const ownerFor = (req: Request) => ((req as any).user?.role === 'SALESMAN' ? (req as any).user.id : undefined);
+
 const getAllExpenses = catchAsync(async (req: Request, res: Response) => {
-  const result = await ExpenseServices.getAllExpenses(req.query);
+  const result = await ExpenseServices.getAllExpenses(req.query, ownerFor(req));
 
   sendResponse(res, {
     statusCode: 200,
@@ -30,7 +33,7 @@ const getAllExpenses = catchAsync(async (req: Request, res: Response) => {
 
 const getExpenseById = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const result = await ExpenseServices.getExpenseById(id);
+  const result = await ExpenseServices.getExpenseById(id, ownerFor(req));
 
   sendResponse(res, {
     statusCode: result ? 200 : 404,
@@ -43,7 +46,7 @@ const getExpenseById = catchAsync(async (req: Request, res: Response) => {
 const updateExpenseStatus = catchAsync(async (req: Request, res: Response) => {
   const expenseId = req.params.id;
   const payload = req.body;
-  const result = await ExpenseServices.updateExpenseStatus(expenseId, payload);
+  const result = await ExpenseServices.updateExpenseStatus(expenseId, payload, ownerFor(req));
 
   sendResponse(res, {
     statusCode: result ? 200 : 400,

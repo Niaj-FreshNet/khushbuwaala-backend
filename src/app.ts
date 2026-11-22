@@ -81,8 +81,8 @@ app.get('/', (req: Request, res: Response) => {
   res.send('Welcome to Khushbuwaala Server');
 });
 
-// 5️⃣ Error Handlers (Always last)
-app.use(globalErrorHandler);
+// 5️⃣ Unknown routes -> 404, then the error handler (always last)
 app.use(NotFound);
+app.use(globalErrorHandler);
 
 export default app;

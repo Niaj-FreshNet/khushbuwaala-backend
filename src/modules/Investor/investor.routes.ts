@@ -9,6 +9,7 @@ router.post('/withdraw', auth('INVESTOR'), InvestorController.requestWithdrawal)
 
 router.get('/all', auth('SUPER_ADMIN'), InvestorController.getAllInvestors);
 router.patch('/update/:id', auth('SUPER_ADMIN'), InvestorController.updateInvestorData);
+router.get('/reconcile', auth('SUPER_ADMIN'), InvestorController.reconcileInvestors);
 
 router.get('/withdrawals', auth('SUPER_ADMIN'), InvestorController.getAllWithdrawals);
 router.patch('/withdrawals/:id/status', auth('SUPER_ADMIN'), InvestorController.updateWithdrawalStatus);

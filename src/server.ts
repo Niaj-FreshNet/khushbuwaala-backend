@@ -1,9 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+// The one shared client (prisma/client.ts). A second `new PrismaClient()` here opened a
+// second connection pool that only this file used.
+import { prisma } from '../prisma/client';
 import app from './app';
 import config from './config';
 import { Server } from 'http';
 
-const prisma = new PrismaClient();
 let server: Server;
 
 async function main() {
@@ -12,7 +13,6 @@ async function main() {
     console.log('✅ Database connected successfully');
 
     const port = config.port || 5000;
-    const host = '10.0.30.110';
 
     server = app.listen(port, () => {
       console.log(`🚀 Server is running on ${port}`);

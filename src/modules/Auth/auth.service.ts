@@ -13,6 +13,7 @@ import {
   sendVerificationEmail,
 } from '../../helpers/emailSender/emails';
 import AppError from '../../errors/AppError';
+import { logInvestorAdjustments } from '../Investor/investor.service';
 
 // Inside auth.service.ts
 
@@ -406,7 +407,7 @@ const resendVerifyEmail = async (email: string) => {
 const makeAdmin = async (payload: IUserPayload) => {
   const { name, email, password } = payload;
 
-  let user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email } });
   let result;
 
   if (user) {
@@ -433,7 +434,7 @@ const makeAdmin = async (payload: IUserPayload) => {
 const makeSalesman = async (payload: IUserPayload) => {
   const { name, email, password } = payload;
 
-  let user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email } });
   let result;
 
   if (user) {
@@ -511,7 +512,8 @@ const approveOrUpdateUserRole = async (
       const capital = num(totalInvested);
       const balance = num(currentBalance);
 
-      await tx.investor.upsert({
+      const existing = await tx.investor.findUnique({ where: { userId } });
+      const saved = await tx.investor.upsert({
         where: { userId },
         update: {
           ...(percentage !== undefined && { profitSharePercentage: percentage }),
@@ -525,6 +527,13 @@ const approveOrUpdateUserRole = async (
           currentBalance: balance ?? 0,
         },
       });
+      if (existing) {
+        await logInvestorAdjustments(
+          tx, saved.id, existing,
+          { profitSharePercentage: percentage, totalInvested: capital, currentBalance: balance },
+          'ROLE_MANAGER', adminUserId
+        );
+      }
     }
 
     return updatedUser;

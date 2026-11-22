@@ -20,7 +20,15 @@ True cost = average liquid cost x size + packaging lines.
 
 ## Product service notes
 - `formatProductAdminListingResponse(product, isSuperAdmin)` returns `categoryId` + `category` + brand + variant extras (barcode, gtin, mpn, weightGrams, lowStockAlert).
-- Known, not fixed: `updateProduct` recreates variants (new ids) and resets `lowStockAlert`; `get-product/:id` returns unpublished variants publicly.
+- `updateProduct` updates variants in place (ids kept); public reads return published sizes only; hidden products 404 by slug.
+- Stock is per product in liquid units (`Product.stock`, ml/gm). Orders/sales move it with atomic increment/decrement inside the transaction; `utils/orderStock.ts` makes returns happen exactly once (`Order.stockReturned`).
+- Stock purchases with cost: `FinanceServices.addStockPurchaseAndUpdateWAC` (the only implementation; both purchase routes use it).
 
-## Not verified yet
-Backend `npx tsc --noEmit` has not been run since these changes. Admin app lives in `D:\Projects\khushbuwaala-admin`.
+## Data rules (live MongoDB)
+- One live database. Before filtering on a field, count documents where it is missing (`$exists: false`): a filter does not match a missing field even when Prisma has a default. For optional fields use `OR: [{ f: null }, { f: { isSet: false } }]`.
+- Money is whole taka (Float fields; writes round). `Order.discountAmount` is Int.
+- Dates: day filters are Bangladesh days (`utils/dhakaTime.ts`); analytics use Asia/Dhaka.
+
+## Checks
+`npx tsc --noEmit`, `npm run lint` (0 errors expected), `npm test` (node:test via ts-node, no database). `dist/` is not in git: the server builds it on deploy.
+Admin app lives in `D:\Projects\khushbuwaala\khushbuwaala-admin`. Tracking docs: `D:\Projects\khushbuwaala\KHUSHBUWAALA_*.md`.

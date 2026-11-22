@@ -3,3 +3,5 @@ node_modules/
 .env.local
 .env.*.local
 !.env.example
+# Build output: the server builds it on deploy (D-005). It was committed before 2026-11-22.
+dist/

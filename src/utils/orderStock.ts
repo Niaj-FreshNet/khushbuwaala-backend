@@ -114,6 +114,22 @@ export const rebalanceStockForItemEdit = async (tx: Tx, orderId: string, doEdit:
   }
 };
 
+/**
+ * A customer retries an unpaid ONLINE checkout: the earlier attempt is cancelled and its stock
+ * put back. The order is "claimed" first with a guarded update (unpaid + stock not yet returned),
+ * so two retries arriving close together can never put the same stock back twice.
+ * Returns true when this call cancelled the order.
+ */
+export const cancelAbandonedCheckout = async (tx: Tx, orderId: string) => {
+  const claimed = await tx.order.updateMany({
+    where: { id: orderId, isPaid: false, stockReturned: { not: true } /* $ne: true, also matches a missing field */ },
+    data: { status: 'CANCELED', stockReturned: true },
+  });
+  if (claimed.count !== 1) return false;
+  await moveStock(tx, orderId, 'return', 'ORDER_CHECKOUT_RETRY');
+  return true;
+};
+
 /** Call inside the delete transaction, before the order's lines are removed. */
 export const returnStockBeforeDelete = async (tx: Tx, order: { id: string; stockReturned?: boolean | null }) => {
   if (order.stockReturned) return;

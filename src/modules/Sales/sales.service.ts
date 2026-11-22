@@ -512,7 +512,7 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
   }
 
   // ── Professional Summary Metrics Calculation ──
-  let totalCount = allFilteredSales.length;
+  const totalCount = allFilteredSales.length;
   let totalValidCount = 0;
   let totalCodAmount = 0;
   let totalBillAmount = 0;
@@ -609,7 +609,7 @@ const getMySales = async (salesmanId: string, queryParams: Record<string, unknow
     }),
   ]);
 
-  let totalSalesCount = allFilteredMySales.length;
+  const totalSalesCount = allFilteredMySales.length;
   let totalAmount = 0;
 
   allFilteredMySales.forEach((order) => {

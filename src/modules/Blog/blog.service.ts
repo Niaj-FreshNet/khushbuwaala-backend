@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import slugify from 'slugify';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import AppError from '../../errors/AppError';
@@ -7,7 +6,7 @@ import { prisma } from '../../../prisma/client';
 import { IBlog } from './blog.interface';
 
 const generateUniqueSlug = async (title: string, currentId?: string): Promise<string> => {
-  let baseSlug = slugify(title, { lower: true, strict: true, trim: true });
+  const baseSlug = slugify(title, { lower: true, strict: true, trim: true });
   let slug = baseSlug;
   let counter = 1;
 

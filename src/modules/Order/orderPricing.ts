@@ -25,7 +25,6 @@ const applyDiscount = (price: number, d: { type: string; value: number }) =>
 
 export const priceWebsiteOrder = async (lines: Line[], couponCode?: string | null, district?: string | null) => {
   if (!lines.length) throw new AppError(httpStatus.BAD_REQUEST, 'Your cart is empty.');
-  const now = new Date();
   const code = couponCode ? String(couponCode).trim().toUpperCase() : null;
 
   const productIds = [...new Set(lines.map((l) => String(l.productId)))];
@@ -34,6 +33,22 @@ export const priceWebsiteOrder = async (lines: Line[], couponCode?: string | nul
     prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true, published: true } }),
     prisma.discount.findMany({ where: { OR: [{ productId: { in: productIds } }, ...(code ? [{ code }] : [])] } }),
   ]);
+  return computeWebsitePricing(lines, { variants, products, discounts }, code, district, new Date());
+};
+
+type PricingData = {
+  variants: Array<{ id: string; productId: string; size: number; unit: string; price: number; published?: boolean | null; [k: string]: any }>;
+  products: Array<{ id: string; name: string; published: boolean | null }>;
+  discounts: Array<{
+    code: string | null; scope: string; type: string; value: number; productId: string | null; variantId: string | null;
+    startDate: Date | null; endDate: Date | null; maxUsage: number | null; usedCount: number;
+  }>;
+};
+
+/** The pricing rules on already-loaded data (no database), so they can be unit-tested. */
+export const computeWebsitePricing = (lines: Line[], data: PricingData, code: string | null, district: string | null | undefined, now: Date) => {
+  if (!lines.length) throw new AppError(httpStatus.BAD_REQUEST, 'Your cart is empty.');
+  const { variants, products, discounts } = data;
   const productMap = new Map(products.map((p) => [p.id, p]));
   const active = discounts.filter((d) => isActive(d, now));
   const coupon = code ? discounts.find((d) => (d.code || '').toUpperCase() === code) : undefined;

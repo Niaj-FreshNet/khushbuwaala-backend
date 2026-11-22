@@ -363,7 +363,7 @@ model CartItem {
   userId        String? @db.ObjectId
   productId     String  @db.ObjectId
   variantId     String? @db.ObjectId
-  size          Int?
+  size          Float? // same type as ProductVariant.size (was Int: a 2.5 ml size could not be saved)
   unit          String?
   quantity      Int
   price         Float
@@ -727,6 +727,23 @@ enum LedgerAccessStatus {
 
 // An investor's request to view the full company ledger. Each view window needs a
 // SUPER_ADMIN approval and expires (DECISIONS D-007).
+// Every manual change to an investor's capital, balance or share % (Manage Investors / Role Manager),
+// so balances can be reconciled: balance = opening + manual changes + credited profit - withdrawals.
+model InvestorAdjustment {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  investorId String   @db.ObjectId
+  field      String // "totalInvested" | "currentBalance" | "profitSharePercentage"
+  before     Float
+  after      Float
+  source     String // "MANAGE_INVESTORS" | "ROLE_MANAGER"
+  note       String?
+  byId       String?  @db.ObjectId
+  createdAt  DateTime @default(now())
+
+  @@index([investorId, createdAt])
+  @@map("investor_adjustments")
+}
+
 model LedgerAccessRequest {
   id           String             @id @default(auto()) @map("_id") @db.ObjectId
   userId       String             @db.ObjectId

@@ -5,7 +5,7 @@ import httpStatus from 'http-status';
 import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { OrderSource, OrderStatus, Prisma, SaleType } from '@prisma/client';
-import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit } from '../../utils/orderStock';
+import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit, cancelAbandonedCheckout } from '../../utils/orderStock';
 import { priceWebsiteOrder } from './orderPricing';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { DiscountServices } from '../Discount/discount.service';
@@ -99,7 +99,7 @@ const getAllOrders = async (queryParams: Record<string, unknown>, user?: any) =>
     });
   }
 
-  let totalCount = allFilteredOrders.length;
+  const totalCount = allFilteredOrders.length;
   let totalValidCount = 0;
   let totalCodAmount = 0;
   let totalBillAmount = 0;
@@ -401,25 +401,10 @@ const createOrderWithCartItems = async (payload: {
         ),
       ];
 
-      if (failedOnlineOrderIds.length > 0) {
-        await Promise.all([
-          ...dbCartItems
-            .filter((ci: any) => ci.order && !ci.order.isPaid && ci.order.method !== 'cashOnDelivery')
-            .map((ci: any) =>
-              tx.product.update({
-                where: { id: ci.productId },
-                data: {
-                  salesCount: { decrement: ci.quantity || 1 },
-                  stock: { increment: (ci.variant?.size || 0) * (ci.quantity || 1) },
-                },
-              })
-            ),
-          tx.order.updateMany({
-            where: { id: { in: failedOnlineOrderIds }, isPaid: false },
-            // Stock was just put back above; record that so it is never returned twice.
-            data: { status: 'CANCELED', stockReturned: true },
-          }),
-        ]);
+      // One at a time, each guarded: a double-clicked retry can't put the same stock back twice
+      // (the cart was read before this transaction, so it may already be out of date).
+      for (const failedId of failedOnlineOrderIds) {
+        await cancelAbandonedCheckout(tx, failedId as string);
       }
 
       const invoice = await generateInvoice();
@@ -521,7 +506,7 @@ const createOrderWithCartItems = async (payload: {
           return tx.stockLog.create({
             data: {
               productId: item.productId,
-              variantId: item.variantId || '',
+              variantId: item.variantId || null,
               change: -(variantSize * qty),
               reason: 'SALE',
             },
@@ -959,18 +944,10 @@ const resolveOrderSourceWhere = (type: DashboardType): Prisma.OrderWhereInput =>
   return {};
 };
 
-const buildLast7Days = () => {
-  const days: { key: string; label: string; date: Date }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = subDays(new Date(), i);
-    const label = d.toLocaleDateString("en-US", { weekday: "short" });
-    const key = d.toISOString().slice(0, 10);
-    days.push({ key, label, date: d });
-  }
-  return days;
-};
-
 const TZ = "Asia/Dhaka";
+// "2026-11-30" -> "30-11-26". Buckets are keyed yyyy-MM-dd so they sort by date; sorting the old
+// dd-MM-yy keys put "01-12-26" before "29-11-26" whenever a range crossed into a new month.
+const toDisplayDay = (isoDay: string) => `${isoDay.slice(8, 10)}-${isoDay.slice(5, 7)}-${isoDay.slice(2, 4)}`;
 
 const getDashboardMetrics = async (type: DashboardType = "all") => {
   const nowUtc = new Date();
@@ -1052,9 +1029,10 @@ const getDashboardMetrics = async (type: DashboardType = "all") => {
 };
 
 const getWeeklySalesOverview = async (type: DashboardType = "all") => {
-  const last7 = buildLast7Days();
 
-  const fromDhakaStart = startOfDay(last7[0].date);
+  // Start of the day 6 days ago in DHAKA (the server clock is UTC; between 00:00 and 06:00
+  // Dhaka the UTC date is still yesterday, which used to add an extra day).
+  const fromDhakaStart = startOfDay(subDays(toZonedTime(new Date(), TZ), 6));
   const fromUtc = fromZonedTime(fromDhakaStart, TZ);
 
   const sourceWhere = resolveOrderSourceWhere(type);
@@ -1079,7 +1057,7 @@ const getWeeklySalesOverview = async (type: DashboardType = "all") => {
 
   for (const o of orders) {
     const oDhaka = toZonedTime(o.orderTime, TZ);
-    const key = format(oDhaka, "dd-MM-yy");
+    const key = format(oDhaka, "yyyy-MM-dd"); // sortable; shown as dd-MM-yy below
 
     if (!dailyBuckets[key]) {
       dailyBuckets[key] = { sales: 0, netReceivable: 0, ordersCount: 0, ordersList: [] };
@@ -1099,7 +1077,7 @@ const getWeeklySalesOverview = async (type: DashboardType = "all") => {
   return Object.keys(dailyBuckets)
     .sort()
     .map((dateKey) => ({
-      date: dateKey,
+      date: toDisplayDay(dateKey),
       totalSales: dailyBuckets[dateKey].sales,           // Total Bill (Excl. Canceled/Returned)
       totalNetReceivable: dailyBuckets[dateKey].netReceivable, // Delivered/Completed Paid + Returned losses
       totalOrders: dailyBuckets[dateKey].ordersCount,     // Orders excl. Canceled/Returned
@@ -1142,7 +1120,7 @@ const getMonthlySalesOverview = async (type: DashboardType = "all", year?: numbe
 
   for (const o of orders) {
     const oDhaka = toZonedTime(o.orderTime, TZ);
-    const key = format(oDhaka, "dd-MM-yy");
+    const key = format(oDhaka, "yyyy-MM-dd"); // sortable; shown as dd-MM-yy below
 
     if (!dailyBuckets[key]) {
       dailyBuckets[key] = { sales: 0, netReceivable: 0, ordersCount: 0, ordersList: [] };
@@ -1162,7 +1140,7 @@ const getMonthlySalesOverview = async (type: DashboardType = "all", year?: numbe
   return Object.keys(dailyBuckets)
     .sort()
     .map((dateKey) => ({
-      date: dateKey,
+      date: toDisplayDay(dateKey),
       totalSales: dailyBuckets[dateKey].sales,           // Total Bill (Excl. Canceled/Returned)
       totalNetReceivable: dailyBuckets[dateKey].netReceivable, // Delivered/Completed Paid + Returned losses
       totalOrders: dailyBuckets[dateKey].ordersCount,     // Orders excl. Canceled/Returned

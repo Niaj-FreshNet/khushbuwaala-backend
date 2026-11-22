@@ -3,6 +3,7 @@ import AppError from '../../errors/AppError';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { ProductServices } from './product.service';
+import { FinanceServices } from '../Finance/finance.service';
 import { IProduct, IUpdateProduct } from './product.interface';
 import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 import { parseProductQuery } from '../../helpers/queryBuilder';
@@ -419,14 +420,15 @@ const receiveStockPurchase = catchAsync(async (req, res) => {
   const payload = {
     ...req.body,
     productId,
-    // createdById: req.user.id // Uncomment if you have authentication middleware setting req.user
+    createdById: (req as any).user?.id,
   };
 
   if (!payload.quantity || !payload.costLines) {
     throw new AppError(httpStatus.BAD_REQUEST, 'quantity and costLines are required');
   }
 
-  const result = await ProductServices.addStockPurchaseAndUpdateWAC(payload);
+  // One implementation for both purchase routes (this one and /finance/procurement/purchase).
+  const result = await FinanceServices.addStockPurchaseAndUpdateWAC(payload);
 
   sendResponse(res, {
     statusCode: httpStatus.CREATED,

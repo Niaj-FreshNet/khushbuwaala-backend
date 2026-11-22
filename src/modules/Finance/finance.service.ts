@@ -87,12 +87,21 @@ const getPackagingCostsBySku = async (sku: string) => {
 // ==========================================
 
 const addStockPurchaseAndUpdateWAC = async (payload: IStockPurchaseInput) => {
-    const { productId, quantity, costLines, supplier, billNo, note, unit, createdById } = payload;
+    const { productId, quantity: rawQuantity, costLines, supplier, billNo, note, unit, createdById } = payload;
+    const quantity = Number(rawQuantity);
 
-    const sanitizedNote = note && note.trim() !== '' ? note.trim() : null;
+    const sanitizedNote = note && String(note).trim() !== '' ? String(note).trim() : null;
+
+    if (!(Number(quantity) > 0)) throw new AppError(httpStatus.BAD_REQUEST, 'Quantity must be greater than 0');
+    if (!Array.isArray(costLines) || !costLines.length) throw new AppError(httpStatus.BAD_REQUEST, 'At least one cost line is required');
+    for (const line of costLines) {
+        const a = Number(line?.amount);
+        if (!Number.isFinite(a) || a < 0) throw new AppError(httpStatus.BAD_REQUEST, 'Cost amounts must be 0 or more');
+        line.amount = a; // "500" from a form field would otherwise be added as text
+    }
 
     const totalPurchaseCost = costLines.reduce((sum, line) => sum + line.amount, 0);
-    const costPerUnit = totalPurchaseCost / quantity;
+    const costPerUnit = totalPurchaseCost / Number(quantity);
 
     return await prisma.$transaction(async (tx) => {
         const product = await tx.product.findUnique({ where: { id: productId } });
@@ -102,7 +111,6 @@ const addStockPurchaseAndUpdateWAC = async (payload: IStockPurchaseInput) => {
 
         // Negative stock (sold before stock was recorded) must not drag the average cost down/negative.
         const currentStock = Math.max(0, product.stock || 0);
-        if (!(Number(quantity) > 0)) throw new AppError(httpStatus.BAD_REQUEST, 'Quantity must be greater than 0');
         const currentAvgCost = currentCostData?.avgCostPerUnit || 0;
 
         // Calculate New WAC

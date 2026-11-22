@@ -54,7 +54,8 @@ const createExpense = async (
   return expense;
 };
 
-const getAllExpenses = async (queryParams: Record<string, unknown>) => {
+// ownerId: set for SALESMAN callers, who only see and update the expenses they recorded (A-25).
+const getAllExpenses = async (queryParams: Record<string, unknown>, ownerId?: string) => {
   const { searchTerm, status, isPaid, method, dateFrom, dateTo, category, ...rest } = queryParams as {
     category?: string;
     searchTerm?: string;
@@ -74,6 +75,7 @@ const getAllExpenses = async (queryParams: Record<string, unknown>) => {
 
   const where: Prisma.ExpenseWhereInput = {
     ...prismaQuery.where,
+    ...(ownerId ? { expenseById: ownerId } : {}),
   };
 
   // Exact Match Filters
@@ -140,7 +142,7 @@ const getAllExpenses = async (queryParams: Record<string, unknown>) => {
   return { meta, data };
 };
 
-const getExpenseById = async (id: string) => {
+const getExpenseById = async (id: string, ownerId?: string) => {
   const expense = await prisma.expense.findUnique({
     where: { id },
     include: {
@@ -148,15 +150,20 @@ const getExpenseById = async (id: string) => {
     },
   });
 
-  if (!expense) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
+  if (!expense || (ownerId && expense.expenseById !== ownerId)) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
 
   return expense;
 };
 
 const updateExpenseStatus = async (
   id: string,
-  payload: Partial<Pick<Prisma.ExpenseUpdateInput, 'status' | 'isPaid'>>
+  payload: Partial<Pick<Prisma.ExpenseUpdateInput, 'status' | 'isPaid'>>,
+  ownerId?: string
 ) => {
+  if (ownerId) {
+    const own = await prisma.expense.findFirst({ where: { id, expenseById: ownerId }, select: { id: true } });
+    if (!own) throw new AppError(httpStatus.NOT_FOUND, 'Expense not found');
+  }
   const data: Prisma.ExpenseUpdateInput = {};
   if (payload.status) data.status = payload.status as ExpenseStatus;
   if (typeof payload.isPaid === 'boolean') data.isPaid = payload.isPaid;

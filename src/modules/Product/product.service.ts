@@ -16,7 +16,6 @@ import {
   IRelatedProductsResponse,
   IProductSearchResult,
   IVariantPackagingCostInput,
-  IStockPurchaseInput,
   IProductVariant,
 } from './product.interface';
 import {
@@ -955,12 +954,18 @@ const updateProductStock = async (productId: string, addedStock: number, reason?
     throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
   }
 
-  const newTotalStock = (product.stock ?? 0) + addedStock;
+  // Stock added WITHOUT a cost (the purchase form with cost is FinanceServices.addStockPurchaseAndUpdateWAC).
+  // Only ADJUSTMENT may take stock away (count corrections).
+  const change = Number(addedStock);
+  const why = String(reason || 'RESTOCK').trim().slice(0, 120) || 'RESTOCK';
+  if (!Number.isFinite(change) || change === 0) throw new AppError(400, 'Enter a quantity other than 0');
+  if (change < 0 && why !== 'ADJUSTMENT') throw new AppError(400, 'Only an inventory adjustment can remove stock');
 
   await prisma.$transaction(async (tx) => {
-    await tx.product.update({ where: { id: productId }, data: { stock: newTotalStock } });
+    // increment, not "read then write": two edits at the same moment both count
+    await tx.product.update({ where: { id: productId }, data: { stock: { increment: change } } });
     await tx.stockLog.create({
-      data: { productId, change: addedStock, reason: reason || 'Stock updated', createdAt: new Date() },
+      data: { productId, change, reason: why, createdAt: new Date() },
     });
   });
 
@@ -1162,7 +1167,7 @@ const formatProductDetailResponse = (product: any): IProductDetailResponse => {
 
     discounts: product.discounts || [],
     // costPrice is never exposed in this (public) response
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     variants: variants.map(({ costPrice: _hiddenCost, ...v }: any) => ({
       ...v,
       images: v.images || [],
@@ -1327,79 +1332,7 @@ const upsertVariantPackagingCost = async (sku: string, payload: IVariantPackagin
   });
 };
 
-const addStockPurchaseAndUpdateWAC = async (payload: IStockPurchaseInput) => {
-  const { productId, quantity, costLines, supplier, billNo, note, unit, createdById } = payload;
-
-  const totalPurchaseCost = costLines.reduce((sum, line) => sum + line.amount, 0);
-  const costPerUnit = totalPurchaseCost / quantity;
-
-  return await prisma.$transaction(async (tx) => {
-    // 1. Get current stock and current live cost
-    const product = await tx.product.findUnique({ where: { id: productId } });
-    if (!product) throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
-
-    const currentCostData = await tx.productCost.findUnique({ where: { productId } });
-
-    // Negative stock (sold before stock was recorded) must not drag the average cost down/negative.
-    const currentStock = Math.max(0, product.stock || 0);
-    if (!(Number(quantity) > 0)) throw new AppError(400, 'Quantity must be greater than 0');
-    const currentAvgCost = currentCostData?.avgCostPerUnit || 0;
-
-    // 2. Calculate New Weighted Average Cost (WAC)
-    // Formula: ((Old Stock * Old Avg Cost) + New Purchase Cost) / (Old Stock + New Stock)
-    const totalCurrentValue = currentStock * currentAvgCost;
-    const newTotalStock = currentStock + quantity;
-    const newAvgCostPerUnit = (totalCurrentValue + totalPurchaseCost) / newTotalStock;
-
-    // 3. Log the Financial Purchase
-    const purchase = await tx.stockPurchase.create({
-      data: {
-        productId,
-        quantity,
-        unit,
-        totalCost: totalPurchaseCost,
-        costPerUnit,
-        costLines,
-        supplier,
-        billNo,
-        note,
-        createdById,
-        isOpening: currentStock === 0, // Flag as opening stock if it was 0
-      },
-    });
-
-    // 4. Update the live ProductCost WAC
-    await tx.productCost.upsert({
-      where: { productId },
-      update: {
-        avgCostPerUnit: newAvgCostPerUnit,
-        lastCostPerUnit: costPerUnit,
-      },
-      create: {
-        productId,
-        avgCostPerUnit: costPerUnit, // Fallback if no history
-        lastCostPerUnit: costPerUnit,
-      },
-    });
-
-    // 5. Update actual Product Stock
-    await tx.product.update({
-      where: { id: productId },
-      data: { stock: { increment: quantity } },
-    });
-
-    // 6. Push a standard Stock Log for frontend history
-    await tx.stockLog.create({
-      data: {
-        productId,
-        change: quantity,
-        reason: `Purchase Bill: ${billNo || 'N/A'} - Supp: ${supplier || 'N/A'}`,
-      },
-    });
-
-    return purchase;
-  });
-};
+// Stock purchases (cost + weighted average cost) live in FinanceServices.addStockPurchaseAndUpdateWAC.
 
 export interface IQuickCellUpdatePayload {
   entity: 'PRODUCT' | 'VARIANT';
@@ -1872,7 +1805,6 @@ export const ProductServices = {
   updateProductStock,
   getStockLogs,
   upsertVariantPackagingCost,
-  addStockPurchaseAndUpdateWAC,
   quickUpdateCell,
   generateGoogleShoppingFeed,
 };

@@ -47,9 +47,14 @@ const getAllInvestors = catchAsync(async (req, res) => {
     });
 });
 
+const reconcileInvestors = catchAsync(async (_req, res) => {
+    const result = await InvestorServices.reconcileInvestors();
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Investor balances reconciled', data: result });
+});
+
 const updateInvestorData = catchAsync(async (req, res) => {
     const { id } = req.params;
-    const result = await InvestorServices.updateInvestorData(id, req.body);
+    const result = await InvestorServices.updateInvestorData(id, req.body, (req as any).user?.id);
     sendResponse(res, {
         statusCode: httpStatus.OK,
         success: true,
@@ -136,6 +141,7 @@ export const InvestorController = {
     requestWithdrawal,
     getAllInvestors,
     updateInvestorData,
+    reconcileInvestors,
     getAllWithdrawals,
     updateWithdrawalStatus,
 };
