@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { errorMessage } from '../../utils/errorInfo';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -18,7 +19,7 @@ export async function sendEmail(
   subject: string,
   htmlContent: string,
   textContent?: string,
-): Promise<any> {
+): Promise<unknown> {
   const recipients = to.map((recipient) => recipient.email).join(', ');
 
   const mailOptions = {
@@ -32,8 +33,8 @@ export async function sendEmail(
   try {
     const info = await transporter.sendMail(mailOptions);
     return info;
-  } catch (error: any) {
-    console.error('Gmail SMTP Error:', error.message);
+  } catch (error) {
+    console.error('Gmail SMTP Error:', errorMessage(error));
     throw new Error('Failed to send email via Gmail');
   }
 }

@@ -1,12 +1,9 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 
-const catchAsync = (
-    fn: RequestHandler<Record<string, string>, any, any, any>
-): RequestHandler => {
+// Passes a rejected promise (thrown AppError, Prisma error…) on to the global error handler.
+const catchAsync = (fn: RequestHandler): RequestHandler => {
     return (req: Request, res: Response, next: NextFunction) => {
-        Promise.resolve(
-            fn(req as Request<Record<string, string>, any, any, any>, res, next)
-        ).catch((err) => next(err));
+        Promise.resolve(fn(req, res, next)).catch((err) => next(err));
     };
 };
 

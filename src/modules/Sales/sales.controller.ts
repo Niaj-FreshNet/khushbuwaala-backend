@@ -2,11 +2,12 @@ import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { SaleServices } from './sales.service';
+import { requireUser } from '../../utils/requestUser';
 
 // Create a manual sale
 const createSale = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body;
-  const userId = req.user.id; // SALESMAN or ADMIN creating the sale
+  const userId = requireUser(req).id; // SALESMAN or ADMIN creating the sale
   const result = await SaleServices.createSale(payload, userId);
 
   sendResponse(res, {
@@ -32,7 +33,7 @@ const getAllSales = catchAsync(async (req: Request, res: Response) => {
 
 // Get sales for current salesman
 const getMySales = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user.id;
+  const userId = requireUser(req).id;
   const result = await SaleServices.getMySales(userId, req.query);
 
   sendResponse(res, {

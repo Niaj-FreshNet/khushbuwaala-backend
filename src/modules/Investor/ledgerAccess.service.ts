@@ -1,6 +1,8 @@
 import httpStatus from 'http-status';
 import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
+import { LedgerAccessStatus, Prisma } from '@prisma/client';
+import { isEnumValue } from '../../utils/enumValue';
 
 /**
  * Investor access to the full company ledger (DECISIONS D-007).
@@ -55,7 +57,7 @@ const myStatus = async (userId: string) => {
 };
 
 const listRequests = async (status?: string) => {
-  const where = status && status !== 'ALL' ? { status: status as any } : {};
+  const where: Prisma.LedgerAccessRequestWhereInput = isEnumValue(LedgerAccessStatus, status) ? { status } : {};
   const requests = await prisma.ledgerAccessRequest.findMany({ where, orderBy: { requestedAt: 'desc' }, take: 100 });
   const userIds = [...new Set(requests.map((r) => r.userId))];
   const [users, monthCounts] = await Promise.all([

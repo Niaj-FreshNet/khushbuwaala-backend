@@ -7,6 +7,8 @@ import {
     IComboPackagingCostInput
 } from './finance.interface';
 import { PRODUCT_ERROR_MESSAGES } from '../Product/product.constant';
+import { asAddress } from '../../types/records';
+import type { Prisma, ProductVariant } from '@prisma/client';
 
 // ---------- helpers (add near the top, below imports) ----------
 const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
@@ -39,13 +41,34 @@ const resolveDhakaRange = (startDate?: string, endDate?: string) => {
     };
 };
 
-export const resolveCourierCharge = (order: any): number => {
+/** The order fields the money rules read; any order row (lean select or full) fits. */
+export type OrderMoneyInput = {
+    status?: string | null;
+    orderSource?: string | null;
+    method?: string | null;
+    amount?: number | null;
+    isPaid?: boolean | null;
+    shippingCost?: number | null;
+    deliveryCharge?: number | null;
+    discountAmount?: number | null;
+    returnChargeCollected?: number | null;
+    shipping?: unknown; // JSON address
+    orderItems?: { price?: number | null; quantity?: number | null }[] | null;
+    cartItems?: unknown; // older orders: JSON copy of the lines
+};
+
+type MoneyLine = { price?: unknown; quantity?: unknown; qty?: unknown };
+/** The order's lines: real lines, else the JSON copy older orders kept */
+const linesOf = (order: OrderMoneyInput): MoneyLine[] =>
+    order.orderItems || (Array.isArray(order.cartItems) ? (order.cartItems as MoneyLine[]) : []);
+
+export const resolveCourierCharge = (order: OrderMoneyInput): number => {
     // The courier's real fee when Steadfast told us (webhook delivery_charge), else the estimate
     const actual = Number(order.deliveryCharge) || 0;
     if (actual > 0) return actual;
     const shipping = Number(order.shippingCost) || 0;
     if (shipping > 0) return shipping;
-    const isDhaka = String(order.shipping?.district || '').toLowerCase().includes('dhaka');
+    const isDhaka = String(asAddress(order.shipping).district || '').toLowerCase().includes('dhaka');
     return isDhaka ? COURIER_FALLBACK.DHAKA : COURIER_FALLBACK.OUTSIDE;
 };
 
@@ -57,7 +80,7 @@ export const resolveCourierCharge = (order: any): number => {
  * Other CANCELED orders never cost a courier fee (cancelled before shipping).
  * Showroom sales never have one.
  */
-export const courierReturnResult = (order: any) => {
+export const courierReturnResult = (order: OrderMoneyInput) => {
     const status = String(order.status || '').toUpperCase();
     const collectedSet = order.returnChargeCollected !== null && order.returnChargeCollected !== undefined;
     const isReturn = order.orderSource !== 'SHOWROOM' && (status === 'RETURNED' || (status === 'CANCELED' && collectedSet));
@@ -67,9 +90,11 @@ export const courierReturnResult = (order: any) => {
     return { fee, collected, net: collected - fee };
 };
 
-const isCodMethod = (method?: string | null) => {
+// Cash on delivery only. (It used to match any method containing 'cash', so a shipped order paid in
+// cash beforehand would have been charged Steadfast's 1% COD fee.)
+export const isCodMethod = (method?: string | null) => {
     const m = String(method || '').toLowerCase();
-    return m.includes('cash') || m.includes('cod');
+    return m === 'cashondelivery' || m === 'cod';
 };
 
 // ==========================================
@@ -201,14 +226,19 @@ export const snapshotOrderCosts = async (orderId: string) => {
     // Older orders: some have no line records (only the JSON item list on the order) and many
     // lines store product + size but no variantId. Both used to be skipped, so those orders
     // were missing from Finance (83 orders on 2026-11-22). Fall back sensibly instead.
-    const jsonItems = Array.isArray(order.cartItems) ? (order.cartItems as any[]) : [];
-    const sourceItems: any[] = order.orderItems.length
+    type JsonLine = { productId?: string; variantId?: string; size?: number; unit?: string; quantity?: unknown; price?: unknown };
+    const jsonItems = Array.isArray(order.cartItems) ? (order.cartItems as JsonLine[]) : [];
+    type SnapshotLine = {
+        id?: string; productId?: string | null; variantId?: string | null; size?: number | null; unit?: string | null;
+        quantity: number; price: number; variant: ProductVariant | null;
+    };
+    const sourceItems: SnapshotLine[] = order.orderItems.length
         ? order.orderItems
         : jsonItems.map((ci) => ({ id: undefined, productId: ci.productId, variantId: ci.variantId, size: ci.size, unit: ci.unit, quantity: Number(ci.quantity) || 1, price: Number(ci.price) || 0, variant: null }));
     if (!sourceItems.length) return;
 
     // Deduplicate order items by ID to avoid duplicate snapshots
-    const uniqueItemsMap = new Map();
+    const uniqueItemsMap = new Map<string, SnapshotLine>();
     sourceItems.forEach((item, i) => uniqueItemsMap.set(item.id ?? `json-${i}`, item));
     const orderItems = Array.from(uniqueItemsMap.values());
 
@@ -451,7 +481,7 @@ export const getFinancialSummary = async (query: { startDate?: string; endDate?:
 // ==========================================
 
 const backfillHistoricalOrderCosts = async (orderIds?: string[]) => {
-    const whereClause: any = {
+    const whereClause: Prisma.OrderWhereInput = {
         status: { notIn: ['CANCELED', 'RETURNED'] }
     };
 
@@ -501,7 +531,7 @@ const overrideOrderProfit = async (orderId: string, manualProfit: number) => {
     });
 };
 
-export const calculateOrderFinancials = (order: any) => {
+export const calculateOrderFinancials = (order: OrderMoneyInput) => {
     const orderStatus = String(order.status || "").toUpperCase();
     const isCanceledOrReturned = orderStatus === "CANCELED" || orderStatus === "RETURNED";
     const isDeliveredOrCompleted = orderStatus === "DELIVERED" || orderStatus === "COMPLETED";
@@ -509,19 +539,20 @@ export const calculateOrderFinancials = (order: any) => {
     // 🏷️ Check if it's a Showroom sale (no delivery charges / courier loss)
     const isShowroom = order.orderSource === "SHOWROOM";
 
-    const orderItems = order.orderItems || order.items || order.cartItems || [];
+    const orderItems = linesOf(order);
     const shipping = Number(order.shippingCost || 0);
-    const itemsSubtotal = orderItems.reduce((acc: number, it: any) => acc + (Number(it.price || 0) * Number(it.quantity || it.qty || 1)), 0);
+    const itemsSubtotal = orderItems.reduce((acc: number, it) => acc + (Number(it.price || 0) * Number(it.quantity || it.qty || 1)), 0);
     const productBill = itemsSubtotal > 0 ? itemsSubtotal : Math.max(0, Number(order.amount || 0) - shipping);
 
-    const districtLower = String(order.shipping?.district || "").toLowerCase();
+    const districtLower = String(asAddress(order.shipping).district || "").toLowerCase();
     const isDhaka = districtLower.includes("dhaka");
     const courierDeliveryCharge = isShowroom ? 0 : (shipping > 0 ? shipping : (isDhaka ? 55 : 115));
 
     const isShippingIncludedInCod = shipping > 0;
     const effectiveDeliveryDeduction = isShowroom || isShippingIncludedInCod ? 0 : courierDeliveryCharge;
 
-    const isCod = !isShowroom && (String(order.method || "").toLowerCase().includes("cash") || String(order.method || "").toLowerCase().includes("cod"));
+    // cash on delivery only (a shipped order paid in cash beforehand has no COD fee)
+    const isCod = !isShowroom && isCodMethod(order.method);
     const codCharge = isCod ? Math.round(productBill * 0.01) : 0;
 
     // Sales figure = what the customer pays for products: item lines minus order discounts
@@ -553,7 +584,7 @@ export const calculateOrderFinancials = (order: any) => {
     };
 };
 
-export const resolveOrderItemCosts = (order: any) => {
+export const resolveOrderItemCosts = <C>(order: OrderMoneyInput & { orderItemCosts?: C[] | null }): (C | { profit: number })[] => {
     const status = String(order.status || "").toUpperCase();
     const ret = courierReturnResult(order);
     if (ret) return [{ profit: ret.net }];
@@ -600,7 +631,8 @@ export const getLedgerTransactions = async (query: { startDate?: string; endDate
     });
 
     // Format and combine all entries
-    let ledger: any[] = [];
+    type LedgerLine = { id: string; date: Date; type: 'CREDIT' | 'DEBIT'; source: string; description: string; method: string; amount: number; reference: string };
+    let ledger: LedgerLine[] = [];
 
     orders.forEach(o => {
         ledger.push({

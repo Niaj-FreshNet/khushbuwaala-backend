@@ -5,7 +5,7 @@ import { prisma } from '../../../prisma/client';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import { sendPasswordChangeNotificationEmail } from '../../helpers/emailSender/emails';
-import { Role } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 const getAllUsers = async (
   id: string,
@@ -44,7 +44,7 @@ const getAllUsers = async (
   }
 
   const result = await prisma.user.findMany(prismaQuery);
-  const meta = await queryBuilder.getPaginationMeta(prisma.user);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.user.count({ where }));
 
   return {
     meta,
@@ -154,13 +154,16 @@ const changePassword = async (
   return true;
 };
 
-const updateUser = async (id: string, data: any) => {
-  const updateData: Record<string, any> = {};
+// Profile fields a user (or an admin for them) may change; anything else in the body is ignored
+type ProfileUpdate = { name?: unknown; address?: unknown; district?: unknown; imageUrl?: unknown; email?: unknown; phone?: unknown; contact?: unknown };
+
+const updateUser = async (id: string, data: ProfileUpdate) => {
+  const updateData: Prisma.UserUpdateInput = {};
 
   if (data.name !== undefined) updateData.name = String(data.name).trim();
   if (data.address !== undefined) updateData.address = String(data.address).trim();
   if (data.district !== undefined) updateData.district = String(data.district).trim();
-  if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+  if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl === null ? null : String(data.imageUrl);
 
   // Role is never changed through profile updates (see PATCH /auth/approve-role).
 

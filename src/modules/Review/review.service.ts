@@ -78,11 +78,12 @@ const getAllReviews = async (queryParams: Record<string, unknown>) => {
           imageUrl: true,
         },
       },
-      product: { select: { name: true, slug: true, thumbnail: true } },
+      // Product has no thumbnail field (asking for it made this endpoint fail every time)
+      product: { select: { name: true, slug: true, primaryImage: true } },
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.review);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.review.count({ where }));
   return { meta, data: reviews };
 };
 
@@ -103,7 +104,7 @@ const getAllReviewsAdmin = async (queryParams: Record<string, unknown>) => {
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.review);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.review.count({ where }));
   return { meta, data: reviews };
 };
 

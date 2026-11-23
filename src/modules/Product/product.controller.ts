@@ -8,12 +8,9 @@ import { IProduct, IUpdateProduct } from './product.interface';
 import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 import { parseProductQuery } from '../../helpers/queryBuilder';
 import { uploadToCloudinary } from '../../utils/sendImageToCloudinary';
-// import { PRODUCT_ERROR_MESSAGES } from './product.constant';
 
 // Create Product
 const createProduct = catchAsync(async (req, res) => {
-  // console.log("hello")
-  // console.log('req bodyyyy',req.body)
   const { categoryId, variants } = req.body;
 
   // Validation
@@ -21,7 +18,7 @@ const createProduct = catchAsync(async (req, res) => {
     throw new AppError(httpStatus.BAD_REQUEST, PRODUCT_ERROR_MESSAGES.CATEGORY_REQUIRED);
   }
 
-  const { primaryImage, otherImages } = req.body;
+  const { primaryImage } = req.body;
   if (!primaryImage) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Primary image is required.');
   }
@@ -49,9 +46,8 @@ const createProduct = catchAsync(async (req, res) => {
     stock: req.body.stock,
     variants: variants,
   };
-  // console.log("parsed data:", parsedData)
 
-  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
   const result = await ProductServices.createProduct(parsedData as IProduct, isSuperAdmin);
 
   sendResponse(res, {
@@ -65,10 +61,8 @@ const createProduct = catchAsync(async (req, res) => {
 // Get All Products (Public)
 const getAllProducts = catchAsync(async (req, res) => {
   const query = parseProductQuery(req.query);
-  // console.log("RAW query:", req.query);
 
   const result = await ProductServices.getAllProducts(query);
-  // console.log("PARSED query:", query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -82,7 +76,7 @@ const getAllProducts = catchAsync(async (req, res) => {
 // Get All Products (Admin)
 const getAllProductsAdmin = catchAsync(async (req, res) => {
   const query = parseProductQuery(req.query);
-  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
 
   const result = await ProductServices.getAllProductsAdmin(query, isSuperAdmin);
 
@@ -98,7 +92,7 @@ const getAllProductsAdmin = catchAsync(async (req, res) => {
 // Get Single Product
 const getProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const role = (req as any).user?.role;
+  const role = req.user?.role;
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const isStaff = role === 'ADMIN' || role === 'SUPER_ADMIN';
   const result = await ProductServices.getProduct(id, isSuperAdmin, isStaff);
@@ -171,7 +165,7 @@ const updateProduct = catchAsync(async (req, res) => {
     newImages: newImageUrls,
   };
 
-  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
   const result = await ProductServices.updateProduct(id, parsedData as IUpdateProduct, isSuperAdmin);
 
   sendResponse(res, {
@@ -420,7 +414,7 @@ const receiveStockPurchase = catchAsync(async (req, res) => {
   const payload = {
     ...req.body,
     productId,
-    createdById: (req as any).user?.id,
+    createdById: req.user?.id,
   };
 
   if (!payload.quantity || !payload.costLines) {
@@ -439,7 +433,7 @@ const receiveStockPurchase = catchAsync(async (req, res) => {
 });
 
 const quickUpdateCell = catchAsync(async (req, res) => {
-  const isSuperAdmin = (req as any).user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
   const result = await ProductServices.quickUpdateCell(req.body, isSuperAdmin);
 
   sendResponse(res, {

@@ -1,7 +1,6 @@
-import { subDays, subMonths } from 'date-fns';
+import { subDays } from 'date-fns';
 import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
-import { deleteFile } from '../../helpers/fileDelete';
 import QueryBuilder from '../../helpers/queryBuilder';
 import {
   IProduct,
@@ -19,11 +18,7 @@ import {
   IProductVariant,
 } from './product.interface';
 import {
-  productFilterFields,
   productSearchFields,
-  productArraySearchFields,
-  productNestedFilters,
-  productRangeFilter,
   productDetailInclude,
   productDetailIncludeStaff,
   productAdminInclude,
@@ -33,6 +28,8 @@ import {
 } from './product.constant';
 import slugify from 'slugify';
 import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
+import type { DiscountRow, ProductRow } from '../../types/records';
+import type { Prisma } from '@prisma/client';
 
 // Create Product
 export const createProduct = async (payload: IProduct, isSuperAdmin = false): Promise<IProductDetailResponse> => {
@@ -155,7 +152,7 @@ const toArray = (val: unknown): string[] => {
   return [];
 };
 
-const applyProductFilters = (queryBuilder: QueryBuilder<any>, query: IProductQuery) => {
+const applyProductFilters = (queryBuilder: QueryBuilder, query: IProductQuery) => {
   if (query.gender && query.gender !== 'all') {
     queryBuilder.rawFilter({ gender: { equals: String(query.gender), mode: 'insensitive' } });
   }
@@ -203,7 +200,7 @@ const applyProductFilters = (queryBuilder: QueryBuilder<any>, query: IProductQue
 };
 
 const runProductQuery = async (query: IProductQuery) => {
-  const queryBuilder = new QueryBuilder(query, prisma.product);
+  const queryBuilder = new QueryBuilder(query);
 
   const categories = toArray(query.category);
   if (categories.length) {
@@ -214,7 +211,7 @@ const runProductQuery = async (query: IProductQuery) => {
     const categoryIds = cats.map(c => c.id);
     if (!categoryIds.length) {
       return {
-        results: [] as any[],
+        results: [] as ProductRow[],
         meta: { page: Number(query.page) || 1, limit: Number(query.limit) || 20, total: 0, totalPage: 0 },
       };
     }
@@ -243,7 +240,7 @@ const getAllProducts = async (query: IProductQuery) => {
 };
 
 const getAllProductsAdmin = async (query: IProductQuery, isSuperAdmin = false) => {
-  const queryBuilder = new QueryBuilder(query, prisma.product);
+  const queryBuilder = new QueryBuilder(query);
 
   if (query.stock === 'in') queryBuilder.rawFilter({ stock: { gt: 0 } });
   else if (query.stock === 'out') queryBuilder.rawFilter({ stock: { lte: 0 } });
@@ -260,7 +257,7 @@ const getAllProductsAdmin = async (query: IProductQuery, isSuperAdmin = false) =
   const meta = await queryBuilder.countTotal();
   results = applySorting(results, query.sortBy);
 
-  return { data: results.map((p: any) => formatProductAdminListingResponse(p, isSuperAdmin)), meta };
+  return { data: results.map((p) => formatProductAdminListingResponse(p, isSuperAdmin)), meta };
 };
 
 const getProduct = async (
@@ -767,7 +764,7 @@ const getProductsByCategoryName = async (categoryName: string, query: IProductQu
 };
 
 const getProductsByCategoryId = async (categoryId: string, query: IProductQuery) => {
-  const queryBuilder = new QueryBuilder(query, prisma.product);
+  const queryBuilder = new QueryBuilder(query);
 
   applyProductFilters(queryBuilder, query);
   queryBuilder.rawFilter({ published: true, categoryId });
@@ -973,6 +970,7 @@ const updateProductStock = async (productId: string, addedStock: number, reason?
     where: { id: productId },
     include: productAdminInclude,
   });
+  if (!updatedProduct) throw new AppError(404, PRODUCT_ERROR_MESSAGES.PRODUCT_NOT_FOUND);
 
   return formatProductDetailResponse(updatedProduct);
 };
@@ -1000,16 +998,16 @@ const getStockLogs = async (productId: string) => {
   }));
 };
 
-const computeRating = (reviews: any[]) => {
+const computeRating = (reviews: { rating: number }[]) => {
   const reviewCount = reviews.length;
   const averageRating =
     reviewCount > 0
-      ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount
       : 0;
   return { averageRating: parseFloat(averageRating.toFixed(2)), reviewCount };
 };
 
-const pickBestDiscount = (discounts: any[] = []) => {
+const pickBestDiscount = (discounts: DiscountRow[] = []) => {
   if (!discounts.length) return undefined;
 
   const now = new Date();
@@ -1027,9 +1025,15 @@ const pickBestDiscount = (discounts: any[] = []) => {
   return { type: best.type, value: best.value };
 };
 
-const formatProductListingResponse = (product: any): IProductListingResponse => {
-  const variants = (product.variants || []).filter((v: any) => v.published !== false);
-  const prices = variants.map((v: any) => v.price);
+// Columns the Master Price Sheet may change in one cell (quick-cell-update)
+const PRODUCT_TEXT_FIELDS = ['brand', 'supplier', 'origin', 'gender', 'metaTitle', 'metaDescription', 'googleProductCategory'] as const;
+const VARIANT_NUMBER_FIELDS = ['price', 'compareAtPrice', 'costPrice', 'stock', 'size', 'lowStockAlert', 'weightGrams'] as const;
+const VARIANT_TEXT_FIELDS = ['barcode', 'gtin', 'mpn'] as const;
+const isOneOf = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
+
+const formatProductListingResponse = (product: ProductRow): IProductListingResponse => {
+  const variants = (product.variants || []).filter((v) => v.published !== false);
+  const prices = variants.map((v) => v.price);
   const { averageRating, reviewCount } = computeRating(product.Review || []);
 
   return {
@@ -1042,7 +1046,7 @@ const formatProductListingResponse = (product: any): IProductListingResponse => 
     published: product.published,
     salesCount: product.salesCount,
 
-    variants: variants.map((v: any) => ({
+    variants: variants.map((v) => ({
       id: v.id,
       sku: v.sku,
       unit: v.unit,
@@ -1069,7 +1073,7 @@ const formatProductListingResponse = (product: any): IProductListingResponse => 
   };
 };
 
-const formatProductAdminListingResponse = (product: any, isSuperAdmin = false): IProductAdminListingResponse => {
+const formatProductAdminListingResponse = (product: ProductRow, isSuperAdmin = false): IProductAdminListingResponse => {
   const base = formatProductListingResponse(product);
   const variants = product.variants || [];
 
@@ -1079,18 +1083,18 @@ const formatProductAdminListingResponse = (product: any, isSuperAdmin = false): 
     brand: product.brand || null,
     categoryId: product.categoryId,
     category: product.category,
-    variants: variants.map((v: any) => ({
+    variants: variants.map((v) => ({
       id: v.id, sku: v.sku, unit: v.unit, size: v.size, price: v.price, stock: v.stock,
       isDefault: v.isDefault, published: v.published ?? true,
       compareAtPrice: v.compareAtPrice, images: v.images || [],
       lowStockAlert: v.lowStockAlert, barcode: v.barcode, gtin: v.gtin, mpn: v.mpn, weightGrams: v.weightGrams,
       ...(isSuperAdmin ? { costPrice: v.costPrice ?? null } : {}),
     })),
-  } as any;
+  };
 };
-const formatProductSearchResponse = (product: any): IProductSearchResponse => {
+const formatProductSearchResponse = (product: ProductRow): IProductSearchResponse => {
   const variants = product.variants || [];
-  const prices = variants.map((v: any) => v.price);
+  const prices = variants.map((v) => v.price);
   const { averageRating, reviewCount } = computeRating(product.Review || []);
 
   return {
@@ -1109,99 +1113,14 @@ const formatProductSearchResponse = (product: any): IProductSearchResponse => {
   };
 };
 
-const formatProductDetailResponse = (product: any): IProductDetailResponse => {
-  const variants = (product.variants || []).filter((v: any) => v.published !== false);
-  const prices = variants.map((v: any) => v.price);
+const formatProductDetailResponse = (product: ProductRow): IProductDetailResponse => {
+  const variants = (product.variants || []).filter((v) => v.published !== false);
+  const prices = variants.map((v) => v.price);
   const reviews = product.Review || [];
   const { averageRating, reviewCount } = computeRating(reviews);
 
-  const materials = product.ProductMaterial?.map((pm: any) => pm.material) || [];
-  const fragrances = product.ProductFragrance?.map((pf: any) => pf.fragrance) || [];
-
-  return {
-    id: product.id,
-    name: product.name,
-    slug: product.slug,
-    primaryImage: product.primaryImage,
-    brand: product.brand,
-    condition: product.condition,
-    itemGroupId: product.itemGroupId,
-    googleProductCategory: product.googleProductCategory,
-    gender: product.gender,
-    metaTitle: product.metaTitle,
-    metaDescription: product.metaDescription,
-    origin: product.origin,
-    accords: product.accords || [],
-    bestFor: product.bestFor || [],
-    tags: product.tags || [],
-    published: product.published,
-    salesCount: product.salesCount,
-
-    categoryId: product.categoryId,
-    category: product.category,
-
-    minPrice: prices.length ? Math.min(...prices) : 0,
-    maxPrice: prices.length ? Math.max(...prices) : 0,
-    totalStock: product.stock,
-    inStock: product.stock > 0,
-
-    averageRating,
-    reviewCount,
-
-    description: product.description,
-    videoUrl: product.videoUrl,
-    otherImages: product.otherImages || [],
-
-    perfumeNotes: product.perfumeNotes,
-    performance: product.performance,
-    longevity: product.longevity,
-    projection: product.projection,
-    sillage: product.sillage,
-
-    materialIds: product.ProductMaterial?.map((m: any) => m.material.id) || [],
-    fragranceIds: product.ProductFragrance?.map((f: any) => f.fragrance.id) || [],
-    materials: materials.map((m: any) => ({ id: m.id, name: m.materialName })),
-    fragrances: fragrances.map((f: any) => ({ id: f.id, name: f.fragranceName })),
-
-    supplier: product.supplier,
-
-    discounts: product.discounts || [],
-    // costPrice is never exposed in this (public) response
-     
-    variants: variants.map(({ costPrice: _hiddenCost, ...v }: any) => ({
-      ...v,
-      images: v.images || [],
-      discounts: v.discounts || [],
-    })),
-
-    reviews: reviews.map((r: any) => ({
-      id: r.id,
-      rating: r.rating,
-      title: r.title,
-      comment: r.comment,
-      isPublished: r.isPublished,
-      productId: r.productId,
-      userId: r.userId,
-      user: r.user
-        ? { name: r.user.name, imageUrl: r.user.imageUrl || '/default-avatar.png' }
-        : { name: 'Anonymous', imageUrl: '/default-avatar.png' },
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    })),
-
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt,
-  };
-};
-
-const formatProductAdminDetailResponse = (product: any, isSuperAdmin = false): IProductDetailResponse => {
-  const variants = product.variants || [];
-  const prices = variants.map((v: any) => v.price);
-  const reviews = product.Review || [];
-  const { averageRating, reviewCount } = computeRating(reviews);
-
-  const materials = product.ProductMaterial?.map((pm: any) => pm.material) || [];
-  const fragrances = product.ProductFragrance?.map((pf: any) => pf.fragrance) || [];
+  const materials = (product.ProductMaterial ?? []).flatMap((pm) => (pm.material ? [pm.material] : []));
+  const fragrances = (product.ProductFragrance ?? []).flatMap((pf) => (pf.fragrance ? [pf.fragrance] : []));
 
   return {
     id: product.id,
@@ -1243,24 +1162,23 @@ const formatProductAdminDetailResponse = (product: any, isSuperAdmin = false): I
     projection: product.projection,
     sillage: product.sillage,
 
-    materialIds: product.ProductMaterial?.map((m: any) => m.material.id) || [],
-    fragranceIds: product.ProductFragrance?.map((f: any) => f.fragrance.id) || [],
-    materials: materials.map((m: any) => ({ id: m.id, name: m.materialName })),
-    fragrances: fragrances.map((f: any) => ({ id: f.id, name: f.fragranceName })),
+    materialIds: (product.ProductMaterial ?? []).map((m) => m.material?.id ?? m.materialId).filter((id): id is string => !!id),
+    fragranceIds: (product.ProductFragrance ?? []).map((f) => f.fragrance?.id ?? f.fragranceId).filter((id): id is string => !!id),
+    materials: materials.map((m) => ({ id: m.id, name: m.materialName })),
+    fragrances: fragrances.map((f) => ({ id: f.id, name: f.fragranceName })),
 
     supplier: product.supplier,
-    discounts: product.discounts || [],
 
-    // ⚡ Explicitly preserve variant publication status for admin views
-    variants: variants.map(({ costPrice, ...v }: any) => ({
+    discounts: product.discounts || [],
+    // costPrice is never exposed in this (public) response
+     
+    variants: variants.map(({ costPrice: _hiddenCost, ...v }) => ({
       ...v,
-      ...(isSuperAdmin ? { costPrice: costPrice ?? null } : {}), // cost only for Super Admin
-      published: v.published ?? true,
       images: v.images || [],
       discounts: v.discounts || [],
     })),
 
-    reviews: reviews.map((r: any) => ({
+    reviews: reviews.map((r) => ({
       id: r.id,
       rating: r.rating,
       title: r.title,
@@ -1280,29 +1198,115 @@ const formatProductAdminDetailResponse = (product: any, isSuperAdmin = false): I
   };
 };
 
-const applySorting = (results: any[], sortBy?: string) => {
+const formatProductAdminDetailResponse = (product: ProductRow, isSuperAdmin = false): IProductDetailResponse => {
+  const variants = product.variants || [];
+  const prices = variants.map((v) => v.price);
+  const reviews = product.Review || [];
+  const { averageRating, reviewCount } = computeRating(reviews);
+
+  const materials = (product.ProductMaterial ?? []).flatMap((pm) => (pm.material ? [pm.material] : []));
+  const fragrances = (product.ProductFragrance ?? []).flatMap((pf) => (pf.fragrance ? [pf.fragrance] : []));
+
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    primaryImage: product.primaryImage,
+    brand: product.brand,
+    condition: product.condition,
+    itemGroupId: product.itemGroupId,
+    googleProductCategory: product.googleProductCategory,
+    gender: product.gender,
+    metaTitle: product.metaTitle,
+    metaDescription: product.metaDescription,
+    origin: product.origin,
+    accords: product.accords || [],
+    bestFor: product.bestFor || [],
+    tags: product.tags || [],
+    published: product.published,
+    salesCount: product.salesCount,
+
+    categoryId: product.categoryId,
+    category: product.category,
+
+    minPrice: prices.length ? Math.min(...prices) : 0,
+    maxPrice: prices.length ? Math.max(...prices) : 0,
+    totalStock: product.stock,
+    inStock: product.stock > 0,
+
+    averageRating,
+    reviewCount,
+
+    description: product.description,
+    videos: product.videos || [],
+    otherImages: product.otherImages || [],
+
+    perfumeNotes: product.perfumeNotes,
+    performance: product.performance,
+    longevity: product.longevity,
+    projection: product.projection,
+    sillage: product.sillage,
+
+    materialIds: (product.ProductMaterial ?? []).map((m) => m.material?.id ?? m.materialId).filter((id): id is string => !!id),
+    fragranceIds: (product.ProductFragrance ?? []).map((f) => f.fragrance?.id ?? f.fragranceId).filter((id): id is string => !!id),
+    materials: materials.map((m) => ({ id: m.id, name: m.materialName })),
+    fragrances: fragrances.map((f) => ({ id: f.id, name: f.fragranceName })),
+
+    supplier: product.supplier,
+    discounts: product.discounts || [],
+
+    // ⚡ Explicitly preserve variant publication status for admin views
+    variants: variants.map(({ costPrice, ...v }) => ({
+      ...v,
+      ...(isSuperAdmin ? { costPrice: costPrice ?? null } : {}), // cost only for Super Admin
+      published: v.published ?? true,
+      images: v.images || [],
+      discounts: v.discounts || [],
+    })),
+
+    reviews: reviews.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      title: r.title,
+      comment: r.comment,
+      isPublished: r.isPublished,
+      productId: r.productId,
+      userId: r.userId,
+      user: r.user
+        ? { name: r.user.name, imageUrl: r.user.imageUrl || '/default-avatar.png' }
+        : { name: 'Anonymous', imageUrl: '/default-avatar.png' },
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+};
+
+const applySorting = (results: ProductRow[], sortBy?: string) => {
   if (sortBy === 'price_asc') {
     return results.sort((a, b) => {
-      const minA = Math.min(...a.variants.map((v: any) => v.price));
-      const minB = Math.min(...b.variants.map((v: any) => v.price));
+      const minA = Math.min(...(a.variants ?? []).map((v) => v.price));
+      const minB = Math.min(...(b.variants ?? []).map((v) => v.price));
       return minA - minB;
     });
   } else if (sortBy === 'price_desc') {
     return results.sort((a, b) => {
-      const minA = Math.min(...a.variants.map((v: any) => v.price));
-      const minB = Math.min(...b.variants.map((v: any) => v.price));
+      const minA = Math.min(...(a.variants ?? []).map((v) => v.price));
+      const minB = Math.min(...(b.variants ?? []).map((v) => v.price));
       return minB - minA;
     });
   } else if (sortBy === 'rating_asc') {
     return results.sort((a, b) => {
-      const avgA = a.Review?.length ? a.Review.reduce((s: number, r: any) => s + r.rating, 0) / a.Review.length : 0;
-      const avgB = b.Review?.length ? b.Review.reduce((s: number, r: any) => s + r.rating, 0) / b.Review.length : 0;
+      const avgA = a.Review?.length ? a.Review.reduce((s, r) => s + r.rating, 0) / a.Review.length : 0;
+      const avgB = b.Review?.length ? b.Review.reduce((s, r) => s + r.rating, 0) / b.Review.length : 0;
       return avgA - avgB;
     });
   } else if (sortBy === 'rating_desc') {
     return results.sort((a, b) => {
-      const avgA = a.Review?.length ? a.Review.reduce((s: number, r: any) => s + r.rating, 0) / a.Review.length : 0;
-      const avgB = b.Review?.length ? b.Review.reduce((s: number, r: any) => s + r.rating, 0) / b.Review.length : 0;
+      const avgA = a.Review?.length ? a.Review.reduce((s, r) => s + r.rating, 0) / a.Review.length : 0;
+      const avgB = b.Review?.length ? b.Review.reduce((s, r) => s + r.rating, 0) / b.Review.length : 0;
       return avgB - avgA;
     });
   }
@@ -1363,7 +1367,7 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload, isSuperAdmin = 
       throw new AppError(404, PRODUCT_ERROR_MESSAGES.NOT_FOUND);
     }
 
-    const data: Record<string, any> = {};
+    const data: Prisma.ProductUpdateInput = {};
 
     if (field === 'name') {
       const cleanName = String(value ?? '').trim();
@@ -1384,9 +1388,12 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload, isSuperAdmin = 
       if (!category) {
         throw new AppError(404, 'Category not found.');
       }
-      data.categoryId = String(value);
+      data.category = { connect: { id: String(value) } };
+    } else if (isOneOf(PRODUCT_TEXT_FIELDS, field)) {
+      data[field] = value === '' || value === null || value === undefined ? null : String(value).trim();
     } else {
-      data[field] = value === '' ? null : value;
+      // only the columns the price sheet edits (any column name used to be written as sent)
+      throw new AppError(400, `${field} cannot be edited here`);
     }
 
     const updatedProduct = await prisma.product.update({
@@ -1429,7 +1436,7 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload, isSuperAdmin = 
       throw new AppError(404, 'Product variant not found.');
     }
 
-    const data: Record<string, any> = {};
+    const data: Prisma.ProductVariantUpdateInput = {};
 
     if (field === 'sku') {
       const cleanSku = String(value ?? '').trim().toUpperCase();
@@ -1455,12 +1462,15 @@ const quickUpdateCell = async (payload: IQuickCellUpdatePayload, isSuperAdmin = 
       data.unit = cleanUnit;
     } else if (field === 'published') {
       data.published = Boolean(value);
-    } else if (['price', 'compareAtPrice', 'costPrice', 'stock', 'size', 'lowStockAlert', 'weightGrams'].includes(field)) {
-      data[field] = Number(value);
-    } else if (['barcode', 'gtin', 'mpn'].includes(field)) {
+    } else if (isOneOf(VARIANT_NUMBER_FIELDS, field)) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) throw new AppError(400, `${field} must be a number`);
+      data[field] = n;
+    } else if (isOneOf(VARIANT_TEXT_FIELDS, field)) {
       data[field] = String(value ?? '').trim() || null;
     } else {
-      data[field] = value;
+      // only the columns the price sheet edits (any column, even productId, used to be written as sent)
+      throw new AppError(400, `${field} cannot be edited here`);
     }
 
     const updatedVariant = await prisma.productVariant.update({
@@ -1550,7 +1560,7 @@ const generateGoogleShoppingFeed = async (): Promise<string> => {
 
   // Helper to generate common XML fields
   const addCommonFields = (
-    product: any,
+    product: ProductRow,
     itemId: string,
     title: string,
     description: string,

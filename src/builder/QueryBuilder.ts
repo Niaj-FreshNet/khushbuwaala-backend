@@ -7,10 +7,21 @@ type QueryParams = {
   [key: string]: unknown;
 };
 
-export class PrismaQueryBuilder<T> {
+/** The parts of a Prisma findMany this builder fills in. `where` gets the remaining query params. */
+export type BuiltQuery = {
+  where: Record<string, unknown>;
+  orderBy?: Record<string, 'asc' | 'desc'>[];
+  skip?: number;
+  take?: number;
+  select?: Record<string, unknown>;
+};
+
+export type PageMeta = { total: number; totalPage: number; page: number; limit: number };
+
+export class PrismaQueryBuilder {
   private queryParams: QueryParams;
   private searchableFields: string[];
-  private prismaQuery: any = {};
+  private prismaQuery: BuiltQuery = { where: {} };
 
   constructor(query: QueryParams, searchableFields: string[] = []) {
     this.queryParams = query;
@@ -21,7 +32,7 @@ export class PrismaQueryBuilder<T> {
     const { searchTerm, sort, limit, page, fields, ...filters } =
       this.queryParams;
 
-    let where: any = {};
+    let where: Record<string, unknown> = {};
 
     if (searchTerm && this.searchableFields.length > 0) {
       where.OR = this.searchableFields.map((field) => ({
@@ -40,7 +51,7 @@ export class PrismaQueryBuilder<T> {
   buildSort() {
     const sortStr = this.queryParams.sort || '-createdAt';
 
-    const sortFields = sortStr.split(',').map((field) => {
+    const sortFields = sortStr.split(',').map((field): Record<string, 'asc' | 'desc'> => {
       const order = field.startsWith('-') ? 'desc' : 'asc';
       const key = field.replace(/^-/, '');
       return { [key]: order };
@@ -63,7 +74,7 @@ export class PrismaQueryBuilder<T> {
   buildSelect() {
     if (this.queryParams.fields) {
       const fields = this.queryParams.fields.split(',');
-      this.prismaQuery.select = fields.reduce((acc: any, field: string) => {
+      this.prismaQuery.select = fields.reduce((acc: Record<string, unknown>, field: string) => {
         acc[field] = true;
         return acc;
       }, {});
@@ -75,15 +86,13 @@ export class PrismaQueryBuilder<T> {
     return this.prismaQuery;
   }
 
-  getPaginationMeta = async (
-    model: any,
-  ): Promise<{
-    total: number;
-    totalPage: number;
-    page: number;
-    limit: number;
-  }> => {
-    const total = await model.count({ where: this.prismaQuery.where });
+  /**
+   * Page numbers for a list. `count` counts every row the list matches; it gets the builder's own
+   * `where`, and a service that adds its own filters counts with its final where instead
+   * (it used to rely on mutating the builder's object, which silently miscounted if that changed).
+   */
+  getPaginationMeta = async (count: (where: Record<string, unknown>) => PromiseLike<number>): Promise<PageMeta> => {
+    const total = await count(this.prismaQuery.where);
     const page = Number(this.queryParams.page) || 1;
     const limit = Number(this.queryParams.limit) || 10;
     const totalPage = Math.ceil(total / limit);

@@ -5,8 +5,6 @@ import {
   LONGEVITY_LEVELS,
   PROJECTION_LEVELS,
   SILLAGE_LEVELS,
-  COMMON_ACCORDS,
-  BEST_FOR_OCCASIONS,
   PRODUCT_VALIDATION
 } from '../modules/Product/product.constant';
 
@@ -52,16 +50,16 @@ const createProductZodSchema = z.object({
   // Perfume specifications
   origin: z.string().min(1).max(100).optional(),
   brand: z.string().min(1).max(100).optional(),
-  gender: z.enum(PERFUME_GENDERS as any).optional(),
+  gender: z.enum(PERFUME_GENDERS).optional(),
   perfumeNotes: perfumeNotesSchema,
   accords: z.array(z.string().min(1))
     .max(PRODUCT_VALIDATION.MAX_ACCORDS, `Cannot have more than ${PRODUCT_VALIDATION.MAX_ACCORDS} accords`)
     .optional()
     .default([]),
-  performance: z.enum(PERFORMANCE_LEVELS as any).optional(),
-  longevity: z.enum(LONGEVITY_LEVELS as any).optional(),
-  projection: z.enum(PROJECTION_LEVELS as any).optional(),
-  sillage: z.enum(SILLAGE_LEVELS as any).optional(),
+  performance: z.enum(PERFORMANCE_LEVELS).optional(),
+  longevity: z.enum(LONGEVITY_LEVELS).optional(),
+  projection: z.enum(PROJECTION_LEVELS).optional(),
+  sillage: z.enum(SILLAGE_LEVELS).optional(),
   bestFor: z.array(z.string().min(1))
     .max(PRODUCT_VALIDATION.MAX_BEST_FOR, `Cannot have more than ${PRODUCT_VALIDATION.MAX_BEST_FOR} occasions`)
     .optional()
@@ -100,15 +98,15 @@ const updateProductZodSchema = z.object({
   // Perfume specifications
   origin: z.string().min(1).max(100).optional(),
   brand: z.string().min(1).max(100).optional(),
-  gender: z.enum(PERFUME_GENDERS as any).optional(),
+  gender: z.enum(PERFUME_GENDERS).optional(),
   perfumeNotes: perfumeNotesSchema,
   accords: z.array(z.string().min(1))
     .max(PRODUCT_VALIDATION.MAX_ACCORDS, `Cannot have more than ${PRODUCT_VALIDATION.MAX_ACCORDS} accords`)
     .optional(),
-  performance: z.enum(PERFORMANCE_LEVELS as any).optional(),
-  longevity: z.enum(LONGEVITY_LEVELS as any).optional(),
-  projection: z.enum(PROJECTION_LEVELS as any).optional(),
-  sillage: z.enum(SILLAGE_LEVELS as any).optional(),
+  performance: z.enum(PERFORMANCE_LEVELS).optional(),
+  longevity: z.enum(LONGEVITY_LEVELS).optional(),
+  projection: z.enum(PROJECTION_LEVELS).optional(),
+  sillage: z.enum(SILLAGE_LEVELS).optional(),
   bestFor: z.array(z.string().min(1))
     .max(PRODUCT_VALIDATION.MAX_BEST_FOR, `Cannot have more than ${PRODUCT_VALIDATION.MAX_BEST_FOR} occasions`)
     .optional(),
@@ -142,17 +140,17 @@ const productQuerySchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
   brand: z.string().optional(),
-  gender: z.enum(PERFUME_GENDERS as any).optional(),
+  gender: z.enum(PERFUME_GENDERS).optional(),
   origin: z.string().optional(),
   minPrice: z.coerce.number().min(0).optional(),
   maxPrice: z.coerce.number().min(0).optional(),
   tags: z.string().optional(), // comma-separated
   accords: z.string().optional(), // comma-separated
   bestFor: z.string().optional(), // comma-separated
-  performance: z.enum(PERFORMANCE_LEVELS as any).optional(),
-  longevity: z.enum(LONGEVITY_LEVELS as any).optional(),
-  projection: z.enum(PROJECTION_LEVELS as any).optional(),
-  sillage: z.enum(SILLAGE_LEVELS as any).optional(),
+  performance: z.enum(PERFORMANCE_LEVELS).optional(),
+  longevity: z.enum(LONGEVITY_LEVELS).optional(),
+  projection: z.enum(PROJECTION_LEVELS).optional(),
+  sillage: z.enum(SILLAGE_LEVELS).optional(),
   stock: z.enum(['in', 'out']).optional(),
   sortBy: z.enum([
     'name',

@@ -64,7 +64,7 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 app.use(
   express.json({
     verify: (req, _res, buf) => {
-      (req as any).rawBody = buf;
+      (req as express.Request).rawBody = buf;
     },
   })
 );

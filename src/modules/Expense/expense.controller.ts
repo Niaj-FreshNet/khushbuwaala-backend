@@ -3,10 +3,11 @@ import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { ExpenseServices } from './expense.service';
+import { requireUser } from '../../utils/requestUser';
 
 const createExpense = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body;
-  const userId = req.user.id;
+  const userId = requireUser(req).id;
   const result = await ExpenseServices.createExpense(payload, userId);
 
   sendResponse(res, {
@@ -18,7 +19,7 @@ const createExpense = catchAsync(async (req: Request, res: Response) => {
 });
 
 // Salesmen work with their own expenses only
-const ownerFor = (req: Request) => ((req as any).user?.role === 'SALESMAN' ? (req as any).user.id : undefined);
+const ownerFor = (req: Request) => (req.user?.role === 'SALESMAN' ? req.user.id : undefined);
 
 const getAllExpenses = catchAsync(async (req: Request, res: Response) => {
   const result = await ExpenseServices.getAllExpenses(req.query, ownerFor(req));

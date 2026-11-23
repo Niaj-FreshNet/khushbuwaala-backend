@@ -1,5 +1,7 @@
 import { prisma } from '../../../prisma/client';
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
+import { PaymentState, Prisma } from '@prisma/client';
+import { isEnumValue } from '../../utils/enumValue';
 
 const getAllPaymentHistory = async (queryParams: Record<string, unknown>) => {
   const queryBuilder = new PrismaQueryBuilder(queryParams, ['id', 'gatewayInvoice', 'gatewayPaymentId']);
@@ -9,19 +11,13 @@ const getAllPaymentHistory = async (queryParams: Record<string, unknown>) => {
     .buildPagination()
     .getQuery();
 
-  const where: any = prismaQuery.where || {};
+  const { status: rawStatus, ...rest } = prismaQuery.where;
+  const where: Prisma.PaymentWhereInput = rest;
 
-  // ✅ Match your exact schema PaymentState enums and safely auto-correct common spelling variations (like CANCELLED -> CANCELED)
-  if (where.status && typeof where.status === 'string') {
-    const statusVal = where.status.toUpperCase();
-    const validStatuses = ['INITIATED', 'COMPLETED', 'FAILED', 'CANCELED', 'CANCELLED', 'REFUNDED'];
-
-    if (validStatuses.includes(statusVal)) {
-      // Normalize 'CANCELLED' to 'CANCELED' to match your schema enum
-      where.status = statusVal === 'CANCELLED' ? 'CANCELED' : statusVal;
-    } else {
-      delete where.status;
-    }
+  // Accept any case and the British spelling (CANCELLED -> CANCELED); ignore unknown values
+  if (typeof rawStatus === 'string') {
+    const s = rawStatus.toUpperCase() === 'CANCELLED' ? 'CANCELED' : rawStatus.toUpperCase();
+    if (isEnumValue(PaymentState, s)) where.status = s;
   }
 
   const payments = await prisma.payment.findMany({
@@ -42,9 +38,7 @@ const getAllPaymentHistory = async (queryParams: Record<string, unknown>) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) => prisma.payment.count({ where: args.where }),
-  });
+  const meta = await queryBuilder.getPaginationMeta(() => prisma.payment.count({ where }));
 
   return { meta, data: payments };
 };

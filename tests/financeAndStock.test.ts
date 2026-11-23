@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { calculateOrderFinancials } from '../src/modules/Finance/finance.service';
 import { dhakaDayEnd, dhakaDayStart } from '../src/utils/dhakaTime';
 import { cancelAbandonedCheckout, syncStockForStatusChange } from '../src/utils/orderStock';
+import type { Prisma } from '@prisma/client';
 
 test('sales = item lines minus order discount; delivery is not sales', () => {
   const f = calculateOrderFinancials({
@@ -42,7 +43,7 @@ test('a "2026-11-21" filter means the Bangladesh calendar day', () => {
 // A fake transaction that records stock moves
 const fakeTx = (opts: { claimCount: number; stockReturned?: boolean }) => {
   const moves: Array<{ productId: string; change: number }> = [];
-  const tx: any = {
+  const tx = {
     order: {
       updateMany: async () => ({ count: opts.claimCount }),
       update: async () => ({}),
@@ -51,11 +52,12 @@ const fakeTx = (opts: { claimCount: number; stockReturned?: boolean }) => {
     cartItem: { findMany: async () => [{ productId: 'p1', variantId: 'v6', quantity: 2, size: 6, variant: { size: 6 } }] },
     product: {
       count: async () => 1,
-      update: async ({ data }: any) => { moves.push({ productId: 'p1', change: data.stock.increment }); return {}; },
+      update: async ({ data }: { data: { stock: { increment: number } } }) => { moves.push({ productId: 'p1', change: data.stock.increment }); return {}; },
     },
     stockLog: { create: async () => ({}) },
   };
-  return { tx, moves };
+  // only the calls these helpers make are faked
+  return { tx: tx as unknown as Prisma.TransactionClient, moves };
 };
 
 test('abandoned checkout: stock goes back only for the request that claims the order', async () => {

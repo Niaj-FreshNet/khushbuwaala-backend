@@ -1,4 +1,5 @@
 import { CostCategory } from "@prisma/client";
+import type { DiscountRow, VariantRow } from '../../types/records';
 
 export interface IProductVariant {
   id?: string; // existing variant id (edit); omitted for new variants
@@ -141,67 +142,56 @@ export interface IProductQuery {
   [key: string]: unknown;
 }
 
+// A review as shown with a product (lean queries may leave out columns)
 export interface IReview {
-  id: string;
+  id?: string;
   rating: number;
-  title: string;
-  comment: string;
-  isPublished: boolean;
-  productId: string;
-  userId?: string;
+  title?: string;
+  comment?: string;
+  isPublished?: boolean;
+  productId?: string;
+  userId?: string | null;
   user?: {
     name: string;
     imageUrl: string;
   };
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-export interface IDiscount {
-  id: string;
-  productId: string;
-  code?: string;
-  type: "percentage" | "fixed";
-  value: number;
-  maxUsage?: number;
-  startDate?: string;
-  endDate?: string;
-  variantId?: string;
-}
+// Discount rows as stored (type is "percentage" or "fixed")
+export type IDiscount = DiscountRow;
 
 export interface IDiscountLight {
-  type: "percentage" | "fixed";
+  type: string;
   value: number;
 }
 
-export interface IProductVariantResponse {
-  id: string;
-  sku: string;
-  unit: string;
-  size: number;
-  price: number;
-  stock: number;
-  isDefault: boolean;
-  published: boolean;
-  compareAtPrice?: number;
+// A size in a detail response (costPrice only for a super admin)
+export type IProductVariantResponse = Omit<VariantRow, 'costPrice' | 'discounts'> & {
   images: string[];
-  productId: string;
-  discounts?: IDiscount[];
-  createdAt: Date;
-  updatedAt: Date;
-}
+  discounts: Partial<IDiscount>[];
+  costPrice?: number | null;
+};
 
+// A size in a listing (lean select; the admin listing adds codes and, for a super admin, cost)
 export interface IProductVariantLight {
   id: string;
-  sku: string;
-  unit: string;
-  size: number;
   price: number;
-  stock: number;
-  isDefault: boolean;
-  published: boolean;
-  compareAtPrice?: number;
+  sku?: string;
+  unit?: string;
+  size?: number;
+  stock?: number;
+  isDefault?: boolean;
+  published?: boolean;
+  compareAtPrice?: number | null;
   images: string[];
+  lowStockAlert?: number | null;
+  barcode?: string | null;
+  gtin?: string | null;
+  mpn?: string | null;
+  weightGrams?: number | null;
+  costPrice?: number | null;
 }
 
 // ============================================================
@@ -214,9 +204,9 @@ interface IProductCore {
   primaryImage: string;
   otherImages?: string[];
   videos?: string[];
-  brand?: string;
-  gender?: string;
-  origin?: string;
+  brand?: string | null;
+  gender?: string | null;
+  origin?: string | null;
   accords?: string[];
   bestFor?: string[];
   tags?: string[];
@@ -224,10 +214,7 @@ interface IProductCore {
   salesCount: number;
 
   categoryId?: string;
-  category?: {
-    categoryName: string;
-    imageUrl?: string;
-  };
+  category?: { categoryName?: string; imageUrl?: string | null; unit?: string | null } | null;
 
   minPrice: number;
   maxPrice: number;
@@ -247,11 +234,7 @@ export interface IProductListingResponse extends IProductCore {
 }
 
 export interface IProductAdminListingResponse extends IProductListingResponse {
-  supplier: string;
-  category?: {
-    categoryName: string;
-    imageUrl?: string;
-  };
+  supplier: string | null;
   variants: IProductVariantLight[];
 }
 
@@ -272,32 +255,29 @@ export interface IProductSearchResponse {
 
 export interface IProductDetailResponse extends IProductCore {
   description: string;
-  videoUrl?: string;
   otherImages: string[];
-  brand?: string;
-  condition?: string;
-  itemGroupId?: string;
-  googleProductCategory?: string;
-  gender?: string;
-  metaTitle?: string;
-  metaDescription?: string;
+  condition?: string | null;
+  itemGroupId?: string | null;
+  googleProductCategory?: string | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
 
   perfumeNotes?: {
     top: string[];
     middle: string[];
     base: string[];
-  };
-  performance?: string;
-  longevity?: string;
-  projection?: string;
-  sillage?: string;
+  } | null;
+  performance?: string | null;
+  longevity?: string | null;
+  projection?: string | null;
+  sillage?: string | null;
 
   materialIds: string[];
   fragranceIds: string[];
   materials: { id: string; name: string }[];
   fragrances: { id: string; name: string }[];
 
-  supplier: string;
+  supplier: string | null;
 
   discounts: IDiscount[];
   variants: IProductVariantResponse[];

@@ -1,14 +1,15 @@
 // Website order pricing rules (server decides every price). No database: pure function.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeWebsitePricing } from '../src/modules/Order/orderPricing';
+import { computeWebsitePricing, type PricingData } from '../src/modules/Order/orderPricing';
 
 const now = new Date('2026-11-22T10:00:00Z');
 const product = { id: 'p1', name: 'Oud', published: true };
 const v3 = { id: 'v3', productId: 'p1', size: 3, unit: 'ML', price: 300, published: true };
 const v6 = { id: 'v6', productId: 'p1', size: 6, unit: 'ML', price: 550, published: true };
-const base = { variants: [v3, v6], products: [product], discounts: [] as any[] };
-const disc = (o: Partial<any>) => ({
+type Disc = PricingData['discounts'][number];
+const base = { variants: [v3, v6], products: [product], discounts: [] as Disc[] };
+const disc = (o: Partial<Disc>): Disc => ({
   code: null, scope: 'PRODUCT', type: 'percentage', value: 10, productId: 'p1', variantId: null,
   startDate: null, endDate: null, maxUsage: null, usedCount: 0, ...o,
 });

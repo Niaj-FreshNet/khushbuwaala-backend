@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { httpErrorOf } from '../../utils/errorInfo';
 
 const BASE_URL = 'https://portal.packzy.com/api/v1';
 
@@ -26,10 +27,10 @@ export const createSteadfastOrder = async (orderData: {
       headers: getHeaders(),
     });
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw new AppError(
-      error.response?.status || httpStatus.INTERNAL_SERVER_ERROR,
-      error.response?.data?.message || 'Failed to create Steadfast order'
+      httpErrorOf(error).status || httpStatus.INTERNAL_SERVER_ERROR,
+      httpErrorOf(error).message || 'Failed to create Steadfast order'
     );
   }
 };
@@ -40,9 +41,9 @@ export const getSteadfastStatusByInvoice = async (invoiceId: string) => {
       headers: getHeaders(),
     });
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw new AppError(
-      error.response?.status || httpStatus.INTERNAL_SERVER_ERROR,
+      httpErrorOf(error).status || httpStatus.INTERNAL_SERVER_ERROR,
       'Failed to fetch Steadfast status by invoice'
     );
   }
@@ -54,9 +55,9 @@ export const getSteadfastBalance = async () => {
       headers: getHeaders(),
     });
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw new AppError(
-      error.response?.status || httpStatus.INTERNAL_SERVER_ERROR,
+      httpErrorOf(error).status || httpStatus.INTERNAL_SERVER_ERROR,
       'Failed to fetch Steadfast balance'
     );
   }

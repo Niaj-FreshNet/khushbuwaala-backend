@@ -2,6 +2,8 @@ import { prisma } from '../../../prisma/client';
 import { FinanceServices } from '../Finance/finance.service';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { Prisma, WithdrawalStatus } from '@prisma/client';
+import { isEnumValue } from '../../utils/enumValue';
 
 const getInvestorDashboardData = async (userId: string, userRole: string, query: { startDate?: string; endDate?: string }) => {
     if (userRole !== 'INVESTOR' && userRole !== 'SUPER_ADMIN') {
@@ -111,7 +113,7 @@ export const sentNumber = (v: unknown, label: string) => {
 
 /** Record each changed money field, inside the same transaction as the change. */
 export const logInvestorAdjustments = async (
-    tx: any,
+    tx: Prisma.TransactionClient,
     investorId: string,
     before: InvestorMoney,
     after: InvestorMoney,
@@ -190,7 +192,8 @@ const reconcileInvestors = async () => {
 };
 
 const getAllWithdrawals = async (status?: string) => {
-    const where = status && status !== 'ALL' ? { status: status as any } : {};
+    // an unknown status used to reach Prisma and fail; it now just lists everything
+    const where: Prisma.InvestorWithdrawalWhereInput = isEnumValue(WithdrawalStatus, status) ? { status } : {};
 
     return await prisma.investorWithdrawal.findMany({
         where,

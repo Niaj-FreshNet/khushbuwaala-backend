@@ -10,7 +10,6 @@ import { PaymentRoutes } from '../modules/Payment/payment.routes';
 import { OrderRoutes } from '../modules/Order/order.routes';
 import { ReviewRoutes } from '../modules/Review/review.routes';
 import { OverviewRoutes } from '../modules/overview/overview.routes';
-import { WishlistRoutes } from '../modules/Wishlist/wishlist.route';
 import { SalesRoutes } from '../modules/Sales/sales.routes';
 import { ExpenseRoutes } from '../modules/Expense/expense.route';
 import { CartItemRoutes } from '../modules/Cart/cart.routes';
@@ -75,10 +74,6 @@ const moduleRoutes = [
   {
     path: '/overview',
     route: OverviewRoutes,
-  },
-  {
-    path: '/wishlist',
-    route: WishlistRoutes,
   },
 
   {

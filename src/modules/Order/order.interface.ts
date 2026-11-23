@@ -1,4 +1,5 @@
-import { OrderSource, OrderStatus, SaleType } from "@prisma/client";
+import { OrderSource, SaleType } from "@prisma/client";
+import type { AddressJson } from '../../types/records';
 
 export type DashboardType = "all" | "website" | "manual";
 
@@ -12,8 +13,8 @@ export interface UpdateOrderPayload {
   discountAmount?: number;
   coupon?: string | null;
   additionalNotes?: string | null;
-  shipping?: any;
-  billing?: any;
+  shipping?: AddressJson;
+  billing?: AddressJson;
   name?: string;
   phone?: string;
   email?: string;

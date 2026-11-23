@@ -4,11 +4,12 @@ import sendResponse from '../../utils/sendResponse';
 import { InvestorServices } from './investor.service';
 import { InvestorProfitServices } from './investorProfit.service';
 import { LedgerAccessServices } from './ledgerAccess.service';
+import { requireUser } from '../../utils/requestUser';
+import type { Request } from 'express';
 
 const getInvestorDashboard = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query;
-    const userId = (req as any).user?.id || (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const { id: userId, role: userRole } = requireUser(req);
 
     const result = await InvestorServices.getInvestorDashboardData(userId, userRole, {
         startDate: startDate as string,
@@ -24,7 +25,7 @@ const getInvestorDashboard = catchAsync(async (req, res) => {
 });
 
 const requestWithdrawal = catchAsync(async (req, res) => {
-    const userId = (req as any).user?.id || (req as any).user?.userId;
+    const userId = requireUser(req).id;
     const { amount, method, note } = req.body;
     
     const result = await InvestorServices.requestWithdrawal(userId, amount, method, note);
@@ -54,7 +55,7 @@ const reconcileInvestors = catchAsync(async (_req, res) => {
 
 const updateInvestorData = catchAsync(async (req, res) => {
     const { id } = req.params;
-    const result = await InvestorServices.updateInvestorData(id, req.body, (req as any).user?.id);
+    const result = await InvestorServices.updateInvestorData(id, req.body, req.user?.id);
     sendResponse(res, {
         statusCode: httpStatus.OK,
         success: true,
@@ -88,7 +89,7 @@ const updateWithdrawalStatus = catchAsync(async (req, res) => {
     });
 });
 
-const uid = (req: any) => req.user?.id || req.user?.userId;
+const uid = (req: Request) => requireUser(req).id;
 
 // ---- Monthly profit share (SUPER_ADMIN) ----
 const previewProfitMonth = catchAsync(async (req, res) => {

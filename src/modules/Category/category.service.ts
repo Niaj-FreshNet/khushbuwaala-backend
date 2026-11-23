@@ -51,7 +51,7 @@ const getAllCategories = async (queryParams: Record<string, unknown>) => {
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.category);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.category.count({ where }));
 
   return {
     meta,
@@ -77,7 +77,7 @@ const getAllCategoriesAdmin = async (queryParams: Record<string, unknown>) => {
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.category);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.category.count({ where }));
 
   return {
     meta,

@@ -5,6 +5,11 @@ import { prisma } from '../../../prisma/client';
 import { applyCourierOutcome, getLastCourierSync, runCourierSync } from './courierSync';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { asAddress } from '../../types/records';
+import type { Prisma } from '@prisma/client';
+
+/** A parcel as stored on a CourierPayout (courierSync.ts) */
+type StoredParcel = { consignmentId?: number; invoice?: string | null; codAmount?: number; status?: string; orderId?: string | null };
 
 export const sendOrderToSteadfast = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -22,7 +27,7 @@ export const sendOrderToSteadfast = async (req: Request, res: Response, next: Ne
             },
         });
 
-        const actor = (req as any).user;
+        const actor = req.user;
         if (order && actor?.role === 'SALESMAN' && String(order.salesmanId || '') !== String(actor.id)) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
@@ -35,11 +40,11 @@ export const sendOrderToSteadfast = async (req: Request, res: Response, next: Ne
             throw new AppError(httpStatus.CONFLICT, `Already booked with Steadfast (consignment ${order.consignmentId}). Book again only if that parcel was cancelled.`);
         }
 
-        const shippingInfo = (order.shipping as any) || {};
+        const shippingInfo = asAddress(order.shipping);
 
         // Build item description string from order items
         const itemDescription = (order.orderItems || [])
-            .map((item: any) => {
+            .map((item) => {
                 const pName = item.product?.name || 'Product';
                 const size = item.size ? `${item.size} ${item.unit || ''}` : '';
                 return `${item.quantity}x ${pName} ${size}`.trim();
@@ -88,7 +93,7 @@ export const sendOrderToSteadfast = async (req: Request, res: Response, next: Ne
             message: 'Order successfully sent to Steadfast',
             data: steadfastResponse,
         });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };
@@ -97,7 +102,7 @@ export const getBalance = async (req: Request, res: Response, next: NextFunction
     try {
         const result = await steadfastService.getSteadfastBalance();
         res.status(200).json({ success: true, data: result });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };
@@ -108,8 +113,8 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
         if (!secretToken) return res.status(503).send('Webhook not configured');
 
         // Exact bytes Steadfast sent (captured by express.json verify in app.ts)
-        const rawBody: Buffer = Buffer.isBuffer((req as any).rawBody)
-            ? (req as any).rawBody
+        const rawBody: Buffer = Buffer.isBuffer(req.rawBody)
+            ? req.rawBody
             : Buffer.from(JSON.stringify(req.body ?? {}));
 
         const safeEqual = (a: string, b: string) =>
@@ -127,7 +132,7 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
 
         // delivery_status carries the outcome; tracking_update only a message (courier status kept).
         if (event.invoice || event.consignment_id) {
-            const where: any = event.invoice
+            const where: Prisma.OrderWhereInput = event.invoice
                 ? { invoice: String(event.invoice).replace(/^#/, '').trim() }
                 : { consignmentId: Number(event.consignment_id) };
             const orders = await prisma.order.findMany({ where, select: { id: true } });
@@ -147,7 +152,7 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
         }
 
         return res.status(200).json({ status: 'success' });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };
@@ -155,10 +160,10 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
 // ---- Courier settlement (D-026) ----
 export const syncCourier = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const who = (req as any).user?.name || (req as any).user?.email || 'staff';
+        const who = req.user?.name || req.user?.email || 'staff';
         const result = await runCourierSync(`manual (${who})`, { full: req.body?.full === true });
         res.status(result.ok ? 200 : 502).json({ success: result.ok, message: result.ok ? 'Synced with Steadfast' : result.error, data: result });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };
@@ -177,15 +182,16 @@ export const getPayouts = async (req: Request, res: Response, next: NextFunction
             prisma.courierPayout.aggregate({ _sum: { amount: true, charges: true, dueBills: true, total: true, parcelCount: true } }),
         ]);
         // Our invoice + status for every matched parcel on this page
-        const ids = [...new Set(rows.flatMap((r) => ((r.parcels as any[]) || []).map((p) => p.orderId).filter(Boolean)))];
+        const parcelsOf = (r: (typeof rows)[number]) => (Array.isArray(r.parcels) ? (r.parcels as StoredParcel[]) : []);
+        const ids = [...new Set(rows.flatMap((r) => parcelsOf(r).map((p) => p.orderId).filter((id): id is string => !!id)))];
         const orders = await prisma.order.findMany({
-            where: { id: { in: ids as string[] } },
+            where: { id: { in: ids } },
             select: { id: true, invoice: true, status: true, isPaid: true, amount: true, courierReview: true },
         });
         const byId = new Map(orders.map((o) => [o.id, o]));
         const data = rows.map((r) => ({
             ...r,
-            parcels: ((r.parcels as any[]) || []).map((p) => ({ ...p, order: p.orderId ? byId.get(p.orderId) || null : null })),
+            parcels: parcelsOf(r).map((p) => ({ ...p, order: p.orderId ? byId.get(p.orderId) || null : null })),
         }));
         res.status(200).json({
             success: true,
@@ -194,7 +200,7 @@ export const getPayouts = async (req: Request, res: Response, next: NextFunction
             lastSync: getLastCourierSync(),
             data,
         });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };
@@ -207,7 +213,7 @@ export const getCourierReview = async (_req: Request, res: Response, next: NextF
             orderBy: { orderTime: 'desc' },
         });
         res.status(200).json({ success: true, data: data.filter((o) => o.courierReview) });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };
@@ -217,7 +223,7 @@ export const resolveCourierReview = async (req: Request, res: Response, next: Ne
     try {
         await prisma.order.update({ where: { id: req.params.orderId }, data: { courierReview: null } });
         res.status(200).json({ success: true, message: 'Marked as checked' });
-    } catch (error: any) {
+    } catch (error) {
         next(error);
     }
 };

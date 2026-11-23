@@ -36,8 +36,8 @@ export const priceWebsiteOrder = async (lines: Line[], couponCode?: string | nul
   return computeWebsitePricing(lines, { variants, products, discounts }, code, district, new Date());
 };
 
-type PricingData = {
-  variants: Array<{ id: string; productId: string; size: number; unit: string; price: number; published?: boolean | null; [k: string]: any }>;
+export type PricingData = {
+  variants: Array<{ id: string; productId: string; size: number; unit: string; price: number; published?: boolean | null }>;
   products: Array<{ id: string; name: string; published: boolean | null }>;
   discounts: Array<{
     code: string | null; scope: string; type: string; value: number; productId: string | null; variantId: string | null;

@@ -4,7 +4,7 @@ import { dhakaDayEnd, dhakaDayStart } from '../../utils/dhakaTime';
 import httpStatus from 'http-status';
 import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
-import { OrderSource, OrderStatus, Prisma, SaleType } from '@prisma/client';
+import { OrderSource, OrderStatus, Prisma, SaleType, type OrderItemCost } from '@prisma/client';
 import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit, cancelAbandonedCheckout } from '../../utils/orderStock';
 import { priceWebsiteOrder } from './orderPricing';
 import { generateInvoice } from '../../helpers/generateInvoice';
@@ -14,8 +14,36 @@ import { subDays, startOfDay, endOfDay, startOfMonth, format, startOfWeek, endOf
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { sendOrderConfirmationEmail, sendOrderNotificationToAdmin } from '../../helpers/emailSender/emails';
 import { calculateOrderFinancials, FinanceServices, snapshotOrderCosts } from '../Finance/finance.service';
+import { parseOrderStatus, parseReturnCharge } from '../../utils/returnCharge';
+import { isEnumValue } from '../../utils/enumValue';
+import type { AuthUser } from '../../types';
+import { asAddress, type AddressJson, type OrderRow } from '../../types/records';
+import { errorMessage } from '../../utils/errorInfo';
 
-const getAllOrders = async (queryParams: Record<string, unknown>, user?: any) => {
+const orderListInclude = {
+  customer: {
+    select: { id: true, name: true, email: true, phone: true, address: true, imageUrl: true },
+  },
+  orderItems: {
+    include: {
+      product: { select: { id: true, name: true, primaryImage: true } },
+      variant: true,
+    },
+  },
+} satisfies Prisma.OrderInclude;
+
+/** The customer to show: the linked account, else the name/phone typed on the order */
+const customerOf = (order: { customer?: object | null; name?: string | null; phone?: string | null; email?: string | null; address?: string | null }) =>
+  order.customer ?? {
+    id: null,
+    name: order.name ?? null,
+    phone: order.phone ?? null,
+    email: order.email ?? null,
+    address: order.address ?? null,
+    imageUrl: null,
+  };
+
+const getAllOrders = async (queryParams: Record<string, unknown>, user?: AuthUser | null) => {
   const { searchTerm, status, payment, method, dateFrom, dateTo, productId, ...rest } = queryParams;
 
   const queryBuilder = new PrismaQueryBuilder(rest, ['id', 'customer.name']);
@@ -25,12 +53,13 @@ const getAllOrders = async (queryParams: Record<string, unknown>, user?: any) =>
     .buildPagination()
     .getQuery();
 
-  const where: any = prismaQuery.where || {};
+  const where: Prisma.OrderWhereInput = { ...prismaQuery.where };
 
   if (searchTerm) {
     const s = String(searchTerm);
+    const orList = Array.isArray(where.OR) ? where.OR : [];
     where.OR = [
-      ...(where.OR || []),
+      ...orList,
       { invoice: { contains: s, mode: "insensitive" } },
       { name: { contains: s, mode: "insensitive" } },
       { email: { contains: s, mode: "insensitive" } },
@@ -39,64 +68,48 @@ const getAllOrders = async (queryParams: Record<string, unknown>, user?: any) =>
     ];
   }
 
-  if (status) where.status = status;
+  // an unknown status used to reach Prisma and fail the whole list
+  if (isEnumValue(OrderStatus, status)) where.status = status;
   if (payment === "PAID") where.isPaid = true;
   if (payment === "DUE") where.isPaid = false;
   if (method) where.method = String(method);
 
   if (dateFrom || dateTo) {
-    where.orderTime = {};
     // Bangladesh calendar days (the server runs in UTC; this used to be 06:00–06:00 Dhaka)
-    if (dateFrom) where.orderTime.gte = dhakaDayStart(String(dateFrom));
-    if (dateTo) where.orderTime.lte = dhakaDayEnd(String(dateTo));
+    where.orderTime = {
+      ...(dateFrom ? { gte: dhakaDayStart(String(dateFrom)) } : {}),
+      ...(dateTo ? { lte: dhakaDayEnd(String(dateTo)) } : {}),
+    };
   }
 
   if (productId) {
     where.productIds = { has: String(productId) };
   }
 
-  // 🔒 STRICT SECURITY: Check if user is Super Admin
+  // 🔒 Cost and profit only for the Super Admin
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-
-  const orderIncludeConfig: any = {
-    customer: {
-      select: { id: true, name: true, email: true, phone: true, address: true, imageUrl: true },
-    },
-    orderItems: {
-      include: {
-        product: { select: { id: true, name: true, primaryImage: true } },
-        variant: true,
-      },
-    },
-  };
 
   // 1️⃣ Fetch paginated orders and unpaginated filtered dataset for summary simultaneously
   const [orders, allFilteredOrders, meta] = await Promise.all([
     prisma.order.findMany({
       ...prismaQuery,
       where,
-      include: orderIncludeConfig,
+      include: orderListInclude,
     }),
     prisma.order.findMany({
       where,
       include: { orderItems: true },
     }),
-    queryBuilder.getPaginationMeta({
-      count: (args: any) => prisma.order.count({ where: args.where }),
-    }),
+    queryBuilder.getPaginationMeta(() => prisma.order.count({ where })),
   ]);
 
-  // 🚀 FOOL-PROOF FIX: Manually fetch and attach costs to bypass Prisma MongoDB relation limits
+  // Cost snapshots are read separately (Prisma's MongoDB relation filter is unreliable for them)
+  const costsByOrder = new Map<string, OrderItemCost[]>();
   if (isSuperAdmin && orders.length > 0) {
-    const orderIds = orders.map((o: any) => o.id);
     const allItemCosts = await prisma.orderItemCost.findMany({
-      where: { orderId: { in: orderIds } }
+      where: { orderId: { in: orders.map((o) => o.id) } },
     });
-
-    // Attach the fetched costs to each order
-    orders.forEach((order: any) => {
-      order.orderItemCosts = allItemCosts.filter(c => c.orderId === order.id);
-    });
+    for (const c of allItemCosts) costsByOrder.set(c.orderId, [...(costsByOrder.get(c.orderId) ?? []), c]);
   }
 
   const totalCount = allFilteredOrders.length;
@@ -121,56 +134,37 @@ const getAllOrders = async (queryParams: Record<string, unknown>, user?: any) =>
 
   const summary = { totalCount, totalValidCount, totalCodAmount, totalBillAmount, totalRcvAmount, paidCount, dueCount };
 
-  const normalizedOrders = orders.map((order: any) => {
-    const customerData = order.customer ?? {
-      id: null,
-      name: order.name ?? null,
-      phone: order.phone ?? null,
-      email: order.email ?? null,
-      address: order.address ?? null,
-      imageUrl: null,
-    };
-
-    const orderStatus = String(order.status || "").toUpperCase();
-    let itemCosts = order.orderItemCosts || [];
-
-    if (isSuperAdmin) {
-      if (orderStatus === "CANCELED") {
-        itemCosts = [{ profit: 0 }];
-      } else if (orderStatus === "RETURNED") {
-        const financials = FinanceServices.calculateOrderFinancials(order);
-        itemCosts = [{ profit: -financials.courierDeliveryCharge }];
-      }
-    }
-
-    return { ...order, customer: customerData, orderItemCosts: itemCosts };
-  });
+  // Profit per order: the same rule as Finance and the sales list (courier returns = collected − fee).
+  // Orders used an older rule (cancelled 0, returned −estimated fee) and could disagree with Finance.
+  const normalizedOrders = orders.map((order) => ({
+    ...order,
+    customer: customerOf(order),
+    orderItemCosts: isSuperAdmin ? FinanceServices.resolveOrderItemCosts({ ...order, orderItemCosts: costsByOrder.get(order.id) ?? [] }) : [],
+  }));
 
   return { meta, summary, data: normalizedOrders };
 };
 
 
-const getOrderById = async (idOrInvoice: string, user?: any) => {
+const getOrderById = async (idOrInvoice: string, user?: AuthUser | null) => {
   const param = String(idOrInvoice || "").trim();
   const isMongoId = /^[0-9a-fA-F]{24}$/.test(param);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  const orderIncludeConfig: any = {
-    customer: { select: { id: true, name: true, imageUrl: true } },
-    orderItems: {
-      include: {
-        product: { select: { id: true, name: true, primaryImage: true } },
-        variant: true,
-      },
-    },
-  };
-
   const order = await prisma.order.findFirst({
     where: isMongoId
       ? { OR: [{ id: param }, { invoice: param }] }
       : { invoice: param },
-    include: orderIncludeConfig,
+    include: {
+      customer: { select: { id: true, name: true, imageUrl: true } },
+      orderItems: {
+        include: {
+          product: { select: { id: true, name: true, primaryImage: true } },
+          variant: true,
+        },
+      },
+    },
   });
 
   if (!order) throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
@@ -183,35 +177,11 @@ const getOrderById = async (idOrInvoice: string, user?: any) => {
     throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
   }
 
-  // 🚀 FOOL-PROOF FIX: Attach costs manually for the single order
-  if (isSuperAdmin) {
-    const itemCosts = await prisma.orderItemCost.findMany({
-      where: { orderId: order.id }
-    });
+  // Profit lines (Super Admin): the same rule as Finance and the lists
+  const itemCosts = isSuperAdmin ? await prisma.orderItemCost.findMany({ where: { orderId: order.id } }) : [];
+  const orderItemCosts = isSuperAdmin ? FinanceServices.resolveOrderItemCosts({ ...order, orderItemCosts: itemCosts }) : undefined;
 
-    const orderStatus = String(order.status || "").toUpperCase();
-
-    if (orderStatus === "CANCELED") {
-      (order as any).orderItemCosts = [{ profit: 0 }];
-    } else if (orderStatus === "RETURNED") {
-      // ✅ Deduct delivery charge as a loss for single order view
-      const financials = FinanceServices.calculateOrderFinancials(order);
-      (order as any).orderItemCosts = [{ profit: -financials.courierDeliveryCharge }];
-    } else {
-      (order as any).orderItemCosts = itemCosts;
-    }
-  }
-
-  const customerData = order.customer || {
-    id: null,
-    name: order.name || null,
-    phone: order.phone || null,
-    email: order.email || null,
-    address: order.address || null,
-    imageUrl: null,
-  };
-
-  return { ...order, customer: customerData };
+  return { ...order, customer: customerOf(order), ...(orderItemCosts ? { orderItemCosts } : {}) };
 };
 
 // ✅ Create Order with existing CartItems
@@ -238,9 +208,9 @@ const createOrderWithCartItems = async (payload: {
   discountAmount?: number;
   fbp?: string | null;
   fbc?: string | null;
-  customerInfo?: any;
-  shippingAddress?: any;
-  billingAddress?: any;
+  customerInfo?: AddressJson;
+  shippingAddress?: AddressJson;
+  billingAddress?: AddressJson;
 }) => {
   const {
     customerId,
@@ -248,7 +218,6 @@ const createOrderWithCartItems = async (payload: {
     cartItemIds,
     items,
     amount,
-    isPaid,
     method,
     orderSource,
     saleType,
@@ -263,9 +232,8 @@ const createOrderWithCartItems = async (payload: {
 
   const rawEmail = (customerInfo?.email ?? "").trim().toLowerCase();
 
-  // 1️⃣ Parallelize Cart Item fetching and user resolution
-  const [dbCartItems, existingUser] = await Promise.all([
-    prisma.cartItem.findMany({
+  // 1️⃣ Cart items for this checkout
+  const dbCartItems = await prisma.cartItem.findMany({
       where: {
         // `in: undefined` would drop the filter and match every customer's cart
         id: { in: Array.isArray(cartItemIds) ? cartItemIds : [] },
@@ -285,14 +253,7 @@ const createOrderWithCartItems = async (payload: {
         variant: true,
         order: { select: { id: true, isPaid: true, method: true } },
       },
-    }),
-    !customerId && rawEmail
-      ? prisma.user.findFirst({
-        where: { email: rawEmail },
-        select: { id: true },
-      })
-      : null,
-  ]);
+    });
 
   if (dbCartItems.length === 0) {
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
@@ -396,8 +357,8 @@ const createOrderWithCartItems = async (payload: {
       const failedOnlineOrderIds = [
         ...new Set(
           dbCartItems
-            .filter((ci: any) => ci.order && !ci.order.isPaid && ci.order.method !== 'cashOnDelivery')
-            .map((ci: any) => ci.order.id)
+            .filter((ci) => ci.order && !ci.order.isPaid && ci.order.method !== 'cashOnDelivery')
+            .map((ci) => ci.order!.id)
         ),
       ];
 
@@ -553,17 +514,12 @@ const createOrderWithCartItems = async (payload: {
 
   // 🚀 BACKGROUND TASKS (Non-blocking: emails and CAPI fire after response is sent)
   setImmediate(() => {
-    const customerEmail =
-      (finalOrder.shipping as any)?.email ||
-      (finalOrder.billing as any)?.email ||
-      (finalOrder.customer as any)?.email ||
-      finalOrder.email;
+    const ship = asAddress(finalOrder.shipping);
+    const bill = asAddress(finalOrder.billing);
+    const cust: { email?: string | null; phone?: string | null } = finalOrder.customer ?? {};
+    const customerEmail = ship.email || bill.email || cust.email || finalOrder.email || undefined;
 
-    const customerPhone =
-      (finalOrder.shipping as any)?.phone ||
-      (finalOrder.billing as any)?.phone ||
-      (finalOrder.customer as any)?.phone ||
-      finalOrder.phone;
+    const customerPhone = ship.phone || bill.phone || cust.phone || finalOrder.phone || undefined;
 
     // ✅ 1. Dispatch emails & CAPI ONLY for Cash on Delivery immediately. 
     // Online payments (bKash/DGePay) will trigger CAPI and emails on successful payment callback/webhook verification.
@@ -585,24 +541,9 @@ const createOrderWithCartItems = async (payload: {
 
 const updateOrderStatus = async (orderId: string, payload: Record<string, unknown>) => {
   // Only the status may change here (this used to write the whole request body into the order).
-  const status = String(payload?.status || '').toUpperCase();
-  if (!(Object.values(OrderStatus) as string[]).includes(status)) {
-    throw new AppError(httpStatus.BAD_REQUEST, `Invalid order status: ${payload?.status}`);
-  }
-
-  // Optional, for a parcel that came back from the courier: the delivery charge the customer
-  // still paid (CANCELED = paid, RETURNED = not paid). null clears it.
-  let returnCharge: number | null | undefined;
-  if (payload && 'returnChargeCollected' in payload) {
-    const v = payload.returnChargeCollected;
-    if (v === null || v === '') returnCharge = null;
-    else {
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) throw new AppError(httpStatus.BAD_REQUEST, 'Delivery charge collected must be 0 or more');
-      if (status !== 'CANCELED' && status !== 'RETURNED') throw new AppError(httpStatus.BAD_REQUEST, 'Delivery charge collected only applies to a cancelled or returned order');
-      returnCharge = n;
-    }
-  }
+  const status = parseOrderStatus(payload?.status);
+  // courier return: what the customer still paid the rider (D-025)
+  const returnCharge = parseReturnCharge(payload, status);
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.order.findUnique({ where: { id: orderId } });
@@ -630,14 +571,14 @@ const updatePaymentStatus = async (orderId: string, payload: Record<string, unkn
   return order;
 };
 
-const cleanNumber = (v: any, field: string) => {
+const cleanNumber = (v: unknown, field: string) => {
   if (v === undefined) return undefined;
   const n = Number(v);
   if (!Number.isFinite(n)) throw new AppError(httpStatus.BAD_REQUEST, `${field} must be a number`);
   return n;
 };
 
-const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: any) => {
+const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: AuthUser | null | undefined) => {
   const existing = await prisma.order.findUnique({
     where: { id: orderId },
     include: { orderItems: true },
@@ -646,11 +587,12 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
 
   const updated = await prisma.$transaction(
     async (tx) => {
-      const data: any = {};
+      const data: Prisma.OrderUpdateInput = {};
 
       if (payload.status !== undefined) {
-        data.status = payload.status;
-        await syncStockForStatusChange(tx, existing, String(payload.status));
+        // a real status only (a typo used to reach the database and fail with a 500)
+        data.status = parseOrderStatus(payload.status);
+        await syncStockForStatusChange(tx, existing, data.status);
       }
 
       if (payload.isPaid !== undefined) {
@@ -685,12 +627,12 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
 
       if (payload.customerId !== undefined) {
         const role = user?.role;
-        if (!['SUPER_ADMIN', 'ADMIN', 'SALESMAN'].includes(role)) {
+        if (!['SUPER_ADMIN', 'ADMIN', 'SALESMAN'].includes(String(role))) {
           throw new AppError(httpStatus.FORBIDDEN, 'Only ADMIN/SUPER_ADMIN/SALESMAN can change customer');
         }
 
         if (!payload.customerId) {
-          data.customerId = null;
+          data.customer = { disconnect: true };
         } else {
           data.customer = { connect: { id: payload.customerId } };
         }
@@ -708,8 +650,8 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
         const existingItems = existing.orderItems; // fetched with include: { orderItems: true }
 
         const incomingItemIds = incomingItems
-          .map((item: any) => item.id)
-          .filter((id: string) => id && !id.startsWith("temp_"));
+          .map((item) => item.id)
+          .filter((id): id is string => !!id && !id.startsWith("temp_"));
 
         // 1. Identify items to delete (exist in DB but missing from incoming payload)
         const itemsToDelete = existingItems.filter((item) => !incomingItemIds.includes(item.id));
@@ -724,12 +666,13 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
         const safeProductIds: string[] = [];
 
         await Promise.all(
-          incomingItems.map(async (item: any) => {
+          incomingItems.map(async (item) => {
             if (item.productId) safeProductIds.push(item.productId);
 
             const itemPayload = {
               productId: item.productId,
-              variantId: item.variantId || null,
+              // a real id or none (a placeholder like "default_variant" made the save fail)
+              variantId: item.variantId && /^[a-f0-9]{24}$/i.test(item.variantId) ? item.variantId : null,
               size: Number(item.size || 0),
               unit: item.unit || "ML",
               quantity: Math.max(1, Number(item.quantity || 1)),
@@ -750,9 +693,11 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
             }
 
             // Otherwise, create a new cart item linked to this order
+            if (!itemPayload.productId) throw new AppError(httpStatus.BAD_REQUEST, 'Each added item needs a product');
             return tx.cartItem.create({
               data: {
                 ...itemPayload,
+                productId: itemPayload.productId,
                 orderId: existing.id,
               },
             });
@@ -786,7 +731,8 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
 
   // Finance reads the frozen cost snapshot: rebuild it when items or money changed (sales already
   // did this; website-order edits left Finance on the old items, e.g. #857211 on 2026-11-23).
-  const moneyChanged = ['orderItems', 'amount', 'discountAmount', 'shippingCost', 'status'].some((k) => (payload as any)[k] !== undefined);
+  const moneyKeys = ['orderItems', 'amount', 'discountAmount', 'shippingCost', 'status'] as const;
+  const moneyChanged = moneyKeys.some((k) => payload[k] !== undefined);
   if (moneyChanged && !['CANCELED', 'RETURNED'].includes(String(updated.status))) {
     await snapshotOrderCosts(updated.id).catch((err) => console.error('❌ Failed to refresh order cost snapshot:', err));
   }
@@ -795,7 +741,7 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: a
   if (updated.courierReview && /^Steadfast collected .* but the order total is/.test(updated.courierReview)
     && updated.courierCodCollected != null && Math.abs(Number(updated.amount) - Number(updated.courierCodCollected)) < 1) {
     await prisma.order.update({ where: { id: updated.id }, data: { courierReview: null } });
-    (updated as any).courierReview = null;
+    updated.courierReview = null;
   }
 
   const customerData = updated.customer || {
@@ -833,9 +779,7 @@ const getUserOrders = async (userId: string, queryParams: Record<string, unknown
     prisma.order.aggregate({ where, _sum: { amount: true } }),
   ]);
 
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) => prisma.order.count({ where: args.where }),
-  });
+  const meta = await queryBuilder.getPaginationMeta(() => prisma.order.count({ where }));
 
   return {
     meta,
@@ -896,9 +840,7 @@ const getMyOrders = async (userId: string, queryParams: Record<string, unknown>)
     prisma.order.aggregate({ where, _sum: { amount: true } }),
   ]);
 
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) => prisma.order.count({ where: args.where }),
-  });
+  const meta = await queryBuilder.getPaginationMeta(() => prisma.order.count({ where }));
 
   return {
     meta,
@@ -940,21 +882,20 @@ const getAllCustomers = async (queryParams: Record<string, unknown>) => {
       id: true,
       name: true,
       email: true,
-      contact: true,
+      phone: true, // User has no contact field (asking for it made this endpoint fail every time)
       address: true,
       imageUrl: true,
       _count: { select: { customerOrders: true } },
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) =>
-      prisma.user.count({
+  const meta = await queryBuilder.getPaginationMeta(() =>
+    prisma.user.count({
         where: {
           customerOrders: { some: {} },
         },
       }),
-  });
+  );
 
   return { meta, data: customers };
 };
@@ -1084,7 +1025,7 @@ const getWeeklySalesOverview = async (type: DashboardType = "all") => {
     orderBy: { orderTime: "asc" },
   });
 
-  const dailyBuckets: Record<string, { sales: number; netReceivable: number; ordersCount: number; ordersList: any[] }> = {};
+  const dailyBuckets: Record<string, { sales: number; netReceivable: number; ordersCount: number; ordersList: (typeof orders)[number][] }> = {};
 
   for (const o of orders) {
     const oDhaka = toZonedTime(o.orderTime, TZ);
@@ -1147,7 +1088,7 @@ const getMonthlySalesOverview = async (type: DashboardType = "all", year?: numbe
     orderBy: { orderTime: "asc" },
   });
 
-  const dailyBuckets: Record<string, { sales: number; netReceivable: number; ordersCount: number; ordersList: any[] }> = {};
+  const dailyBuckets: Record<string, { sales: number; netReceivable: number; ordersCount: number; ordersList: (typeof orders)[number][] }> = {};
 
   for (const o of orders) {
     const oDhaka = toZonedTime(o.orderTime, TZ);
@@ -1190,7 +1131,7 @@ const trackOrders = async (queryParam: string) => {
   // every order with customer details). Email is matched whole, ignoring capital letters.
   const escapeRegex = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const exactEmail = { $regex: `^${escapeRegex(param)}$`, $options: "i" };
-  const rawOrConditions: any[] = [
+  const rawOrConditions: Prisma.InputJsonObject[] = [
     { invoice: param },
     ...(param.includes("@")
       ? [{ email: exactEmail }, { "shipping.email": exactEmail }, { "billing.email": exactEmail }]
@@ -1266,9 +1207,8 @@ const trackOrders = async (queryParam: string) => {
 
   // 3️⃣ Normalize customer details so UI gets consistent fields
   return orders.map((order) => {
-    const shippingJson = (order.shipping as any) || {};
-    const billingJson = (order.billing as any) || {};
-    const customerObj = (order as any).customer || {};
+    const shippingJson = asAddress(order.shipping);
+    const customerObj: { id?: string | null; name?: string | null; phone?: string | null; email?: string | null; address?: string | null; imageUrl?: string | null } = order.customer || {};
 
     const resolvedName =
       shippingJson.name ||
@@ -1349,7 +1289,16 @@ const deleteOrder = async (orderId: string) => {
 };
 
 // Helper function to send CAPI Purchase asynchronously (Zero impact on response speed)
-export async function sendMetaCapiPurchase(order: any, customerEmail?: string, customerPhone?: string) {
+/** What the Meta Purchase event needs from an order */
+type CapiOrder = {
+  id: string;
+  amount?: number | null;
+  shippingCost?: number | null;
+  shipping?: unknown;
+  orderItems?: { productId?: string | null; product?: { id?: string } | null; quantity?: number; price?: number }[];
+};
+
+export async function sendMetaCapiPurchase(order: CapiOrder, customerEmail?: string, customerPhone?: string) {
   try {
     const pixelId = process.env.META_PIXEL_ID;
     const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
@@ -1359,13 +1308,13 @@ export async function sendMetaCapiPurchase(order: any, customerEmail?: string, c
     const value = Number(order.amount || 0);
     const shipping = Number(order.shippingCost || 0);
 
-    const items = (order.orderItems || []).map((it: any) => ({
+    const items = (order.orderItems || []).map((it) => ({
       id: String(it.productId || it.product?.id || ""),
       quantity: Math.max(1, Number(it.quantity || 1)),
       item_price: Number(it.price || 0),
     }));
 
-    const shippingInfo = (order.shipping as any) || {};
+    const shippingInfo = asAddress(order.shipping);
 
     const payload = {
       // Use environment variable for test code or omit if live
@@ -1408,22 +1357,16 @@ export async function sendMetaCapiPurchase(order: any, customerEmail?: string, c
   }
 }
 
-async function dispatchOrderEmails(fullOrder: any) {
-  const customerEmail =
-    (fullOrder.shipping as any)?.email ||
-    (fullOrder.billing as any)?.email ||
-    fullOrder.customer?.email ||
-    fullOrder.email;
+async function dispatchOrderEmails(fullOrder: OrderRow) {
+  const ship = asAddress(fullOrder.shipping);
+  const bill = asAddress(fullOrder.billing);
+  const customerEmail = ship.email || bill.email || fullOrder.customer?.email || fullOrder.email;
 
-  const customerPhone =
-    (fullOrder.shipping as any)?.phone ||
-    (fullOrder.billing as any)?.phone ||
-    fullOrder.customer?.phone ||
-    fullOrder.phone;
+  const customerPhone = ship.phone || bill.phone || fullOrder.customer?.phone || fullOrder.phone;
 
   if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
-    sendOrderConfirmationEmail(customerEmail, fullOrder).catch((err: any) =>
-      console.error('❌ Failed to send order confirmation email to customer:', err.message)
+    sendOrderConfirmationEmail(customerEmail, fullOrder).catch((err) =>
+      console.error('❌ Failed to send order confirmation email to customer:', errorMessage(err))
     );
   }
 
@@ -1432,20 +1375,20 @@ async function dispatchOrderEmails(fullOrder: any) {
     sendOrderNotificationToAdmin(adminEmail, {
       ...fullOrder,
       email: customerEmail || 'N/A',
-      address: (fullOrder.shipping as any)?.address || fullOrder.address || 'N/A',
-      district: (fullOrder.shipping as any)?.district || '',
+      address: ship.address || fullOrder.address || 'N/A',
+      district: ship.district || '',
       phone: customerPhone || 'N/A',
       date: new Date().toLocaleDateString('en-GB'),
       note: fullOrder.additionalNotes || 'N/A',
-      cartItems: (fullOrder.orderItems || []).map((oi: any) => ({
+      cartItems: (fullOrder.orderItems || []).map((oi) => ({
         productName: oi.product?.name || 'Product',
         productImageUrls: [oi.product?.primaryImage || ''],
         size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
         quantity: oi.quantity,
         price: Number(oi.price || 0),
       })),
-    }).catch((err: any) =>
-      console.error('❌ Failed to send order notification email to admin:', err.message)
+    }).catch((err) =>
+      console.error('❌ Failed to send order notification email to admin:', errorMessage(err))
     );
   }
 }

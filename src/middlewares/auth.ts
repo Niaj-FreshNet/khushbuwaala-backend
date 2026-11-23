@@ -6,6 +6,7 @@ import AppError from "../errors/AppError";
 import config from "../config";
 import { prisma } from "../../prisma/client";
 import httpStatus from "http-status";
+import { errorMessage } from '../utils/errorInfo';
 
 const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
   return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -29,7 +30,7 @@ const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
     // No token -> if visitor allowed, continue without error
     if (!token) {
       if (allowVisitor) {
-        (req as any).user = null;
+        req.user = null;
         return next();
       }
       throw new AppError(httpStatus.UNAUTHORIZED, "Unauthorized: Token missing");
@@ -60,7 +61,7 @@ const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
 
       if (!user) {
         if (allowVisitor) {
-          (req as any).user = null;
+          req.user = null;
           return next();
         }
         throw new AppError(httpStatus.UNAUTHORIZED, "Account no longer exists. Please log in again.");
@@ -73,18 +74,18 @@ const auth = (...requiredRoles: (TuserRole | "OPTIONAL")[]) => {
         throw new AppError(httpStatus.FORBIDDEN, "You are not authorized");
       }
 
-      (req as any).user = user;
+      req.user = user;
       return next();
-    } catch (error: any) {
+    } catch (error) {
       // "Logged in but not allowed" (403) and "user not found" must stay as they are.
       // Turning them into 401 made the admin think the session expired and log the user out.
       if (error instanceof AppError && error.statusCode !== httpStatus.UNAUTHORIZED) {
         throw error;
       }
-      console.error("❌ Token verification failed:", error?.message);
+      console.error("❌ Token verification failed:", errorMessage(error));
 
       if (allowVisitor) {
-        (req as any).user = null;
+        req.user = null;
         return next();
       }
 

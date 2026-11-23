@@ -31,7 +31,7 @@ const getAllFragrances = async (queryParams: Record<string, unknown>) => {
 
   const materials = await prisma.fragrance.findMany(queryBuilder.getQuery());
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.fragrance);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.fragrance.count({ where }));
 
   return {
     data: materials,

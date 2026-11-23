@@ -1,6 +1,8 @@
 import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
 import { prisma } from '../../../prisma/client';
+import { CartItemStatus, Prisma } from '@prisma/client';
+import { isEnumValue } from '../../utils/enumValue';
 
 export const CartItemServices = {
   // ✅ Add a product/variant to cart
@@ -122,14 +124,14 @@ export const CartItemServices = {
     const limit = Math.max(1, Number(queryParams.limit || 20));
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.CartItemWhereInput = {};
 
-    if (queryParams.status) {
+    if (isEnumValue(CartItemStatus, queryParams.status)) {
       where.status = queryParams.status;
     }
 
     if (queryParams.userId) {
-      where.userId = queryParams.userId;
+      where.userId = String(queryParams.userId);
     }
 
     if (queryParams.searchTerm) {

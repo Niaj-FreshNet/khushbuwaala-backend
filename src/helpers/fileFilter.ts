@@ -1,4 +1,7 @@
-export const fileFilter = (req: any, file: any, cb: any) => {
+import type { Request } from "express";
+import type { FileFilterCallback } from "multer";
+
+export const fileFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
 	const allowedMimeTypes = [
 		"image/jpeg",
 		"image/png",
@@ -15,9 +18,8 @@ export const fileFilter = (req: any, file: any, cb: any) => {
 		allowedMimeTypes.includes(file.mimetype) ||
 		file.mimetype.startsWith("image/")
 	) {
-		allowedMimeTypes.includes(file.mimetype);
 		cb(null, true);
 	} else {
-		cb(new Error("Invalid file type"), false);
+		cb(new Error("Invalid file type"));
 	}
 };

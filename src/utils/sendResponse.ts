@@ -8,10 +8,10 @@ type TResponse<T> = {
         total?: number;
         page?: number;
         limit?: number;
-        [key: string]: any;
+        [key: string]: unknown;
     };
-    summary?: any;
-    filters?: Record<string, any>;
+    summary?: unknown;
+    filters?: Record<string, unknown>;
     data?: T;
 };
 

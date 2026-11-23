@@ -6,7 +6,7 @@ import tsParser from "@typescript-eslint/parser";
 export default [
   { ignores: ["dist/**", "node_modules/**", "uploads/**"] },
   {
-    files: ["src/**/*.ts", "prisma/**/*.ts"],
+    files: ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts"],
     languageOptions: {
       parser: tsParser,
       globals: { require: "readonly", module: "readonly", exports: "readonly", process: "readonly", console: "readonly" },
@@ -15,7 +15,8 @@ export default [
     rules: {
       // the TypeScript-aware version; the core rule misreads types and enums
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_", ignoreRestSiblings: true }],
+      "@typescript-eslint/no-explicit-any": "error",
       "prefer-const": "error",
       "no-console": "off",
     },

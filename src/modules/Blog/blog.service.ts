@@ -4,6 +4,7 @@ import AppError from '../../errors/AppError';
 import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import { IBlog } from './blog.interface';
+import { Prisma } from '@prisma/client';
 
 const generateUniqueSlug = async (title: string, currentId?: string): Promise<string> => {
   const baseSlug = slugify(title, { lower: true, strict: true, trim: true });
@@ -60,7 +61,8 @@ const createBlog = async (payload: IBlog & { faqs?: string; tags?: string; image
 };
 
 const updateBlog = async (id: string, payload: Partial<IBlog> & { faqs?: string; tags?: string; imageAltText?: string }) => {
-  const updateData: any = { ...payload };
+  // the request fields plus what is worked out below (tags and faqs are folded in, then removed)
+  const updateData: Prisma.BlogUpdateInput & { tags?: string; faqs?: string } = { ...payload };
 
   if (payload.title) {
     updateData.slug = await generateUniqueSlug(payload.title, id);
@@ -129,7 +131,7 @@ const getAllBlogs = async (queryParams: Record<string, unknown>) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.blog);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.blog.count({ where }));
 
   return { meta, data: blogs };
 };
@@ -162,7 +164,7 @@ const getAllBlogsAdmin = async (queryParams: Record<string, unknown>) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.blog);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.blog.count({ where }));
 
   return { meta, data: blogs };
 };

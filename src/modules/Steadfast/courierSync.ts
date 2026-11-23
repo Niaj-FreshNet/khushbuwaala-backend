@@ -16,6 +16,8 @@
  */
 import { prisma } from '../../../prisma/client';
 import { syncStockForStatusChange } from '../../utils/orderStock';
+import { errorMessage } from '../../utils/errorInfo';
+import type { OrderStatus, Prisma } from '@prisma/client';
 
 const BASE_URL = 'https://portal.packzy.com/api/v1';
 const headers = () => ({
@@ -26,10 +28,36 @@ const headers = () => ({
 
 export const steadfastConfigured = () => !!process.env.STEADFAST_API_KEY && !!process.env.STEADFAST_SECRET_KEY;
 
-const sfGet = async (path: string) => {
+/** A parcel inside a Steadfast payout */
+type SfParcel = {
+  consignment_id?: number;
+  invoice?: string;
+  tracking_code?: string;
+  cod_amount?: number | string;
+  status?: string;
+  created_at?: string;
+};
+/** A Steadfast payout ("Payments" in their panel); the detail call adds consignments */
+type SfPayout = {
+  payment_id: string;
+  status_label?: string;
+  amount?: number | string;
+  method?: string | null;
+  due_bills?: number | string;
+  paid_bills?: number | string;
+  charges?: number | string;
+  total?: number | string;
+  created_at?: string;
+  ready_at?: string;
+  paid_at?: string;
+  consignments?: SfParcel[];
+};
+
+/** GET from the Steadfast API; T describes the fields this file reads */
+const sfGet = async <T>(path: string): Promise<T> => {
   const res = await fetch(`${BASE_URL}/${path}`, { headers: headers(), signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`Steadfast ${path}: HTTP ${res.status}`);
-  return res.json() as Promise<any>;
+  return (await res.json()) as T;
 };
 
 /** Steadfast writes dates as "2026-11-14 12:54:00" (Dhaka time) or ISO with Z. */
@@ -44,7 +72,7 @@ const cleanInvoice = (v: unknown) => String(v ?? '').replace(/^#/, '').trim();
 const isCod = (method?: string | null) => /cash|cod/i.test(String(method || ''));
 const money = (n: number) => `৳${Math.round(n).toLocaleString('en-US')}`;
 
-const ACTIVE = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+const ACTIVE: OrderStatus[] = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
 type Outcome = {
   status: string;                 // Steadfast delivery status
@@ -67,8 +95,8 @@ export const decideCourierOutcome = (
 ) => {
   const sf = String(o.status || '').toLowerCase();
   const current = order.status as string;
-  const data: Record<string, any> = {};
-  let next: string | null = null;
+  const data: Prisma.OrderUpdateInput = {};
+  let next: OrderStatus | null = null;
   let review: string | null | undefined;
 
     if (sf === 'delivered') {
@@ -118,7 +146,7 @@ export const applyCourierOutcome = async (orderId: string, o: Outcome) => {
     if (!order) return null;
     const sf = String(o.status || '').toLowerCase(); // courier status as stored
     const cod = o.codAmount === undefined || o.codAmount === null || !Number.isFinite(Number(o.codAmount)) ? null : Number(o.codAmount);
-    const data: any = { courierStatus: sf || order.courierStatus, courierSyncedAt: new Date() };
+    const data: Prisma.OrderUpdateInput = { courierStatus: sf || order.courierStatus, courierSyncedAt: new Date() };
     const notes: string[] = [];
 
     if (o.deliveryCharge !== undefined && o.deliveryCharge !== null && Number(o.deliveryCharge) > 0) data.deliveryCharge = Number(o.deliveryCharge);
@@ -152,7 +180,7 @@ export const applyCourierOutcome = async (orderId: string, o: Outcome) => {
       notes.unshift(`${current} -> ${next}`);
     }
     if (data.isPaid && !order.isPaid) notes.push('DUE -> PAID');
-    if (data.returnChargeCollected !== undefined && data.returnChargeCollected !== order.returnChargeCollected) notes.push(`collected ${money(data.returnChargeCollected)}`);
+    if (data.returnChargeCollected !== undefined && data.returnChargeCollected !== order.returnChargeCollected) notes.push(`collected ${money(Number(data.returnChargeCollected))}`);
     if (review && review !== order.courierReview) notes.push(`REVIEW: ${review}`);
 
     await tx.order.update({ where: { id: order.id }, data });
@@ -182,7 +210,7 @@ const findOrderForParcel = async (parcel: { invoice?: string; consignment_id?: n
 const syncPayouts = async (log: string[], full = false) => {
   let created = 0, updated = 0, parcelsApplied = 0;
   for (let page = 1; page <= 60; page++) {
-    const list: any[] = (await sfGet(`payments?sort=desc&page=${page}`)).payments || [];
+    const list = (await sfGet<{ payments?: SfPayout[] }>(`payments?sort=desc&page=${page}`)).payments || [];
     if (!list.length) break;
     let newOnPage = 0;
     for (const p of list) {
@@ -190,15 +218,15 @@ const syncPayouts = async (log: string[], full = false) => {
       const paid = String(p.status_label).toLowerCase() === 'paid';
       if (existing && existing.statusLabel === p.status_label && existing.processed && !full) continue;
       newOnPage++;
-      const detail = (await sfGet(`payments/${p.payment_id}`)).payment || p;
+      const detail = (await sfGet<{ payment?: SfPayout }>(`payments/${p.payment_id}`)).payment || p;
       const paidAt = sfDate(detail.paid_at);
-      const parcels: any[] = [];
+      const parcels: { consignmentId?: number; invoice: string | null; trackingCode: string | null; codAmount: number; status?: string; bookedAt: string | null; orderId: string | null }[] = [];
       for (const c of detail.consignments || []) {
         const orderId = await findOrderForParcel(c);
         let result: string | null = null;
         if (orderId) {
           result = await applyCourierOutcome(orderId, {
-            status: c.status, codAmount: c.cod_amount, consignmentId: c.consignment_id, trackingCode: c.tracking_code,
+            status: c.status ?? '', codAmount: c.cod_amount === undefined ? null : Number(c.cod_amount), consignmentId: c.consignment_id, trackingCode: c.tracking_code,
             payout: { payoutId: p.payment_id, paidAt, paid },
           });
           if (result) { parcelsApplied++; log.push(result); }
@@ -227,26 +255,30 @@ const syncPayouts = async (log: string[], full = false) => {
 /** Open courier orders: ask Steadfast for the current status (in case a webhook was missed). */
 const syncOpenOrders = async (log: string[]) => {
   const open = await prisma.order.findMany({
-    where: { consignmentId: { not: null }, status: { in: ACTIVE as any } },
+    where: { consignmentId: { not: null }, status: { in: ACTIVE } },
     select: { id: true, invoice: true },
   });
   let checked = 0, changed = 0;
   for (const o of open) {
     try {
-      const r = await sfGet(`status_by_invoice/${encodeURIComponent(o.invoice)}`);
+      const r = await sfGet<{ delivery_status?: string }>(`status_by_invoice/${encodeURIComponent(o.invoice)}`);
       checked++;
       if (r?.delivery_status) {
         const res = await applyCourierOutcome(o.id, { status: r.delivery_status });
         if (res) { changed++; log.push(res); }
       }
-    } catch (e: any) {
-      log.push(`#${o.invoice}: status check failed (${e.message})`);
+    } catch (e) {
+      log.push(`#${o.invoice}: status check failed (${errorMessage(e)})`);
     }
   }
   return { checked, changed };
 };
 
-type SyncResult = { at: string; ok: boolean; ms: number; openOrders?: any; payouts?: any; changes: string[]; error?: string; trigger: string };
+type SyncResult = {
+  at: string; ok: boolean; ms: number; changes: string[]; error?: string; trigger: string;
+  openOrders?: { checked: number; changed: number };
+  payouts?: { created: number; updated: number; parcelsApplied: number };
+};
 let running: Promise<SyncResult> | null = null;
 let last: SyncResult | null = null;
 
@@ -262,9 +294,9 @@ export const runCourierSync = (trigger: string, opts: { full?: boolean } = {}): 
       if (!steadfastConfigured()) throw new Error('Steadfast keys are not set');
       out.openOrders = await syncOpenOrders(changes);
       out.payouts = await syncPayouts(changes, !!opts.full);
-    } catch (e: any) {
+    } catch (e) {
       out.ok = false;
-      out.error = e.message;
+      out.error = errorMessage(e);
     }
     out.ms = Date.now() - t0;
     last = out;

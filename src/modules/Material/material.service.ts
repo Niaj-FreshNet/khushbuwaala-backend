@@ -31,7 +31,7 @@ const getAllMaterials = async (queryParams: Record<string, unknown>) => {
 
   const materials = await prisma.material.findMany(queryBuilder.getQuery());
 
-  const meta = await queryBuilder.getPaginationMeta(prisma.material);
+  const meta = await queryBuilder.getPaginationMeta((where) => prisma.material.count({ where }));
 
   return {
     data: materials,

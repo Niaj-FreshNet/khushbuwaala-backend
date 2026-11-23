@@ -12,10 +12,10 @@ import handleDuplicateError from '../errors/handleDuplicateError';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 // Prisma validation / engine errors (wrong argument types, connection problems, ...)
-const isPrismaInternal = (err: any) =>
-  !!err && typeof err.name === 'string' && /^PrismaClient(Validation|Unknown|Rust|Initialization)/.test(err.name);
+const isPrismaInternal = (err: unknown) =>
+  err instanceof Error && /^PrismaClient(Validation|Unknown|Rust|Initialization)/.test(err.name);
 
-const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
+const globalErrorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   // setting default values
   let statusCode = 500;
   let message = 'Something went wrong';

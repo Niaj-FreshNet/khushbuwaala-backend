@@ -39,7 +39,7 @@ const receiveStockPurchase = catchAsync(async (req, res) => {
     const { productId } = req.params;
 
     // Assume user is attached to req from auth middleware
-    const createdById = (req as any).user?.id;
+    const createdById = req.user?.id;
 
     const payload = { ...req.body, productId, createdById };
 
@@ -109,7 +109,7 @@ const overrideOrderProfit = catchAsync(async (req, res) => {
 
 const getLedger = catchAsync(async (req, res) => {
     // Investors see the full ledger only during a Super-Admin-approved window (D-007)
-    const user = (req as any).user;
+    const user = req.user;
     if (user?.role === 'INVESTOR' && !(await LedgerAccessServices.hasActiveAccess(user.id))) {
         throw new AppError(httpStatus.FORBIDDEN, 'LEDGER_ACCESS_REQUIRED: request access from the Super Admin to view the full ledger.');
     }

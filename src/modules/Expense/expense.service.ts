@@ -104,10 +104,11 @@ const getAllExpenses = async (queryParams: Record<string, unknown>, ownerId?: st
 
   // Financial Period Alignment
   if (dateFrom || dateTo) {
-    where.expenseTime = {};
     // Calendar days in Bangladesh time (the server runs in UTC)
-    if (dateFrom) (where.expenseTime as any).gte = dhakaDayStart(String(dateFrom));
-    if (dateTo) (where.expenseTime as any).lte = dhakaDayEnd(String(dateTo));
+    where.expenseTime = {
+      ...(dateFrom ? { gte: dhakaDayStart(String(dateFrom)) } : {}),
+      ...(dateTo ? { lte: dhakaDayEnd(String(dateTo)) } : {}),
+    };
   }
 
   // Fuzzy Search
@@ -126,7 +127,7 @@ const getAllExpenses = async (queryParams: Record<string, unknown>, ownerId?: st
   }
 
   // Default Sort if none provided
-  const orderBy = prismaQuery.orderBy || { expenseTime: 'desc' };
+  const orderBy = prismaQuery.orderBy || { expenseTime: 'desc' as const };
 
   const data = await prisma.expense.findMany({
     ...prismaQuery,
@@ -137,12 +138,28 @@ const getAllExpenses = async (queryParams: Record<string, unknown>, ownerId?: st
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) =>
-      prisma.expense.count({ where: { ...where, ...(args?.where ?? {}) } }),
+  const [meta, byPaid] = await Promise.all([
+    queryBuilder.getPaginationMeta(() => prisma.expense.count({ where })),
+    // Totals for every matching expense (the page used to add up only the rows it showed)
+    prisma.expense.groupBy({ by: ['isPaid'], where, _count: { _all: true }, _sum: { amount: true } }),
+  ]);
+  // anything not marked paid counts as due (older records may have no isPaid at all)
+  const add = (rows: typeof byPaid) => ({
+    count: rows.reduce((s, g) => s + g._count._all, 0),
+    amount: rows.reduce((s, g) => s + (g._sum.amount ?? 0), 0),
   });
+  const paid = add(byPaid.filter((g) => g.isPaid === true));
+  const due = add(byPaid.filter((g) => g.isPaid !== true));
+  const summary = {
+    totalCount: paid.count + due.count,
+    totalAmount: paid.amount + due.amount,
+    paidCount: paid.count,
+    paidAmount: paid.amount,
+    dueCount: due.count,
+    dueAmount: due.amount,
+  };
 
-  return { meta, data };
+  return { meta, summary, data };
 };
 
 const getExpenseById = async (id: string, ownerId?: string) => {
@@ -241,9 +258,10 @@ const getExpenseAnalytics = async (queryParams: Record<string, unknown>) => {
   const where: Prisma.ExpenseWhereInput = {};
 
   if (startDate || endDate) {
-    where.expenseTime = {};
-    if (startDate) (where.expenseTime as any).gte = dhakaDayStart(String(startDate));
-    if (endDate) (where.expenseTime as any).lte = dhakaDayEnd(String(endDate));
+    where.expenseTime = {
+      ...(startDate ? { gte: dhakaDayStart(String(startDate)) } : {}),
+      ...(endDate ? { lte: dhakaDayEnd(String(endDate)) } : {}),
+    };
   }
 
   const [count, sum, byStatus, byCategory] = await Promise.all([

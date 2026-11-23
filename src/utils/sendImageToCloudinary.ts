@@ -1,5 +1,7 @@
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
+import { errorMessage } from './errorInfo';
+import type { UploadApiOptions } from 'cloudinary';
 
 // ✅ Multer memory storage for in-memory buffer
 const storage = multer.memoryStorage();
@@ -33,8 +35,8 @@ export const uploadToCloudinary = async (
     });
 
     return { location: result.secure_url };
-  } catch (error: any) {
-    throw new Error(`Cloudinary upload failed: ${error.message}`);
+  } catch (error) {
+    throw new Error(`Cloudinary upload failed: ${errorMessage(error)}`);
   }
 };
 
@@ -47,8 +49,8 @@ export const deleteFromCloudinary = async (fileUrl: string) => {
     const publicId = `${folder}/${filename}`;
 
     await cloudinary.uploader.destroy(publicId);
-  } catch (error: any) {
-    throw new Error(`Cloudinary delete failed: ${error.message}`);
+  } catch (error) {
+    throw new Error(`Cloudinary delete failed: ${errorMessage(error)}`);
   }
 };
 
@@ -88,7 +90,7 @@ export const uploadBase64ToCloudinary = async (
     }
 
     // 2. Perform upload
-    const uploadOptions: Record<string, any> = {
+    const uploadOptions: UploadApiOptions = {
       folder: folderPath,
       public_id: `${publicIdPrefix}-${Date.now()}`,
       resource_type: 'image',
@@ -105,16 +107,12 @@ export const uploadBase64ToCloudinary = async (
     }
 
     return { location: result.secure_url };
-  } catch (error: any) {
+  } catch (error) {
     // 3. Print the real error to console so it's never 'undefined'
     console.error("Detailed Cloudinary Upload Error:", error);
 
-    const errorMessage =
-      error?.message ||
-      error?.error?.message ||
-      (typeof error === 'string' ? error : JSON.stringify(error)) ||
-      "Unknown upload error";
+    const reason = errorMessage(error) || "Unknown upload error";
 
-    throw new Error(`Cloudinary upload failed: ${errorMessage}`);
+    throw new Error(`Cloudinary upload failed: ${reason}`);
   }
 };

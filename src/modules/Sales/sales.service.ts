@@ -5,6 +5,7 @@ import {
   OrderStatus,
   Prisma,
   SaleType,
+  type OrderItemCost,
 } from '@prisma/client';
 import httpStatus from 'http-status';
 import AppError from '../../errors/AppError';
@@ -12,6 +13,10 @@ import { dhakaDayEnd, dhakaDayStart } from '../../utils/dhakaTime';
 import { generateInvoice } from '../../helpers/generateInvoice';
 import { FinanceServices, snapshotOrderCosts } from '../Finance/finance.service';
 import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit } from '../../utils/orderStock';
+import { parseOrderStatus, parseReturnCharge } from '../../utils/returnCharge';
+import { isEnumValue } from '../../utils/enumValue';
+import type { AuthUser } from '../../types';
+import type { UpdateOrderPayload } from '../Order/order.interface';
 
 // Treat “sales” as orders with a non-WEBSITE orderSource
 const MANUAL_SOURCES: OrderSource[] = [
@@ -23,7 +28,7 @@ const MANUAL_SOURCES: OrderSource[] = [
 const INACTIVE_STATUSES = ['CANCELED', 'RETURNED'];
 
 // A salesman may only see/change sales they recorded. Others get "not found" (no hint it exists).
-const assertSalesmanOwns = (sale: { salesmanId?: string | null }, user?: any) => {
+const assertSalesmanOwns = (sale: { salesmanId?: string | null }, user?: AuthUser | null) => {
   if (user?.role === 'SALESMAN' && String(sale.salesmanId || '') !== String(user.id)) {
     throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
   }
@@ -148,7 +153,7 @@ const createSale = async (
     throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items found.');
   }
 
-  let directVariants = new Map<string, any>();
+  let directVariants = new Map<string, Prisma.ProductVariantGetPayload<{ include: { product: true } }>>();
   if (directMode) {
     const variantIds = [...new Set(items!.map((it) => it.variantId).filter(Boolean))] as string[];
     const variants = await prisma.productVariant.findMany({
@@ -400,7 +405,7 @@ const createSale = async (
 // -------------------------------
 // Admin: Get all manual sales with summary logic
 // -------------------------------
-const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => {
+const getAllSales = async (queryParams: Record<string, unknown>, user?: AuthUser | null) => {
   const { searchTerm, status, payment, method, source, platform, dateFrom, dateTo, productId, ...rest } = queryParams as {
     searchTerm?: string;
     status?: OrderStatus | string;
@@ -422,13 +427,13 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
 
   const where: Prisma.OrderWhereInput = {
     ...prismaQuery.where,
-    ...(source ? { orderSource: source as OrderSource } : { orderSource: { in: MANUAL_SOURCES } }),
+    ...(isEnumValue(OrderSource, source) ? { orderSource: source } : { orderSource: { in: MANUAL_SOURCES } }),
   };
 
   // A salesman only ever sees the sales they recorded.
   if (user?.role === 'SALESMAN') where.salesmanId = user.id;
 
-  if (status && status !== 'ALL') where.status = status as OrderStatus;
+  if (isEnumValue(OrderStatus, status)) where.status = status;
   if (payment === 'PAID') where.isPaid = true;
   if (payment === 'DUE') where.isPaid = false;
   if (method && method !== 'ALL') where.method = String(method);
@@ -437,10 +442,11 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
   }
 
   if (dateFrom || dateTo) {
-    where.orderTime = {};
     // Bangladesh calendar days (the server runs in UTC; this used to be 06:00–06:00 Dhaka)
-    if (dateFrom) (where.orderTime as any).gte = dhakaDayStart(String(dateFrom));
-    if (dateTo) (where.orderTime as any).lte = dhakaDayEnd(String(dateTo));
+    where.orderTime = {
+      ...(dateFrom ? { gte: dhakaDayStart(String(dateFrom)) } : {}),
+      ...(dateTo ? { lte: dhakaDayEnd(String(dateTo)) } : {}),
+    };
   }
 
   if (productId) {
@@ -467,7 +473,7 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  const orderIncludeConfig: any = {
+  const orderIncludeConfig = {
     customer: { select: { id: true, name: true, email: true, phone: true, address: true, imageUrl: true } },
     salesman: { select: { id: true, name: true, imageUrl: true, email: true } },
     orderItems: {
@@ -476,7 +482,7 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
         variant: true,
       },
     },
-  };
+  } satisfies Prisma.OrderInclude;
 
   // ✅ Fetch both paginated data AND unpaginated dataset using the exact same `where` filters for accurate summaries
   const [orders, allFilteredSales, meta] = await Promise.all([
@@ -489,26 +495,20 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
       where,
       include: { orderItems: true },
     }),
-    queryBuilder.getPaginationMeta({
-      count: (args: any) => prisma.order.count({ where }),
-    }),
+    queryBuilder.getPaginationMeta(() => prisma.order.count({ where })),
   ]);
 
+  // Cost snapshots per sale (one per line), read separately
+  const costsByOrder = new Map<string, OrderItemCost[]>();
   if (isSuperAdmin && orders.length > 0) {
-    const orderIds = orders.map((o: any) => o.id);
     const allItemCosts = await prisma.orderItemCost.findMany({
-      where: { orderId: { in: orderIds } },
+      where: { orderId: { in: orders.map((o) => o.id) } },
     });
-
-    orders.forEach((order: any) => {
-      const uniqueCostsMap = new Map();
-      allItemCosts
-        .filter((c) => c.orderId === order.id)
-        .forEach((c) => {
-          uniqueCostsMap.set(c.cartItemId || c.id, c);
-        });
-      order.orderItemCosts = Array.from(uniqueCostsMap.values());
-    });
+    for (const order of orders) {
+      const unique = new Map<string, OrderItemCost>();
+      allItemCosts.filter((c) => c.orderId === order.id).forEach((c) => unique.set(c.cartItemId || c.id, c));
+      costsByOrder.set(order.id, Array.from(unique.values()));
+    }
   }
 
   // ── Professional Summary Metrics Calculation ──
@@ -534,7 +534,7 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
 
   const summary = { totalCount, totalValidCount, totalCodAmount, totalBillAmount, totalRcvAmount, paidCount, dueCount };
 
-  const normalizedSales = orders.map((order: any) => {
+  const normalizedSales = orders.map((order) => {
     const customerData = order.customer || {
       id: null,
       name: order.name || null,
@@ -547,7 +547,7 @@ const getAllSales = async (queryParams: Record<string, unknown>, user?: any) => 
       ...order,
       customer: customerData,
       // Canceled → profit 0, Returned → -courier charge (same rule as orders)
-      ...(isSuperAdmin ? { orderItemCosts: FinanceServices.resolveOrderItemCosts(order) } : {}),
+      ...(isSuperAdmin ? { orderItemCosts: FinanceServices.resolveOrderItemCosts({ ...order, orderItemCosts: costsByOrder.get(order.id) ?? [] }) } : {}),
     };
   });
 
@@ -574,7 +574,7 @@ const getMySales = async (salesmanId: string, queryParams: Record<string, unknow
   const where: Prisma.OrderWhereInput = {
     ...prismaQuery.where,
     salesmanId,
-    ...(source ? { orderSource: source as OrderSource } : { orderSource: { in: MANUAL_SOURCES } }),
+    ...(isEnumValue(OrderSource, source) ? { orderSource: source } : { orderSource: { in: MANUAL_SOURCES } }),
   };
 
   if (status) where.status = status as OrderStatus;
@@ -604,9 +604,7 @@ const getMySales = async (salesmanId: string, queryParams: Record<string, unknow
       },
     }),
     prisma.order.findMany({ where }),
-    queryBuilder.getPaginationMeta({
-      count: (args: any) => prisma.order.count({ where: { ...where, ...(args?.where ?? {}) } }),
-    }),
+    queryBuilder.getPaginationMeta(() => prisma.order.count({ where })),
   ]);
 
   const totalSalesCount = allFilteredMySales.length;
@@ -629,7 +627,7 @@ const getMySales = async (salesmanId: string, queryParams: Record<string, unknow
 // -------------------------------
 // Get Sale By ID (with Super Admin Cost inclusion)
 // -------------------------------
-const getSaleById = async (id: string, user?: any) => {
+const getSaleById = async (id: string, user?: AuthUser | null) => {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const sale = await prisma.order.findUnique({
@@ -649,12 +647,8 @@ const getSaleById = async (id: string, user?: any) => {
   if (!sale) throw new AppError(httpStatus.NOT_FOUND, 'Sale not found');
   assertSalesmanOwns(sale, user);
 
-  if (isSuperAdmin) {
-    const itemCosts = await prisma.orderItemCost.findMany({
-      where: { orderId: sale.id },
-    });
-    (sale as any).orderItemCosts = FinanceServices.resolveOrderItemCosts({ ...sale, orderItemCosts: itemCosts });
-  }
+  const itemCosts = isSuperAdmin ? await prisma.orderItemCost.findMany({ where: { orderId: sale.id } }) : [];
+  const orderItemCosts = isSuperAdmin ? FinanceServices.resolveOrderItemCosts({ ...sale, orderItemCosts: itemCosts }) : undefined;
 
   const customerData = sale.customer || {
     id: null,
@@ -665,7 +659,7 @@ const getSaleById = async (id: string, user?: any) => {
     imageUrl: null,
   };
 
-  return { ...sale, customer: customerData };
+  return { ...sale, customer: customerData, ...(orderItemCosts ? { orderItemCosts } : {}) };
 };
 
 // -------------------------------
@@ -694,9 +688,7 @@ const getSalesByCustomer = async (phone: string, queryParams: Record<string, unk
     },
   });
 
-  const meta = await queryBuilder.getPaginationMeta({
-    count: (args: any) => prisma.order.count({ where: { ...where, ...(args?.where ?? {}) } }),
-  });
+  const meta = await queryBuilder.getPaginationMeta(() => prisma.order.count({ where }));
 
   return { meta, data };
 };
@@ -706,11 +698,12 @@ const getSalesByCustomer = async (phone: string, queryParams: Record<string, unk
 // -------------------------------
 const updateSaleStatus = async (
   id: string,
-  payload: Partial<Pick<Prisma.OrderUpdateInput, 'status' | 'isPaid'>>,
-  user?: any
+  payload: { status?: unknown; isPaid?: unknown },
+  user?: AuthUser | null
 ) => {
   const data: Prisma.OrderUpdateInput = {};
-  if (payload.status) data.status = payload.status as OrderStatus;
+  // a real status only (anything else used to fail in the database with a 500)
+  if (payload.status) data.status = parseOrderStatus(payload.status);
   if (typeof payload.isPaid === 'boolean') data.isPaid = payload.isPaid;
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -743,7 +736,10 @@ const updateSaleStatus = async (
 // -------------------------------
 // Full Sale Update (Matches updateOrder)
 // -------------------------------
-const updateSale = async (orderId: string, payload: any, user: any) => {
+/** PATCH /sales/update-sale: the order fields plus the sale-only ones */
+type UpdateSalePayload = UpdateOrderPayload & { platform?: string; district?: string; returnChargeCollected?: unknown };
+
+const updateSale = async (orderId: string, payload: UpdateSalePayload, user: AuthUser | null | undefined) => {
   const existing = await prisma.order.findUnique({
     where: { id: orderId },
     include: { orderItems: true },
@@ -753,12 +749,17 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
 
   const updated = await prisma.$transaction(
     async (tx) => {
-      const data: any = {};
+      const data: Prisma.OrderUpdateInput = {};
+      let newStatus: OrderStatus | undefined;
 
       if (payload.status !== undefined) {
-        data.status = payload.status;
-        await syncStockForStatusChange(tx, existing, String(payload.status));
+        newStatus = parseOrderStatus(payload.status);
+        data.status = newStatus;
+        await syncStockForStatusChange(tx, existing, newStatus);
       }
+      // courier return on a sale that went out with Steadfast (same rule as orders, D-025)
+      const returnCharge = parseReturnCharge(payload, newStatus ?? existing.status);
+      if (returnCharge !== undefined) data.returnChargeCollected = returnCharge;
       if (payload.isPaid !== undefined) data.isPaid = payload.isPaid;
       if (payload.method !== undefined) data.method = payload.method ?? null;
       if (payload.orderSource !== undefined) data.orderSource = payload.orderSource;
@@ -787,6 +788,19 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
       if (payload.email !== undefined) data.email = payload.email;
       if (payload.address !== undefined) data.address = payload.address;
 
+      // The invoice prints the customer from billing/shipping (set at creation). Keep those copies in
+      // step with an edit, so a corrected name or address shows on the invoice; district lives only there.
+      const contact: Record<string, string | null> = {};
+      for (const k of ['name', 'phone', 'email', 'address', 'district'] as const) {
+        const v = payload[k];
+        if (v !== undefined) contact[k] = v;
+      }
+      if (Object.keys(contact).length) {
+        const merge = (j: unknown): Prisma.InputJsonObject => ({ ...(j && typeof j === 'object' && !Array.isArray(j) ? (j as Prisma.InputJsonObject) : {}), ...contact });
+        data.shipping = merge(existing.shipping);
+        data.billing = merge(existing.billing);
+      }
+
       if (payload.salesmanId !== undefined) {
         data.salesman = payload.salesmanId ? { connect: { id: payload.salesmanId } } : { disconnect: true };
       }
@@ -794,9 +808,9 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
       if (payload.orderItems && Array.isArray(payload.orderItems)) {
         // Stock follows the edit: only the net change per product is applied.
         await rebalanceStockForItemEdit(tx, orderId, async () => {
-        const incomingItems = payload.orderItems;
+        const incomingItems = payload.orderItems ?? [];
         const existingItems = existing.orderItems;
-        const incomingItemIds = incomingItems.map((i: any) => i.id).filter((id: string) => id && !id.startsWith('temp_'));
+        const incomingItemIds = incomingItems.map((i) => i.id).filter((id): id is string => !!id && !id.startsWith('temp_'));
 
         const itemsToDelete = existingItems.filter((item) => !incomingItemIds.includes(item.id));
         if (itemsToDelete.length > 0) {
@@ -808,12 +822,13 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
         const safeProductIds: string[] = [];
 
         await Promise.all(
-          incomingItems.map(async (item: any) => {
+          incomingItems.map(async (item) => {
             if (item.productId) safeProductIds.push(item.productId);
 
             const itemPayload = {
               productId: item.productId,
-              variantId: item.variantId || null,
+              // a real id or none (a placeholder like "default_variant" made the save fail)
+              variantId: item.variantId && /^[a-f0-9]{24}$/i.test(item.variantId) ? item.variantId : null,
               size: Number(item.size || 0),
               unit: item.unit || 'ML',
               quantity: Math.max(1, Number(item.quantity || 1)),
@@ -831,9 +846,11 @@ const updateSale = async (orderId: string, payload: any, user: any) => {
               }
             }
 
+            if (!itemPayload.productId) throw new AppError(httpStatus.BAD_REQUEST, 'Each added item needs a product');
             return tx.cartItem.create({
               data: {
                 ...itemPayload,
+                productId: itemPayload.productId,
                 orderId: existing.id,
               },
             });
@@ -926,9 +943,11 @@ const getSalesAnalytics = async (queryParams: Record<string, unknown>) => {
 
   if (salesmanId) where.salesmanId = salesmanId;
   if (startDate || endDate) {
-    where.createdAt = {};
-    if (startDate) (where.createdAt as any).gte = new Date(startDate);
-    if (endDate) (where.createdAt as any).lte = new Date(endDate);
+    // Bangladesh calendar days, like every other report (this used UTC days)
+    where.createdAt = {
+      ...(startDate ? { gte: dhakaDayStart(String(startDate)) } : {}),
+      ...(endDate ? { lte: dhakaDayEnd(String(endDate)) } : {}),
+    };
   }
 
   const [count, sum, byStatus, bySource] = await Promise.all([

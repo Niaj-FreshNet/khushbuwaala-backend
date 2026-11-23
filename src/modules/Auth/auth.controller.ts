@@ -3,6 +3,7 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { AuthServices } from './auth.service';
 import { authValidation } from './auth.validation';
+import { requireUser } from '../../utils/requestUser';
 
 const register = catchAsync(async (req, res) => {
   const result = await AuthServices.register(req.body);
@@ -98,12 +99,11 @@ const resetPassword = catchAsync(async (req, res) => {
 });
 
 const changePassword = catchAsync(async (req, res) => {
-  const { email } = (req as any).user;
+  const { email } = requireUser(req);
 
   const { oldPassword, newPassword } =
     authValidation.changePasswordValidationSchema.parse(req.body);
 
-  // console.log(email, oldPassword, newPassword);
 
   const result = await AuthServices.changePassword(
     email,
@@ -198,7 +198,7 @@ const makeSalesman = catchAsync(async (req, res) => {
 });
 
 const approveOrUpdateUserRole = catchAsync(async (req, res) => {
-  const adminId = (req as any).user?.id || (req as any).user?.userId;
+  const adminId = requireUser(req).id;
   const result = await AuthServices.approveOrUpdateUserRole(adminId, req.body);
 
   sendResponse(res, {
@@ -232,8 +232,6 @@ const socialLogin = catchAsync(async (req, res) => {
 });
 
 const getMe = catchAsync(async (req, res) => {
-  // console.log('req.user:', req.user);
-  // console.log('req.user?.id:', req.user?.id);
 
   const user = await AuthServices.getMe(req.user?.id);
 

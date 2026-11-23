@@ -7,7 +7,7 @@ import { CartItemServices } from './cart.services';
 export const CartItemController = {
   // ✅ Add to Cart (visitor or user)
   addToCart: catchAsync(async (req: Request, res: Response) => {
-    const userId = (req as any)?.user?.id || null; // null for visitors
+    const userId = req.user?.id || null; // null for visitors
     const { productId, variantId, size, unit, quantity, price } = req.body;
 
     const item = await CartItemServices.addToCart({
@@ -30,7 +30,7 @@ export const CartItemController = {
 
   // ✅ Get Cart (visitor or user)
   getUserCart: catchAsync(async (req: Request, res: Response) => {
-    const userId = (req as any)?.user?.id || null;
+    const userId = req.user?.id || null;
     const items = await CartItemServices.getUserCart(userId);
 
     sendResponse(res, {

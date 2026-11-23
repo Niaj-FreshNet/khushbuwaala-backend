@@ -1,18 +1,4 @@
 import { Prisma } from '@prisma/client';
-import { NestedFilter, rangeFilteringParams, } from '../../helpers/queryBuilder';
-
-// Basic filtering fields
-export const productFilterFields: string[] = [
-  'published',
-  'brand',
-  'gender',
-  'origin',
-  'performance',
-  'longevity',
-  'projection',
-  'sillage',
-  'stock'
-];
 
 // Searchable fields
 export const productSearchFields: string[] = [
@@ -21,148 +7,6 @@ export const productSearchFields: string[] = [
   'brand',
   'origin'
 ];
-
-// Array fields that can be searched
-export const productArraySearchFields: string[] = [
-  'tags',
-  'accords',
-  'bestFor'
-];
-
-// Nested filters for related fields
-export const productNestedFilters: NestedFilter[] = [
-  // {
-  //   key: 'category',
-  //   searchOption: 'exact',
-  //   queryFields: ['categoryName']
-  // },
-  {
-    key: 'variants',
-    // searchOption: 'range',
-    queryFields: ['price', 'stock']
-  }
-];
-
-// Range filters
-export const productRangeFilter: rangeFilteringParams[] = [
-  {
-    field: 'price',
-    nestedField: 'variants',
-    maxQueryKey: 'maxPrice',
-    minQueryKey: 'minPrice',
-    dataType: 'number',
-  },
-  {
-    field: 'stock',
-    nestedField: 'variants',
-    maxQueryKey: 'maxStock',
-    minQueryKey: 'minStock',
-    dataType: 'number',
-  }
-];
-
-export const productListInclude: Prisma.ProductInclude = {
-  category: { select: { id: true, categoryName: true, imageUrl: true } },
-
-  // keep variants but keep them light
-  variants: {
-    select: {
-      id: true,
-      size: true,
-      unit: true,
-      price: true,
-      published: true,
-      discounts: true,
-    },
-    orderBy: [{ price: "asc" }],
-  },
-  discounts: true,
-
-  // ✅ Include related fragrances
-  // ProductFragrance: {
-  //   include: {
-  //     fragrance: {
-  //       select: {
-  //         id: true,
-  //         fragranceName: true,
-  //       },
-  //     },
-  //   },
-  // },
-
-  // ✅ Include related materials
-  // REMOVE these from listing:
-  // Review: ...
-  // ProductMaterial: ...
-  // ProductFragrance: ...
-  // discounts: ...
-};
-
-// Prisma include config for basic product queries
-export const productInclude: Prisma.ProductInclude = {
-  category: {
-    select: {
-      id: true,
-      categoryName: true,
-      imageUrl: true
-    }
-  },
-
-  // ✅ Include related materials
-  ProductMaterial: {
-    include: {
-      material: {
-        select: {
-          id: true,
-          materialName: true,
-        },
-      },
-    },
-  },
-
-  // ✅ Include related fragrances
-  ProductFragrance: {
-    include: {
-      fragrance: {
-        select: {
-          id: true,
-          fragranceName: true,
-        },
-      },
-    },
-  },
-
-  // Review: {
-  //   where: {
-  //     isPublished: true
-  //   },
-  //   include: {
-  //     user: {
-  //       select: {
-  //         id: true,
-  //         name: true,
-  //         imageUrl: true,
-  //       },
-  //     },
-  //   },
-  //   orderBy: {
-  //     createdAt: 'desc'
-  //   }
-  // },
-
-  Review: {
-    select: { rating: true } // DO NOT fetch title, comment, userId, etc. here
-  },
-
-  variants: {
-    include: {
-      discounts: true, // variant-level
-    },
-  },
-
-  discounts: true, // product-level
-
-};
 
 // Detailed include for single product view
 export const productDetailInclude: Prisma.ProductInclude = {
@@ -199,18 +43,6 @@ export const productDetailIncludeStaff: Prisma.ProductInclude = {
 // Admin include for management
 export const productAdminInclude: Prisma.ProductInclude = {
   category: true,
-  // Review: {
-  //   include: {
-  //     user: {
-  //       select: {
-  //         id: true,
-  //         name: true,
-  //         email: true,
-  //         imageUrl: true
-  //       },
-  //     },
-  //   },
-  // },
   Review: true,
   // stock: true,
   discounts: true, // product-level
@@ -223,28 +55,11 @@ export const productAdminInclude: Prisma.ProductInclude = {
   comboVariants: true
 };
 
-// Sort options mapping
-export const productSortOptions = {
-  name: { name: 'asc' },
-  name_desc: { name: 'desc' },
-  newest: { createdAt: 'desc' },
-  oldest: { createdAt: 'asc' },
-  popularity: { salesCount: 'desc' },
-  price_asc: 'custom', // Handled in service
-  price_desc: 'custom', // Handled in service
-} as const;
-
 // Perfume-specific constants
 export const PERFUME_GENDERS = [
   'UNISEX',
   'MALE',
   'FEMALE'
-] as const;
-
-export const PERFUME_NOTES_CATEGORIES = [
-  'top',
-  'middle',
-  'base'
 ] as const;
 
 export const PERFORMANCE_LEVELS = [
@@ -277,43 +92,6 @@ export const SILLAGE_LEVELS = [
   'MODERATE',
   'HEAVY',
   'ENORMOUS'
-] as const;
-
-export const COMMON_ACCORDS = [
-  'FLORAL',
-  'FRESH',
-  'ORIENTAL',
-  'WOODY',
-  'FRUITY',
-  'GOURMAND',
-  'AROMATIC',
-  'CITRUS',
-  'SPICY',
-  'AQUATIC',
-  'GREEN',
-  'POWDERY',
-  'SMOKY',
-  'LEATHER',
-  'VANILLA',
-  'AMBER',
-  'MUSK'
-] as const;
-
-export const BEST_FOR_OCCASIONS = [
-  'DAILY_WEAR',
-  'OFFICE',
-  'EVENING',
-  'DATE_NIGHT',
-  'SPECIAL_OCCASIONS',
-  'SUMMER',
-  'WINTER',
-  'SPRING',
-  'FALL',
-  'CLUBBING',
-  'FORMAL_EVENTS',
-  'CASUAL',
-  'SPORT',
-  'TRAVEL'
 ] as const;
 
 export const LEAN_PRODUCT_INCLUDE = {
@@ -368,17 +146,6 @@ export const QUERY_DEFAULTS = {
   LOW_STOCK_THRESHOLD: 10
 } as const;
 
-// Cache keys
-export const CACHE_KEYS = {
-  ALL_PRODUCTS: 'products:all',
-  TRENDING_PRODUCTS: 'products:trending',
-  NEW_ARRIVALS: 'products:new-arrivals',
-  FEATURED_PRODUCTS: 'products:featured',
-  NAVBAR_PRODUCTS: 'products:navbar',
-  PRODUCT_FILTERS: 'products:filters',
-  BESTSELLERS: 'products:bestsellers'
-} as const;
-
 // Error messages
 export const PRODUCT_ERROR_MESSAGES = {
   NOT_FOUND: 'Product not found',
@@ -396,28 +163,3 @@ export const PRODUCT_ERROR_MESSAGES = {
   INVALID_STOCK_VALUE: 'Invalid stock value',
   PRODUCT_PUBLISHED_CANNOT_DELETE: 'Cannot delete published product with active orders'
 } as const;
-
-export default {
-  productFilterFields,
-  productSearchFields,
-  productArraySearchFields,
-  productNestedFilters,
-  // productRangeFilter,
-  productInclude,
-  productDetailInclude,
-  productAdminInclude,
-  productSortOptions,
-  LEAN_PRODUCT_INCLUDE,
-  PERFUME_GENDERS,
-  PERFUME_NOTES_CATEGORIES,
-  PERFORMANCE_LEVELS,
-  LONGEVITY_LEVELS,
-  PROJECTION_LEVELS,
-  SILLAGE_LEVELS,
-  COMMON_ACCORDS,
-  BEST_FOR_OCCASIONS,
-  PRODUCT_VALIDATION,
-  QUERY_DEFAULTS,
-  CACHE_KEYS,
-  PRODUCT_ERROR_MESSAGES
-};

@@ -5,6 +5,8 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { OrderServices } from './order.service';
 import { ORDER_ERROR_MESSAGES } from './order.constant';
+import { requireUser } from '../../utils/requestUser';
+import type { DashboardType } from './order.interface';
 
 // Create Order (Customer OR Guest)
 // Create Order (Customer OR Guest)
@@ -69,7 +71,7 @@ const createOrder = catchAsync(async (req, res) => {
 
 // Get All Orders (Admin)
 const getAllOrders = catchAsync(async (req, res) => {
-  const user = (req as any).user;
+  const user = req.user;
   const result = await OrderServices.getAllOrders(req.query, user);
 
   sendResponse(res, {
@@ -84,7 +86,7 @@ const getAllOrders = catchAsync(async (req, res) => {
 
 // Get Order By ID (Admin)
 const getOrderById = catchAsync(async (req, res) => {
-  const user = (req as any).user;
+  const user = req.user;
   const { id } = req.params;
   const result = await OrderServices.getOrderById(id, user);
 
@@ -155,7 +157,7 @@ const updateOrder = catchAsync(async (req, res) => {
 
 // Get Logged-in User Orders
 const getMyOrders = catchAsync(async (req, res) => {
-  const userId = req.user.id;
+  const userId = requireUser(req).id;
   const result = await OrderServices.getMyOrders(userId, req.query);
 
   sendResponse(res, {
@@ -168,7 +170,7 @@ const getMyOrders = catchAsync(async (req, res) => {
 
 // Get Logged-in User Single Order
 const getMyOrderByID = catchAsync(async (req, res) => {
-  const userId = req.user.id;
+  const userId = requireUser(req).id;
   const result = await OrderServices.getMyOrder(userId, req.params.id);
 
   if (!result) throw new AppError(httpStatus.NOT_FOUND, ORDER_ERROR_MESSAGES.NOT_FOUND);
@@ -193,22 +195,25 @@ const getAllCustomers = catchAsync(async (req, res) => {
   });
 });
 
+// ?type=all|website|manual (anything else = all)
+const dashType = (v: unknown): DashboardType => (v === "website" || v === "manual" ? v : "all");
+
 export const getDashboardMetrics = catchAsync(async (req, res) => {
-  const type = (req.query.type as any) || "all";
+  const type = dashType(req.query.type);
   const data = await OrderServices.getDashboardMetrics(type);
 
   sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
 });
 
 export const getWeeklySalesOverview = catchAsync(async (req, res) => {
-  const type = (req.query.type as any) || "all";
+  const type = dashType(req.query.type);
   const data = await OrderServices.getWeeklySalesOverview(type);
 
   sendResponse(res, { statusCode: 200, success: true, message: "OK", data });
 });
 
 export const getMonthlySalesOverview = catchAsync(async (req, res) => {
-  const type = (req.query.type as any) || "all";
+  const type = dashType(req.query.type);
   const year = req.query.year ? Number(req.query.year) : undefined;
   const month = req.query.month ? Number(req.query.month) : undefined;
 

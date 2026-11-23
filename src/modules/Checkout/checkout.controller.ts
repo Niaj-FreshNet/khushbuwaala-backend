@@ -3,12 +3,15 @@ import catchAsync from "../../utils/catchAsync";
 import AppError from "../../errors/AppError";
 import httpStatus from "http-status";
 import { prisma } from "../../../prisma/client";
-import { dgepayGateway } from "./checkout.service";
-import { getClientRedirects, makeInvoice } from "./checkout.utils";
+import { dgepayGateway, innerReply, type DgepayReply } from "./checkout.service";
+import { makeInvoice } from "./checkout.utils";
 import { DiscountServices } from "../Discount/discount.service";
 import { sendOrderConfirmationEmail, sendOrderNotificationToAdmin } from "../../helpers/emailSender/emails";
 import { sendMetaCapiPurchase } from "../Order/order.service";
 import { snapshotOrderCosts } from "../Finance/finance.service";
+import { errorMessage, httpErrorOf } from '../../utils/errorInfo';
+import { asAddress } from '../../types/records';
+import type { Prisma } from '@prisma/client';
 
 export const CheckoutController = {
   // ==========================================
@@ -52,9 +55,9 @@ export const CheckoutController = {
     }
 
     const rawPhone =
-      (order as any)?.shipping?.phone ||
-      (order as any)?.billing?.phone ||
-      (order as any)?.phone ||
+      asAddress(order.shipping).phone ||
+      asAddress(order.billing).phone ||
+      order.phone ||
       "01700000000";
 
     const cleanPhone = rawPhone.replace(/\D/g, "").slice(-11);
@@ -66,7 +69,7 @@ export const CheckoutController = {
       data: {
         orderId: order.id,
         amount: amount,
-        provider: "DGEPAY" as any,
+        provider: "DGEPAY",
         status: "INITIATED",
         gatewayInvoice: invoiceSafe,
         gatewayPaymentId: numericTxnId,
@@ -92,11 +95,12 @@ export const CheckoutController = {
       });
 
       // ✅ Extracts webview_url from response.data.webview_url
+      const inner = innerReply(response);
       const paymentUrl =
-        response?.data?.webview_url ||
+        inner?.webview_url ||
         response?.webview_url ||
-        response?.data?.payment_url ||
-        response?.data?.redirect_url ||
+        inner?.payment_url ||
+        inner?.redirect_url ||
         response?.payment_url ||
         response?.redirect_url ||
         response?.url;
@@ -104,13 +108,13 @@ export const CheckoutController = {
       if (!paymentUrl) {
         await prisma.payment.update({
           where: { id: payment.id },
-          data: { status: "FAILED", gatewayResponse: response },
+          data: { status: "FAILED", gatewayResponse: response as Prisma.InputJsonValue },
         });
 
         const errorMsg =
           (Array.isArray(response?.error) ? response.error.join(", ") : null) ||
           response?.message ||
-          response?.data?.message ||
+          inner?.message ||
           "DGePay payment initialization failed";
 
         throw new AppError(httpStatus.BAD_REQUEST, errorMsg);
@@ -119,7 +123,7 @@ export const CheckoutController = {
       await prisma.payment.update({
         where: { id: payment.id },
         data: {
-          gatewayResponse: response,
+          gatewayResponse: response as Prisma.InputJsonValue,
         },
       });
 
@@ -128,17 +132,17 @@ export const CheckoutController = {
         paymentUrl,
         transactionId: numericTxnId,
       });
-    } catch (err: any) {
-      console.error("❌ DGePay Exception:", err?.response?.data || err?.message);
+    } catch (err) {
+      console.error("❌ DGePay Exception:", httpErrorOf(err).data || errorMessage(err));
 
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { status: "FAILED", gatewayResponse: err?.response?.data || err?.message },
+        data: { status: "FAILED", gatewayResponse: httpErrorOf(err).data || errorMessage(err) },
       });
 
       throw new AppError(
         httpStatus.BAD_REQUEST,
-        err?.response?.data?.message || err?.message || "DGePay initialization error"
+        httpErrorOf(err).message || errorMessage(err) || "DGePay initialization error"
       );
     }
   }),
@@ -148,12 +152,12 @@ export const CheckoutController = {
     const successUrl = process.env.DGEPAY_SUCCESS_REDIRECT || `${process.env.CLIENT_URL}/thank-you`;
     const failUrl = process.env.DGEPAY_FAIL_REDIRECT || `${process.env.CLIENT_URL}/error`;
 
-    let payload: any = req.body;
+    let payload: DgepayReply | undefined = req.body && typeof req.body === "object" ? (req.body as DgepayReply) : undefined;
 
     if (typeof req.body === "string" && req.body.length > 20) {
       try {
         payload = dgepayGateway.decryptPayload(req.body);
-      } catch (e) {
+      } catch {
         // Fall back to query or regular body
       }
     }
@@ -164,8 +168,11 @@ export const CheckoutController = {
       return res.redirect(`${failUrl}?message=missing_txn_id`);
     }
 
-    const payment = await prisma.payment.findUnique({
-      where: { id: unique_txn_id },
+    // DGePay sends back the transaction id we gave it (Payment.gatewayPaymentId). This looked up
+    // Payment.id instead, so no payment was ever confirmed automatically (all 23 stayed "Initiated").
+    const txnId = String(unique_txn_id);
+    const payment = await prisma.payment.findFirst({
+      where: { OR: [{ gatewayPaymentId: txnId }, ...(/^[a-f0-9]{24}$/i.test(txnId) ? [{ id: txnId }] : [])] },
     });
 
     if (!payment) {
@@ -177,35 +184,34 @@ export const CheckoutController = {
     }
 
     try {
-      const statusRes = await dgepayGateway.checkTransactionStatus(unique_txn_id);
-      const txnData = statusRes?.data || statusRes;
+      // ask DGePay with its own transaction id
+      const statusRes = await dgepayGateway.checkTransactionStatus(payment.gatewayPaymentId || txnId);
+      const txnData = innerReply(statusRes);
 
       // Only an explicit success counts as paid. (`statusRes.status === 200` only meant the status
       // API answered, so failed or abandoned payments could be marked paid.) Clearly failed →
       // FAILED; anything unclear → left pending for review, never cancelled or marked paid.
-      const reported = [txnData?.transaction_status, txnData?.txn_status, txnData?.status, statusRes?.data?.transaction_status]
+      const reported = [txnData?.transaction_status, txnData?.txn_status, txnData?.status, statusRes?.transaction_status]
         .filter((v) => typeof v === "string")
-        .map((v: string) => v.toUpperCase());
+        .map((v) => String(v).toUpperCase());
       const reportedAmount = Number(txnData?.amount ?? txnData?.txn_amount ?? txnData?.paid_amount ?? txnData?.total_amount);
       const amountOk = !Number.isFinite(reportedAmount) || reportedAmount <= 0 || reportedAmount + 1 >= Number(payment.amount);
       const isSuccess = reported.some((s) => ["SUCCESS", "SUCCESSFUL", "COMPLETED", "PAID"].includes(s)) && amountOk;
       const isFailed = reported.some((s) => ["FAILED", "FAIL", "CANCELLED", "CANCELED", "DECLINED", "EXPIRED", "REJECTED"].includes(s));
 
       if (isSuccess) {
-        let completedOrder: any = null;
-
-        await prisma.$transaction(async (tx) => {
+        const completedOrder = await prisma.$transaction(async (tx) => {
           await tx.payment.update({
             where: { id: payment.id },
             data: {
               status: "COMPLETED",
               gatewayTrxId: txnData?.bank_txn_id || txnData?.dgepay_txn_id || unique_txn_id,
               gatewayStatus: "COMPLETED",
-              gatewayResponse: txnData,
+              gatewayResponse: txnData as Prisma.InputJsonValue,
             },
           });
 
-          completedOrder = await tx.order.update({
+          const order = await tx.order.update({
             where: { id: payment.orderId as string },
             data: { isPaid: true, method: "DGEPAY", status: "PROCESSING" },
             include: {
@@ -216,23 +222,18 @@ export const CheckoutController = {
             },
           });
 
-          if (completedOrder.coupon) {
-            await DiscountServices.consumeDiscountUsageByCode(tx, completedOrder.coupon, completedOrder.id);
+          if (order.coupon) {
+            await DiscountServices.consumeDiscountUsageByCode(tx, order.coupon, order.id);
           }
+          return order;
         });
+        const ship = asAddress(completedOrder.shipping);
+        const bill = asAddress(completedOrder.billing);
 
         // ✅ Trigger Emails & Server CAPI Purchase upon verified successful payment
-        const customerEmail =
-          completedOrder?.shipping?.email ||
-          completedOrder?.billing?.email ||
-          completedOrder?.customer?.email ||
-          completedOrder?.email;
+        const customerEmail = ship.email || bill.email || completedOrder.customer?.email || completedOrder.email;
 
-        const customerPhone =
-          completedOrder?.shipping?.phone ||
-          completedOrder?.billing?.phone ||
-          completedOrder?.customer?.phone ||
-          completedOrder?.phone;
+        const customerPhone = ship.phone || bill.phone || completedOrder.customer?.phone || completedOrder.phone;
 
         if (customerEmail && !customerEmail.includes('@khushbuwaala.local')) {
           sendOrderConfirmationEmail(customerEmail, completedOrder).catch((e) =>
@@ -245,14 +246,14 @@ export const CheckoutController = {
           sendOrderNotificationToAdmin(adminEmail, {
             ...completedOrder,
             email: customerEmail || 'N/A',
-            address: (completedOrder.shipping as any)?.address || completedOrder.address,
-            district: (completedOrder.shipping as any)?.district || '',
+            address: ship.address || completedOrder.address,
+            district: ship.district || '',
             phone: customerPhone || 'N/A',
             date: new Date().toLocaleDateString('en-GB'),
             note: completedOrder.additionalNotes,
-            cartItems: (completedOrder.orderItems || []).map((oi: any) => ({
+            cartItems: (completedOrder.orderItems || []).map((oi) => ({
               productName: oi.product?.name || 'Product',
-              productImageUrls: [oi.product?.primaryImage],
+              productImageUrls: oi.product?.primaryImage ? [oi.product.primaryImage] : [],
               size: oi.variant?.size ? `${oi.variant.size} ${oi.variant.unit || ''}`.trim() : 'Standard',
               quantity: oi.quantity,
               price: Number(oi.price || 0),
@@ -261,7 +262,7 @@ export const CheckoutController = {
         }
 
         // ✅ Fire Server-Side Meta CAPI Purchase with the exact same order ID / event_id (`kw_${orderId}`)
-        sendMetaCapiPurchase(completedOrder, customerEmail, customerPhone).catch((err) =>
+        sendMetaCapiPurchase(completedOrder, customerEmail ?? undefined, customerPhone ?? undefined).catch((err) =>
           console.error("❌ Gateway CAPI Dispatch Error:", err)
         );
 
@@ -279,7 +280,7 @@ export const CheckoutController = {
         console.warn(`[dgepay] payment ${payment.id} not confirmed (status ${reported.join("/") || "none"}, amount ${reportedAmount}) - left for review`);
         await prisma.payment.update({
           where: { id: payment.id },
-          data: { gatewayStatus: "PENDING_REVIEW", gatewayResponse: txnData },
+          data: { gatewayStatus: "PENDING_REVIEW", gatewayResponse: txnData as Prisma.InputJsonValue },
         });
         return res.redirect(`${failUrl}?message=payment_pending`);
       }
@@ -288,7 +289,7 @@ export const CheckoutController = {
       await prisma.$transaction(async (tx) => {
         await tx.payment.update({
           where: { id: payment.id },
-          data: { status: "FAILED", gatewayResponse: txnData },
+          data: { status: "FAILED", gatewayResponse: txnData as Prisma.InputJsonValue },
         });
 
         await tx.order.update({
@@ -298,13 +299,13 @@ export const CheckoutController = {
       });
 
       return res.redirect(`${failUrl}?message=payment_failed`);
-    } catch (err: any) {
+    } catch (err) {
       // Could not reach/verify with the gateway: the customer may well have paid, so do NOT
       // cancel. Keep it open for review (it used to cancel the order).
-      console.error(`[dgepay] verification error for payment ${payment.id}:`, err?.message);
+      console.error(`[dgepay] verification error for payment ${payment.id}:`, errorMessage(err));
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { gatewayStatus: "VERIFY_ERROR", gatewayResponse: { error: String(err?.message || err) } },
+        data: { gatewayStatus: "VERIFY_ERROR", gatewayResponse: { error: String(errorMessage(err) || err) } },
       }).catch(() => {});
 
       return res.redirect(`${failUrl}?message=verification_error`);

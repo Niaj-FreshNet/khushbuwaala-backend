@@ -4,11 +4,11 @@ import { deleteFile } from '../../helpers/fileDelete';
 import { prisma } from '../../../prisma/client';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
-import { IBlog } from './blog.interface';
 import { BlogServices } from './blog.service';
+import { requireUser } from '../../utils/requestUser';
 
 const createBlog = catchAsync(async (req: Request, res: Response) => {
-  const user = (req as any).user;
+  const user = requireUser(req);
 
   // ⚡ Accept imageUrl from JSON body first (Cloudinary), or fall back to Multer file if uploaded locally
   let imageUrl = req.body.imageUrl || null;
@@ -20,7 +20,7 @@ const createBlog = catchAsync(async (req: Request, res: Response) => {
   const isPublish =
     req.body.isPublish === 'true' || req.body.isPublish === true;
 
-  const blogdata: any = {
+  const blogdata: Parameters<typeof BlogServices.createBlog>[0] = {
     ...req.body,
     userId: user.id,
     imageUrl, // Now correctly receives the Cloudinary secure_url!
@@ -54,7 +54,7 @@ const updateBlog = catchAsync(async (req: Request, res: Response) => {
     throw new AppError(404, 'Blog not found');
   }
 
-  const updateddata: any = { ...req.body };
+  const updateddata: Parameters<typeof BlogServices.updateBlog>[1] = { ...req.body };
 
   if (req.body.isPublish !== undefined) {
     updateddata.isPublish =

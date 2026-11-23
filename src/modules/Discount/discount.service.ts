@@ -2,6 +2,7 @@
 import httpStatus from "http-status";
 import AppError from "../../errors/AppError";
 import { prisma } from "../../../prisma/client";
+import type { Discount, Prisma } from "@prisma/client";
 
 export interface IDiscountPayload {
   scope: "ORDER" | "PRODUCT" | "VARIANT";
@@ -120,7 +121,7 @@ export const DiscountServices = {
         : Number(payload.value);
 
     const numericMaxUsage =
-      payload.maxUsage === undefined || payload.maxUsage === null || payload.maxUsage === ("" as any)
+      payload.maxUsage === undefined || payload.maxUsage === null || (payload.maxUsage as unknown) === ""
         ? undefined
         : Number(payload.maxUsage);
 
@@ -208,7 +209,7 @@ export const DiscountServices = {
     });
 
     // If user provided a code, ensure it exists + not overused (BUT DO NOT increment here)
-    let codedDiscount: any = null;
+    let codedDiscount: Discount | null = null;
 
     if (normalizedCode) {
       codedDiscount = await prisma.discount.findUnique({
@@ -366,7 +367,7 @@ export const DiscountServices = {
     };
   },
 
-  async consumeDiscountUsageByCode(tx: any, code: string, orderId: string) {
+  async consumeDiscountUsageByCode(tx: Prisma.TransactionClient, code: string, orderId: string) {
     const normalizedCode = code.trim().toUpperCase();
 
     const discount = await tx.discount.findUnique({

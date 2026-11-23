@@ -7,9 +7,10 @@ import catchAsync from '../../utils/catchAsync';
 import { UserServices } from './user.service';
 import { deleteFromCloudinary, uploadToCloudinary } from '../../utils/sendImageToCloudinary';
 import sendResponse from '../../utils/sendResponse';
+import { requireUser } from '../../utils/requestUser';
 
 const getAllUsers = catchAsync(async (req, res) => {
-  const userId = req.user?.id; // Current user ID (omitted from listing)
+  const userId = requireUser(req).id; // Current user ID (omitted from listing)
 
   // Pass req.query into getAllUsers
   const result = await UserServices.getAllUsers(userId, req.query);
@@ -24,7 +25,7 @@ const getAllUsers = catchAsync(async (req, res) => {
 });
 
 const getUser = catchAsync(async (req: Request, res: Response) => {
-  const result = await UserServices.getUser((req as any).user.id);
+  const result = await UserServices.getUser(requireUser(req).id);
   const isok = !!result;
 
   res.status(isok ? 200 : 400).json({
@@ -50,7 +51,7 @@ const getUserByID = catchAsync(async (req, res) => {
 });
 
 const changePassword = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = requireUser(req).id;
   await UserServices.changePassword(userId, req.body);
 
   sendResponse(res, {
@@ -71,7 +72,7 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
 
   // Who may edit whom: yourself always; ADMIN may also edit customer (USER) accounts;
   // SUPER_ADMIN may edit anyone. (There was no check: any customer could edit any account.)
-  const actor = (req as any).user;
+  const actor = req.user;
   const isSelf = actor?.id === userId;
   const canEdit =
     isSelf ||
