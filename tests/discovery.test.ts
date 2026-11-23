@@ -101,6 +101,12 @@ test('unknown filter values and junk input are ignored, not errors', () => {
   assert.equal(find({ page: '999' }).docs.length > 0, true);
 });
 
+test('a saved list: only the asked-for products come back; unknown ids are simply absent', () => {
+  const wanted = [docs[3].id, docs[7].id];
+  const r = find({ ids: [...wanted, 'f'.repeat(24), 'not-an-id'].join(','), limit: 100 });
+  assert.deepEqual(new Set(r.docs.map((d) => d.id)), new Set(wanted));
+});
+
 test('sorting is over the whole catalogue, not one page', () => {
   const up = find({ sort: 'price_asc', limit: 100 }).docs.map((d) => d.minPrice);
   assert.deepEqual(up, [...up].sort((a, b) => a - b));

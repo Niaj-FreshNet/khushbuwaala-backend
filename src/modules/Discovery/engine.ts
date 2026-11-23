@@ -20,6 +20,8 @@ export type DiscoverySort = (typeof SORTS)[number];
 
 export type DiscoveryQuery = {
   q?: string;
+  /** Only these products (a saved list such as the wishlist), whatever else is selected */
+  ids?: string[];
   category?: string[];
   families?: string[];
   notes?: string[];
@@ -60,6 +62,7 @@ export const parseDiscoveryQuery = (raw: Record<string, unknown>): DiscoveryQuer
   const limit = Math.floor(num(raw.limit) ?? 24);
   return {
     q: typeof raw.q === 'string' ? raw.q.trim().slice(0, 80) : undefined,
+    ids: list(raw.ids).filter((id) => /^[a-f0-9]{24}$/.test(id)).slice(0, 200),
     category: list(raw.category),
     families: known(list(raw.families), FAMILIES),
     notes: known(list(raw.notes), NOTES),
@@ -198,6 +201,7 @@ const passesGroup = (doc: DiscoveryDoc, group: (typeof GROUPS)[number], selected
 };
 
 const passesBasics = (doc: DiscoveryDoc, query: DiscoveryQuery): boolean => {
+  if (query.ids?.length && !query.ids.includes(doc.id)) return false;
   if (query.inStock && !doc.inStock) return false;
   if (query.onSale && !doc.onSale) return false;
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {
