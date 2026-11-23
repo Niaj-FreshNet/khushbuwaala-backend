@@ -30,7 +30,7 @@ import slugify from 'slugify';
 import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
 import type { DiscountRow, ProductRow } from '../../types/records';
 import type { Prisma } from '@prisma/client';
-import { toDiscoveryDoc, toProfile } from '../Discovery/normalize';
+import { cleanBrand, toDiscoveryDoc, toProfile } from '../Discovery/normalize';
 
 // Create Product
 export const createProduct = async (payload: IProduct, isSuperAdmin = false): Promise<IProductDetailResponse> => {
@@ -1534,11 +1534,19 @@ const stripHtml = (value: string): string => {
     .trim();
 };
 
+/** Brand shown to Google for a product (see the note where it is used). */
+export const feedBrand = (brand: string | null | undefined, categoryName: string | null | undefined): string => {
+  const own = "Khushbuwaala";
+  if (/inspired/i.test(categoryName ?? "")) return own;
+  return cleanBrand(brand) ?? own;
+};
+
 const generateGoogleShoppingFeed = async (): Promise<string> => {
   const products = await prisma.product.findMany({
     where: { published: true },
     include: {
-      variants: true,
+      // hidden sizes are not for sale, so they do not belong in the feed
+      variants: { where: { published: true } },
       category: {
         select: { categoryName: true },
       },
@@ -1628,7 +1636,9 @@ const generateGoogleShoppingFeed = async (): Promise<string> => {
 
   for (const product of products) {
     const parentId = product.id;
-    const brand = product.brand || "Khushbuwaala";
+    // An "inspired by" oil is made by us, not by the house that inspired it: listing it under that
+    // house's name would misrepresent the product to Google.
+    const brand = feedBrand(product.brand, product.category?.categoryName);
     const category =
       product.googleProductCategory ||
       product.category?.categoryName ||
@@ -1637,7 +1647,9 @@ const generateGoogleShoppingFeed = async (): Promise<string> => {
     const description = stripHtml(product.description || "");
 
     const gender = product.gender?.toLowerCase() || "unisex";
-    const ageGroup = product.bestFor?.join(", ") || "all";
+    // Google accepts only newborn / infant / toddler / kids / adult here (it used to get the
+    // "best for" list, e.g. "Office, Party", which Merchant Center rejects)
+    const ageGroup = "adult";
 
     const productVideos = product.videos || [];
 
@@ -1658,7 +1670,7 @@ const generateGoogleShoppingFeed = async (): Promise<string> => {
           ...(product.otherImages || []),
         ].filter(Boolean).slice(0, 10);
 
-        const variantUrl = `${domain}/products/${product.slug}?variant=${variant.id}`;
+        const variantUrl = `${domain}/product/${product.slug}?variant=${variant.id}`;
 
         const availability =
           variant.stock > 0 || product.stock > 0
@@ -1737,11 +1749,17 @@ const generateGoogleShoppingFeed = async (): Promise<string> => {
         xml += `      <g:gender>${escapeXml(gender)}</g:gender>\n`;
         xml += `      <g:age_group>${escapeXml(ageGroup)}</g:age_group>\n`;
 
-        // GTIN
+        // GTIN / MPN, or an explicit "no identifier" for our own unbarcoded products
         if (variant.gtin) {
           xml += `      <g:gtin>${escapeXml(
             variant.gtin
           )}</g:gtin>\n`;
+        }
+        if (variant.mpn) {
+          xml += `      <g:mpn>${escapeXml(variant.mpn)}</g:mpn>\n`;
+        }
+        if (!variant.gtin && !variant.mpn) {
+          xml += `      <g:identifier_exists>no</g:identifier_exists>\n`;
         }
 
         // Shipping weight
@@ -1767,7 +1785,7 @@ const generateGoogleShoppingFeed = async (): Promise<string> => {
       const availability =
         product.stock > 0 ? "in_stock" : "out_of_stock";
 
-      const link = `${domain}/products/${product.slug}`;
+      const link = `${domain}/product/${product.slug}`;
 
       const price = `${product.minPrice.toFixed(2)} BDT`;
 

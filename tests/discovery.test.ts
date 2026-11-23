@@ -6,6 +6,7 @@ import { matchEntries, toDiscoveryDoc, toProfile, tokenize, cleanBrand, category
 import { editDistance, parseDiscoveryQuery, runDiscovery, similarDocs, suggestFilters, toSearchTerms } from '../src/modules/Discovery/engine';
 import { FAMILIES, NOTES } from '../src/modules/Discovery/taxonomy';
 import { cleanProductIds, dedupeEntries } from '../src/modules/Wishlist/wishlist.service';
+import { feedBrand } from '../src/modules/Product/product.service';
 import catalog from './fixtures/catalog.json';
 
 const rows = catalog as unknown as ProductRow[];
@@ -154,4 +155,13 @@ test('wishlist input: only real product ids, no repeats', () => {
     dedupeEntries([{ productId: 'a', createdAt: d('2026-01-01') }, { productId: 'b', createdAt: d('2026-03-01') }, { productId: 'a', createdAt: d('2026-02-01') }]).map((e) => e.productId),
     ['b', 'a']
   );
+});
+
+test('shopping feed brand: our own name for inspired oils, the real house for brand perfumes', () => {
+  assert.equal(feedBrand('Tom Ford', 'INSPIRED PERFUME OIL'), 'Khushbuwaala');
+  assert.equal(feedBrand('Creed', 'Inspired Perfume'), 'Khushbuwaala');
+  assert.equal(feedBrand(' Armaf ', 'BRAND PERFUMES'), 'Armaf');
+  assert.equal(feedBrand('KhushbuWaala', 'ORIENTAL ATTAR'), 'Khushbuwaala');
+  assert.equal(feedBrand(null, null), 'Khushbuwaala');
+  assert.equal(feedBrand('N/A', 'ARTIFICIAL OUD'), 'Khushbuwaala');
 });
