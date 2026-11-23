@@ -796,3 +796,20 @@ model LedgerAccessRequest {
   @@index([userId, status])
   @@map("ledger_access_requests")
 }
+
+// ============================================================
+// 🛍️ STOREFRONT CONTENT (edited from the admin panel)
+// ============================================================
+
+// One document (key "storefront") with the announcement bar, hero banners and home page rows.
+// `data` is checked by modules/Storefront/storefront.settings.ts on every save and every read.
+model StorefrontSetting {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String
+  data        Json
+  updatedById String?  @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("storefront_settings")
+}
