@@ -38,3 +38,10 @@ True cost = average liquid cost x size + packaging lines.
 ## Checks
 `npx tsc --noEmit`, `npm run lint` (0 problems; fails on any warning), `npm test` (node:test via ts-node, no database). `dist/` is not in git: the server builds it on deploy.
 Admin app lives in `D:\Projects\khushbuwaala\khushbuwaala-admin`. Tracking docs: `D:\Projects\khushbuwaala\KHUSHBUWAALA_*.md`.
+
+## Storefront-facing modules (2026-11-23)
+- `modules/Discovery`: shop search/filters from an in-memory list (60 s, refreshed after product writes); taxonomy in `taxonomy.ts`. Public: `/api/discover`, `/suggest`, `/similar/:slug`, `/sitemap`.
+- `modules/Wishlist`: signed-in user only; unique (userId, productId).
+- `modules/Storefront`: owner-editable content (`storefront_settings`); `storefront.settings.ts` validates every save.
+- Cart: a guest row is found only by its id (never by "no user"); cart rows are changed only by their owner or staff.
+- Meta purchase event: `utils/metaPurchase.ts` (pure, tested); refusals are logged.
