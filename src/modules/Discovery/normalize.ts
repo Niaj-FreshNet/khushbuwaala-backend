@@ -232,3 +232,48 @@ export const toProfile = (doc: DiscoveryDoc): ProductProfile => ({
   times: pick(doc.times, TIMES).map(({ id, label }) => ({ id, label })),
   seasons: pick(doc.seasons, SEASONS).map(({ id, label }) => ({ id, label })),
 });
+
+// ---------------------------------------------------------------------------------------------
+// Data check (admin): what is missing or not understood on a product
+// ---------------------------------------------------------------------------------------------
+
+export type ProductDataCheck = {
+  id: string;
+  name: string;
+  slug: string;
+  /** Fields the shop filters rely on that are empty */
+  missing: string[];
+  /** Typed values the shop does not recognise, so they are ignored by filters (usually a spelling) */
+  unrecognised: { field: 'Accords' | 'Best for'; value: string }[];
+};
+
+const matchesAny = (value: unknown, lists: CompiledEntry[][]): boolean =>
+  lists.some((compiled) => matchEntries([value], compiled).length > 0);
+
+/** What staff could add or correct on one product so customers can find it. Never changes data. */
+export const checkProductData = (product: ProductRow): ProductDataCheck => {
+  const accords = product.accords ?? [];
+  const bestFor = product.bestFor ?? [];
+  const notes = [...(product.perfumeNotes?.top ?? []), ...(product.perfumeNotes?.middle ?? []), ...(product.perfumeNotes?.base ?? [])];
+  const real = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    return s !== '' && s.toUpperCase() !== 'N/A';
+  };
+
+  const missing: string[] = [];
+  if (!accords.some(real)) missing.push('Accords');
+  if (!notes.some(real)) missing.push('Fragrance notes');
+  if (!codeToId(product.longevity, LONGEVITY)) missing.push('Longevity');
+  if (!codeToId(product.projection, PROJECTION)) missing.push('Projection');
+  if (!String(product.gender ?? '').trim()) missing.push('Gender');
+  if (!bestFor.some(real)) missing.push('Best for');
+
+  const unrecognised: ProductDataCheck['unrecognised'] = [];
+  for (const value of accords) {
+    if (real(value) && !matchesAny(value, [COMPILED.families, COMPILED.notes])) unrecognised.push({ field: 'Accords', value: String(value).trim() });
+  }
+  for (const value of bestFor) {
+    if (real(value) && !matchesAny(value, [COMPILED.occasions, COMPILED.times, COMPILED.seasons])) unrecognised.push({ field: 'Best for', value: String(value).trim() });
+  }
+  return { id: product.id, name: product.name, slug: product.slug, missing, unrecognised };
+};

@@ -42,4 +42,9 @@ const sitemap = catchAsync(async (_req, res) => {
   sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Sitemap', data: result });
 });
 
-export const DiscoveryController = { discover, suggest, similar, sitemap };
+const dataCheck = catchAsync(async (_req, res) => {
+  const result = await DiscoveryServices.dataCheck();
+  sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Fragrance data check', data: result });
+});
+
+export const DiscoveryController = { discover, suggest, similar, sitemap, dataCheck };

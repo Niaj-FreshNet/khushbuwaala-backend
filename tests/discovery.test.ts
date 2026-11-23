@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ProductRow } from '../src/types/records';
-import { matchEntries, toDiscoveryDoc, toProfile, tokenize, cleanBrand, categorySlug } from '../src/modules/Discovery/normalize';
+import { checkProductData, matchEntries, toDiscoveryDoc, toProfile, tokenize, cleanBrand, categorySlug } from '../src/modules/Discovery/normalize';
 import { editDistance, parseDiscoveryQuery, runDiscovery, similarDocs, suggestFilters, toSearchTerms } from '../src/modules/Discovery/engine';
 import { FAMILIES, NOTES } from '../src/modules/Discovery/taxonomy';
 import { cleanProductIds, dedupeEntries } from '../src/modules/Wishlist/wishlist.service';
@@ -164,4 +164,23 @@ test('shopping feed brand: our own name for inspired oils, the real house for br
   assert.equal(feedBrand('KhushbuWaala', 'ORIENTAL ATTAR'), 'Khushbuwaala');
   assert.equal(feedBrand(null, null), 'Khushbuwaala');
   assert.equal(feedBrand('N/A', 'ARTIFICIAL OUD'), 'Khushbuwaala');
+});
+
+test('data check: names what is missing and which typed values the filters ignore', () => {
+  const base = rows[0];
+  const row = {
+    ...base,
+    accords: ['Woody', 'Elegant', 'Oud (Agarwood)', ' '],
+    bestFor: ['Office', 'Layering Potential', 'N/A'],
+    perfumeNotes: { top: [], middle: ['N/A'], base: [] },
+    longevity: null,
+    projection: 'STRONG',
+    gender: '',
+    metaDescription: null,
+  } as unknown as ProductRow;
+  const check = checkProductData(row);
+  assert.deepEqual(check.missing, ['Fragrance notes', 'Longevity', 'Gender']);
+  assert.deepEqual(check.unrecognised, [{ field: 'Accords', value: 'Elegant' }, { field: 'Best for', value: 'Layering Potential' }]);
+  // the check only reads
+  assert.deepEqual(row.accords, ['Woody', 'Elegant', 'Oud (Agarwood)', ' ']);
 });

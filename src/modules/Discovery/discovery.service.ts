@@ -7,7 +7,7 @@ import { prisma } from '../../../prisma/client';
 import type { ProductRow } from '../../types/records';
 import { LEAN_PRODUCT_INCLUDE } from '../Product/product.constant';
 import { formatProductListingResponse } from '../Product/product.service';
-import { DiscoveryDoc, toDiscoveryDoc } from './normalize';
+import { checkProductData, DiscoveryDoc, toDiscoveryDoc } from './normalize';
 import { DiscoveryQuery, runDiscovery, similarDocs, suggestFilters } from './engine';
 import { FAMILIES, LONGEVITY, PROJECTION } from './taxonomy';
 
@@ -125,4 +125,33 @@ const sitemap = async () => {
   };
 };
 
-export const DiscoveryServices = { discover, suggest, similar, sitemap, invalidate };
+/**
+ * Admin data check: for every product in the shop, what is missing and which typed values the
+ * filters do not understand, plus how often each unknown value occurs (one spelling fix in the
+ * taxonomy or on the products can clear many rows).
+ */
+const dataCheck = async () => {
+  const idx = await getIndex();
+  const rows = Array.from(idx.rows.values());
+  const products = rows.map(checkProductData).filter((p) => p.missing.length > 0 || p.unrecognised.length > 0);
+  const counts = new Map<string, { field: string; value: string; count: number }>();
+  for (const p of products) {
+    for (const u of p.unrecognised) {
+      const key = `${u.field}|${u.value.toLowerCase()}`;
+      const entry = counts.get(key) ?? { field: u.field, value: u.value, count: 0 };
+      entry.count += 1;
+      counts.set(key, entry);
+    }
+  }
+  const missingCounts: Record<string, number> = {};
+  for (const p of products) for (const m of p.missing) missingCounts[m] = (missingCounts[m] ?? 0) + 1;
+  return {
+    totalProducts: rows.length,
+    productsToReview: products.length,
+    missingCounts,
+    unrecognisedValues: Array.from(counts.values()).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)),
+    products: products.sort((a, b) => b.missing.length + b.unrecognised.length - (a.missing.length + a.unrecognised.length) || a.name.localeCompare(b.name)),
+  };
+};
+
+export const DiscoveryServices = { discover, suggest, similar, sitemap, dataCheck, invalidate };
