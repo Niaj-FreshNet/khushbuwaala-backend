@@ -29,6 +29,12 @@ True cost = average liquid cost x size + packaging lines.
 - Money is whole taka (Float fields; writes round). `Order.discountAmount` is Int.
 - Dates: day filters are Bangladesh days (`utils/dhakaTime.ts`); analytics use Asia/Dhaka.
 
+## Code rules
+- No `any` (lint error). Shared helpers: `types/index.d.ts` (`AuthUser`, `req.user`, `req.rawBody`), `types/records.ts` (row types, `asAddress()` for order address JSON), `utils/requestUser.ts` (`requireUser(req)` → user or 401), `utils/errorInfo.ts` (`errorMessage`, `httpErrorOf`), `utils/enumValue.ts` (`isEnumValue` for query strings), `utils/returnCharge.ts` (`parseOrderStatus`, `parseReturnCharge`).
+- Query values are unchecked text: validate enums with `isEnumValue` before passing them to Prisma (an invalid value is a 500).
+- Customer text going into email HTML goes through `esc()` in `emails.ts`. Contact form → `CONTACT_EMAIL` or `ADMIN_EMAIL`.
+- DGePay: the callback's `transaction_id` is the gateway id (`Payment.gatewayPaymentId`), not our `Payment.id`.
+
 ## Checks
-`npx tsc --noEmit`, `npm run lint` (0 errors expected), `npm test` (node:test via ts-node, no database). `dist/` is not in git: the server builds it on deploy.
+`npx tsc --noEmit`, `npm run lint` (0 problems; fails on any warning), `npm test` (node:test via ts-node, no database). `dist/` is not in git: the server builds it on deploy.
 Admin app lives in `D:\Projects\khushbuwaala\khushbuwaala-admin`. Tracking docs: `D:\Projects\khushbuwaala\KHUSHBUWAALA_*.md`.
