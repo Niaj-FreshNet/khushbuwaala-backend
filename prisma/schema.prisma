@@ -551,6 +551,7 @@ model Wishlist {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, productId])
   @@map("wishlist_items")
 }
 

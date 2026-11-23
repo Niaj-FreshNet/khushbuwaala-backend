@@ -1,5 +1,6 @@
 import { CostCategory } from "@prisma/client";
 import type { DiscountRow, VariantRow } from '../../types/records';
+import type { ProductProfile } from '../Discovery/normalize';
 
 export interface IProductVariant {
   id?: string; // existing variant id (edit); omitted for new variants
@@ -278,6 +279,8 @@ export interface IProductDetailResponse extends IProductCore {
   fragrances: { id: string; name: string }[];
 
   supplier: string | null;
+  /** Cleaned-up fragrance facts (families, notes, strength, occasions) for the product page */
+  profile?: ProductProfile;
 
   discounts: IDiscount[];
   variants: IProductVariantResponse[];

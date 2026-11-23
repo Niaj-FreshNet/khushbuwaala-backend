@@ -30,6 +30,7 @@ import slugify from 'slugify';
 import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
 import type { DiscountRow, ProductRow } from '../../types/records';
 import type { Prisma } from '@prisma/client';
+import { toDiscoveryDoc, toProfile } from '../Discovery/normalize';
 
 // Create Product
 export const createProduct = async (payload: IProduct, isSuperAdmin = false): Promise<IProductDetailResponse> => {
@@ -291,6 +292,7 @@ const getProduct = async (
   });
 
   const formattedProduct = formatProductAdminDetailResponse(product, isSuperAdmin);
+  if (!isStaff) formattedProduct.supplier = null;
 
   return {
     ...formattedProduct,
@@ -1031,7 +1033,7 @@ const VARIANT_NUMBER_FIELDS = ['price', 'compareAtPrice', 'costPrice', 'stock', 
 const VARIANT_TEXT_FIELDS = ['barcode', 'gtin', 'mpn'] as const;
 const isOneOf = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
 
-const formatProductListingResponse = (product: ProductRow): IProductListingResponse => {
+export const formatProductListingResponse = (product: ProductRow): IProductListingResponse => {
   const variants = (product.variants || []).filter((v) => v.published !== false);
   const prices = variants.map((v) => v.price);
   const { averageRating, reviewCount } = computeRating(product.Review || []);
@@ -1167,7 +1169,9 @@ const formatProductDetailResponse = (product: ProductRow): IProductDetailRespons
     materials: materials.map((m) => ({ id: m.id, name: m.materialName })),
     fragrances: fragrances.map((f) => ({ id: f.id, name: f.fragranceName })),
 
-    supplier: product.supplier,
+    // who we buy from is internal: never in the public response
+    supplier: null,
+    profile: toProfile(toDiscoveryDoc(product)),
 
     discounts: product.discounts || [],
     // costPrice is never exposed in this (public) response

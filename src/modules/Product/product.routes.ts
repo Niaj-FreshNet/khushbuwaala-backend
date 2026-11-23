@@ -5,8 +5,19 @@ import validateRequest from '../../middlewares/validateRequest';
 import { ProductValidation } from '../../validations/product.validation';
 import { parseJsonFields } from '../../middlewares/parseJson';
 import { upload } from '../../utils/sendImageToCloudinary';
+import { DiscoveryServices } from '../Discovery/discovery.service';
 
 const router = Router();
+
+// After any successful product change, the shop's in-memory list is rebuilt on the next request.
+router.use((req, res, next) => {
+  if (req.method !== 'GET') {
+    res.on('finish', () => {
+      if (res.statusCode < 400) DiscoveryServices.invalidate();
+    });
+  }
+  next();
+});
 
 // Product CRUD Operations
 router.post(

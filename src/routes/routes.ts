@@ -19,6 +19,8 @@ import { CheckoutRoutes } from '../modules/Checkout/checkout.routes';
 import { SteadfastRoutes } from '../modules/Steadfast/steadfast.routes';
 import { FinanceRoutes } from '../modules/Finance/finance.routes';
 import { InvestorRoutes } from '../modules/Investor/investor.routes';
+import { DiscoveryRoutes } from '../modules/Discovery/discovery.routes';
+import { WishlistRoutes } from '../modules/Wishlist/wishlist.routes';
 
 const router = express.Router();
 
@@ -103,7 +105,15 @@ const moduleRoutes = [
   {
     path: '/investor',
     route: InvestorRoutes,
-  }
+  },
+  {
+    path: '/discover',
+    route: DiscoveryRoutes,
+  },
+  {
+    path: '/wishlist',
+    route: WishlistRoutes,
+  },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));
 
