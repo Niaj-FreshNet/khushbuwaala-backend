@@ -2,7 +2,6 @@ import { prisma } from '../../../prisma/client';
 import AppError from '../../errors/AppError';
 import { dhakaDayEnd, dhakaDayStart } from '../../utils/dhakaTime';
 import httpStatus from 'http-status';
-import crypto from "crypto";
 import { PrismaQueryBuilder } from '../../builder/QueryBuilder';
 import { OrderSource, OrderStatus, Prisma, SaleType, type OrderItemCost } from '@prisma/client';
 import { syncStockForStatusChange, returnStockBeforeDelete, rebalanceStockForItemEdit, cancelAbandonedCheckout } from '../../utils/orderStock';
@@ -19,6 +18,7 @@ import { isEnumValue } from '../../utils/enumValue';
 import type { AuthUser } from '../../types';
 import { asAddress, type AddressJson, type OrderRow } from '../../types/records';
 import { errorMessage } from '../../utils/errorInfo';
+import { buildMetaPurchasePayload, type CapiOrder } from '../../utils/metaPurchase';
 
 const orderListInclude = {
   customer: {
@@ -1289,71 +1289,35 @@ const deleteOrder = async (orderId: string) => {
 };
 
 // Helper function to send CAPI Purchase asynchronously (Zero impact on response speed)
-/** What the Meta Purchase event needs from an order */
-type CapiOrder = {
-  id: string;
-  amount?: number | null;
-  shippingCost?: number | null;
-  shipping?: unknown;
-  orderItems?: { productId?: string | null; product?: { id?: string } | null; quantity?: number; price?: number }[];
-};
-
 export async function sendMetaCapiPurchase(order: CapiOrder, customerEmail?: string, customerPhone?: string) {
   try {
     const pixelId = process.env.META_PIXEL_ID;
     const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
     if (!pixelId || !accessToken) return;
 
-    const eventId = `kw_${order.id}`; // ✅ Must match frontend thank-you page event_id exactly
-    const value = Number(order.amount || 0);
-    const shipping = Number(order.shippingCost || 0);
+    const payload = buildMetaPurchasePayload(order, {
+      email: customerEmail,
+      phone: customerPhone,
+      nowSeconds: Math.floor(Date.now() / 1000),
+      siteUrl: process.env.CLIENT_URL || 'https://khushbuwaala.com',
+      testEventCode: process.env.META_TEST_EVENT_CODE || undefined,
+    });
 
-    const items = (order.orderItems || []).map((it) => ({
-      id: String(it.productId || it.product?.id || ""),
-      quantity: Math.max(1, Number(it.quantity || 1)),
-      item_price: Number(it.price || 0),
-    }));
-
-    const shippingInfo = asAddress(order.shipping);
-
-    const payload = {
-      // Use environment variable for test code or omit if live
-      ...(process.env.META_TEST_EVENT_CODE ? { test_event_code: process.env.META_TEST_EVENT_CODE } : {}),
-      data: [
-        {
-          event_name: "Purchase",
-          event_time: Math.floor(Date.now() / 1000),
-          event_id: eventId,
-          event_source_url: `${process.env.CLIENT_URL || "https://khushbuwaala.com"}/thank-you`,
-          action_source: "website",
-          user_data: {
-            em: customerEmail ? [crypto.createHash("sha256").update(customerEmail.trim().toLowerCase()).digest("hex")] : undefined,
-            ph: customerPhone ? [crypto.createHash("sha256").update(customerPhone.replace(/\D/g, "")).digest("hex")] : undefined,
-            fn: shippingInfo.name ? [crypto.createHash("sha256").update(shippingInfo.name.trim().toLowerCase()).digest("hex")] : undefined,
-            ct: shippingInfo.district ? [crypto.createHash("sha256").update(shippingInfo.district.trim().toLowerCase()).digest("hex")] : undefined,
-            country: ["bd"],
-            fbp: shippingInfo.fbp || undefined, // ✅ Passed from client cookie
-            fbc: shippingInfo.fbc || undefined, // ✅ Passed from client cookie
-          },
-          custom_data: {
-            currency: "BDT",
-            value: value,
-            shipping: shipping,
-            order_id: order.id,
-            contents: items,
-            content_type: "product",
-          },
-        },
-      ],
-    };
-
-    await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    // Meta answers 4xx when the token expired or the event is malformed. This used to be silent,
+    // so a broken token would lose every server-side purchase without anyone knowing.
+    if (!res.ok) {
+      const body: { error?: { message?: string; code?: number } } = await res.json().catch(() => ({}));
+      console.error(`❌ Meta CAPI refused Purchase ${payload.data[0].event_id}: HTTP ${res.status} ${body.error?.code ?? ''} ${body.error?.message ?? ''}`);
+    } else {
+      console.log(`[meta capi] Purchase ${payload.data[0].event_id} accepted`);
+    }
   } catch (e) {
-    console.error("❌ CAPI Build Error:", e);
+    console.error('❌ Meta CAPI Purchase failed:', errorMessage(e));
   }
 }
 
