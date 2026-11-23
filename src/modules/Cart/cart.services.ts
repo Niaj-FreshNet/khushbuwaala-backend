@@ -4,6 +4,24 @@ import { prisma } from '../../../prisma/client';
 import { CartItemStatus, Prisma } from '@prisma/client';
 import { isEnumValue } from '../../utils/enumValue';
 
+const OBJECT_ID = /^[a-f0-9]{24}$/i;
+
+type CartActor = { id: string; role: string } | null;
+
+/**
+ * The open cart row with this id, if the caller may change it: a signed-in customer's row only by
+ * that customer (or staff); a guest row by whoever holds its id. Rows that became order lines
+ * (ORDERED / SOLD) are sales history and can never be changed through the cart.
+ */
+const loadOwnOpenCartItem = async (id: string, user?: CartActor) => {
+  if (!OBJECT_ID.test(String(id))) throw new AppError(httpStatus.NOT_FOUND, 'Cart item not found');
+  const item = await prisma.cartItem.findUnique({ where: { id } });
+  if (!item || item.status !== 'IN_CART') throw new AppError(httpStatus.NOT_FOUND, 'Cart item not found');
+  const staff = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  if (item.userId && item.userId !== user?.id && !staff) throw new AppError(httpStatus.NOT_FOUND, 'Cart item not found');
+  return item;
+};
+
 export const CartItemServices = {
   // ✅ Add a product/variant to cart
   async addToCart(payload: {
@@ -14,7 +32,15 @@ export const CartItemServices = {
     unit?: string;
     quantity: number;
     price?: number;
+    /** A guest's own cart row from an earlier add (guests have no account to find it by) */
+    cartItemId?: string;
   }) {
+    const quantity = Math.floor(Number(payload.quantity));
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > 999) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Quantity must be between 1 and 999');
+    }
+    payload = { ...payload, quantity };
+
     let price: number;
 
     if (payload.variantId) {
@@ -29,15 +55,31 @@ export const CartItemServices = {
       throw new AppError(httpStatus.BAD_REQUEST, 'Please select a valid variant or provide a price');
     }
 
-    // Find existing active cart item for this user/guest
-    const existingItem = await prisma.cartItem.findFirst({
-      where: {
-        productId: payload.productId,
-        variantId: payload.variantId ?? null,
-        userId: payload.userId ?? null,
-        status: 'IN_CART',
-      },
-    });
+    // Signed-in customer: one row per product + size in their own cart.
+    // Guest: only the row this visitor created earlier (sent back as cartItemId). Guests must never
+    // be matched by "no user": that made every visitor share one row, so a first add could come
+    // back with another visitor's quantity.
+    const guestRowId = !payload.userId && OBJECT_ID.test(String(payload.cartItemId ?? '')) ? String(payload.cartItemId) : null;
+    const existingItem = payload.userId
+      ? await prisma.cartItem.findFirst({
+          where: {
+            productId: payload.productId,
+            variantId: payload.variantId ?? null,
+            userId: payload.userId,
+            status: 'IN_CART',
+          },
+        })
+      : guestRowId
+        ? await prisma.cartItem.findFirst({
+            where: {
+              id: guestRowId,
+              productId: payload.productId,
+              variantId: payload.variantId ?? null,
+              OR: [{ userId: null }, { userId: { isSet: false } }],
+              status: 'IN_CART',
+            },
+          })
+        : null;
 
     if (existingItem) {
       return prisma.cartItem.update({
@@ -73,9 +115,12 @@ export const CartItemServices = {
 
   // ✅ Get user (or guest) cart
   async getUserCart(userId?: string | null) {
+    // A guest's cart is on their device; there is no "guest cart" to list (it used to return
+    // every visitor's open cart rows).
+    if (!userId) return [];
     return prisma.cartItem.findMany({
       where: {
-        userId: userId ?? null,
+        userId,
         status: 'IN_CART',
       },
       include: {
@@ -89,9 +134,12 @@ export const CartItemServices = {
   },
 
   // ✅ Update quantity of cart item
-  async updateCartItem(id: string, quantity: number) {
-    const item = await prisma.cartItem.findUnique({ where: { id } });
-    if (!item) throw new AppError(httpStatus.NOT_FOUND, 'Cart item not found');
+  async updateCartItem(id: string, quantityInput: number, user?: CartActor) {
+    const quantity = Math.floor(Number(quantityInput));
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > 999) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Quantity must be between 1 and 999');
+    }
+    await loadOwnOpenCartItem(id, user);
 
     return prisma.cartItem.update({
       where: { id },
@@ -104,9 +152,8 @@ export const CartItemServices = {
   },
 
   // ✅ Remove a specific cart item
-  async removeCartItem(id: string) {
-    const item = await prisma.cartItem.findUnique({ where: { id } });
-    if (!item) throw new AppError(httpStatus.NOT_FOUND, 'Cart item not found');
+  async removeCartItem(id: string, user?: CartActor) {
+    await loadOwnOpenCartItem(id, user);
 
     return prisma.cartItem.delete({ where: { id } });
   },

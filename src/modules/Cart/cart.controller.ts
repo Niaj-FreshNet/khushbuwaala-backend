@@ -8,7 +8,7 @@ export const CartItemController = {
   // ✅ Add to Cart (visitor or user)
   addToCart: catchAsync(async (req: Request, res: Response) => {
     const userId = req.user?.id || null; // null for visitors
-    const { productId, variantId, size, unit, quantity, price } = req.body;
+    const { productId, variantId, size, unit, quantity, price, cartItemId } = req.body;
 
     const item = await CartItemServices.addToCart({
       userId,
@@ -18,6 +18,7 @@ export const CartItemController = {
       unit,
       quantity,
       price,
+      cartItemId,
     });
 
     sendResponse(res, {
@@ -46,7 +47,7 @@ export const CartItemController = {
     const { id } = req.params;
     const { quantity } = req.body;
 
-    const item = await CartItemServices.updateCartItem(id, quantity);
+    const item = await CartItemServices.updateCartItem(id, quantity, req.user);
 
     sendResponse(res, {
       statusCode: httpStatus.OK,
@@ -59,7 +60,7 @@ export const CartItemController = {
   // ✅ Remove Cart Item
   removeCartItem: catchAsync(async (req: Request, res: Response) => {
     const { id } = req.params;
-    await CartItemServices.removeCartItem(id);
+    await CartItemServices.removeCartItem(id, req.user);
 
     sendResponse(res, {
       statusCode: httpStatus.OK,
