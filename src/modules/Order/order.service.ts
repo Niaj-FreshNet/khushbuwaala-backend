@@ -683,11 +683,20 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: A
             // If it's an existing real DB item ID, update it
             if (item.id && !item.id.toString().startsWith("temp_")) {
               // Ensure the item actually belongs to this order before updating
-              const belongsToOrder = existingItems.some((ei) => ei.id === item.id);
-              if (belongsToOrder) {
+              const before = existingItems.find((ei) => ei.id === item.id);
+              if (before) {
+                // The line also stores its price before discount. Left alone, an edit made the
+                // invoice print the old size's price or a saving that never existed (a 12 ml
+                // line at 650 showed "was 1,280, save 630" from the 25 ml it used to be).
+                const sameSize =
+                  Number(before.size || 0) === itemPayload.size &&
+                  String(before.unit || 'ML').toUpperCase() === String(itemPayload.unit).toUpperCase();
+                const listPrice = sameSize
+                  ? Math.max(Number(before.originalPrice ?? 0), itemPayload.price)
+                  : itemPayload.price; // another size: the old list price says nothing about it
                 return tx.cartItem.update({
                   where: { id: item.id },
-                  data: itemPayload,
+                  data: { ...itemPayload, originalPrice: listPrice, discount: Math.max(0, listPrice - itemPayload.price) },
                 });
               }
             }
@@ -697,6 +706,8 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, user: A
             return tx.cartItem.create({
               data: {
                 ...itemPayload,
+                originalPrice: itemPayload.price,
+                discount: 0,
                 productId: itemPayload.productId,
                 orderId: existing.id,
               },
