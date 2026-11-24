@@ -1198,7 +1198,8 @@ const trackOrders = async (queryParam: string) => {
               primaryImage: true,
             },
           },
-          variant: true,
+          // Never the whole variant: it carries the cost price, and this route is public.
+          variant: { select: { id: true, size: true, unit: true } },
         },
       },
     },
@@ -1234,8 +1235,20 @@ const trackOrders = async (queryParam: string) => {
       order.address ||
       "";
 
+    // This route needs no sign-in, so staff-only fields stay behind: the payment token (it
+    // lets its holder start a payment for the order) and courier settlement details.
+    const {
+      payToken: _payToken, salesmanId: _salesmanId, courierPayoutId: _courierPayoutId,
+      courierPaidAt: _courierPaidAt, courierCodCollected: _courierCodCollected,
+      courierReview: _courierReview, courierSyncedAt: _courierSyncedAt, stockReturned: _stockReturned,
+      returnChargeCollected: _returnChargeCollected, deliveryCharge: _deliveryCharge,
+      ...publicOrder
+    } = order;
+    void [_payToken, _salesmanId, _courierPayoutId, _courierPaidAt, _courierCodCollected, _courierReview,
+      _courierSyncedAt, _stockReturned, _returnChargeCollected, _deliveryCharge];
+
     return {
-      ...order,
+      ...publicOrder,
       name: resolvedName,
       phone: resolvedPhone,
       email: resolvedEmail,
