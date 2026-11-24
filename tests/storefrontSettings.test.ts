@@ -42,7 +42,7 @@ test('bad entries are reported by name, not silently changed', () => {
   });
   assert.deepEqual(settings.notices, ['Eid offer: 10% off', 'b bold /b', '5']);
   assert.equal(settings.hero.length, 1);
-  assert.deepEqual(settings.hero[0], { image: '/ok.webp', alt: 'Khushbuwaala', buttonText: 'Shop Now', link: '/shop' });
+  assert.deepEqual(settings.hero[0], { image: '/ok.webp', alt: 'Khushbuwaala', buttonText: '', link: '/shop' });
   assert.deepEqual(settings.homeRows, [{ title: 'Gifts', query: 'category=gifts-and-packages', href: '/gifts-and-packages', linkLabel: 'See all', enabled: false }]);
   assert.equal(problems.length, 4);
   assert.ok(problems.some((p) => p.startsWith('Banner 1')) && problems.some((p) => p.includes('"Oud"')));
@@ -65,4 +65,19 @@ test('nothing stored, or junk stored: the shop still gets a complete set', () =>
   assert.deepEqual(cleared.notices, []);
   assert.deepEqual(cleared.hero, DEFAULT_SETTINGS.hero);
   assert.deepEqual(cleared.homeRows, DEFAULT_SETTINGS.homeRows);
+});
+
+test('banner picture sizes are kept as pairs; a banner may have no button', () => {
+  const { settings, problems } = cleanSettings({
+    hero: [
+      { image: '/a.webp', mobileImage: '/m.webp', imageWidth: 1760, imageHeight: '800', mobileWidth: 1080, mobileHeight: 1080, link: '/shop' },
+      { image: '/b.webp', imageWidth: 1760, mobileWidth: 900, mobileHeight: 900, link: '/shop', buttonText: '  ' },
+      { image: '/c.webp', imageWidth: -5, imageHeight: 1e9, link: '/shop', buttonText: 'Eid offers' },
+    ],
+  });
+  assert.equal(problems.length, 0);
+  assert.deepEqual(settings.hero[0], { image: '/a.webp', mobileImage: '/m.webp', imageWidth: 1760, imageHeight: 800, mobileWidth: 1080, mobileHeight: 1080, alt: 'Khushbuwaala', buttonText: 'Shop Now', link: '/shop' });
+  // half a size, and a phone size without a phone picture, are dropped
+  assert.deepEqual(settings.hero[1], { image: '/b.webp', alt: 'Khushbuwaala', buttonText: '', link: '/shop' });
+  assert.deepEqual(settings.hero[2], { image: '/c.webp', alt: 'Khushbuwaala', buttonText: 'Eid offers', link: '/shop' });
 });

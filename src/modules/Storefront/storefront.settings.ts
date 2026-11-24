@@ -5,7 +5,14 @@
 export type HeroSlide = {
   image: string;
   mobileImage?: string;
+  /** Pixel size of the pictures as uploaded. The storefront shapes the banner box from these, so a
+   *  picture is shown whole instead of being cut to a fixed strip. Absent on banners saved earlier. */
+  imageWidth?: number;
+  imageHeight?: number;
+  mobileWidth?: number;
+  mobileHeight?: number;
   alt: string;
+  /** Empty = no button: the whole banner is the link (for artwork that carries its own text). */
   buttonText: string;
   link: string;
 };
@@ -53,6 +60,12 @@ const text = (value: unknown, max: number): string =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
+
+/** A picture's side in pixels, or nothing when it was not sent or makes no sense. */
+const pixels = (value: unknown): number | undefined => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 50 && n <= 20000 ? n : undefined;
+};
 
 /** A link inside the shop ("/shop?notes=oud"). Anything else (other sites, javascript:) is refused. */
 export const internalLink = (value: unknown): string | null => {
@@ -122,11 +135,16 @@ export const cleanSettings = (input: unknown): CleanResult => {
     if (!link) return void problems.push(`Banner ${i + 1}: the link must be a page of the shop, starting with "/".`);
     const mobile = s.mobileImage ? imageUrl(s.mobileImage) : null;
     if (s.mobileImage && !mobile) return void problems.push(`Banner ${i + 1}: the phone picture is not a valid image.`);
+    const [w, h, mw, mh] = [pixels(s.imageWidth), pixels(s.imageHeight), pixels(s.mobileWidth), pixels(s.mobileHeight)];
     hero.push({
       image,
       ...(mobile ? { mobileImage: mobile } : {}),
+      // a size is only useful as a pair
+      ...(w && h ? { imageWidth: w, imageHeight: h } : {}),
+      ...(mobile && mw && mh ? { mobileWidth: mw, mobileHeight: mh } : {}),
       alt: text(s.alt, LIMITS.alt) || 'Khushbuwaala',
-      buttonText: text(s.buttonText, LIMITS.label) || 'Shop Now',
+      // not sent at all = the usual button; sent empty = the owner wants no button
+      buttonText: s.buttonText === undefined || s.buttonText === null ? 'Shop Now' : text(s.buttonText, LIMITS.label),
       link,
     });
   });
