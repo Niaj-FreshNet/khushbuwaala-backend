@@ -1120,7 +1120,15 @@ const getMonthlySalesOverview = async (type: DashboardType = "all", year?: numbe
     }));
 };
 
-const trackOrders = async (queryParam: string) => {
+/** Last 10 digits of a phone number, whatever the formatting (+880, spaces, dashes). */
+const phoneKey = (value: unknown): string => String(value ?? "").replace(/\D/g, "").slice(-10);
+
+/**
+ * Public order tracking. Anyone can see how far an order has got from its invoice number, but
+ * the name, phone and address are sent only when the caller also gives the phone number used
+ * on that order (owner decision 2026-11-25: invoice numbers are short and can be guessed).
+ */
+const trackOrders = async (queryParam: string, verifyPhone?: string) => {
   const param = String(queryParam || "").trim();
   if (!param) throw new AppError(httpStatus.BAD_REQUEST, "Search query is required");
 
@@ -1207,7 +1215,7 @@ const trackOrders = async (queryParam: string) => {
   });
 
   // 3️⃣ Normalize customer details so UI gets consistent fields
-  return orders.map((order) => {
+  return orders.map((order, index) => {
     const shippingJson = asAddress(order.shipping);
     const customerObj: { id?: string | null; name?: string | null; phone?: string | null; email?: string | null; address?: string | null; imageUrl?: string | null } = order.customer || {};
 
@@ -1247,8 +1255,45 @@ const trackOrders = async (queryParam: string) => {
     void [_payToken, _salesmanId, _courierPayoutId, _courierPaidAt, _courierCodCollected, _courierReview,
       _courierSyncedAt, _stockReturned, _returnChargeCollected, _deliveryCharge];
 
+    const givenPhone = phoneKey(verifyPhone);
+    const billingJson = asAddress(order.billing);
+    // Both halves are needed: the order was found by its own number (not by a phone or email),
+    // and the phone given belongs to it.
+    const foundByOwnNumber = order.invoice === param || order.id === param;
+    const phoneMatches =
+      foundByOwnNumber &&
+      givenPhone.length === 10 &&
+      [resolvedPhone, order.phone, shippingJson.phone, billingJson.phone, customerObj.phone].some(
+        (p) => phoneKey(p) === givenPhone
+      );
+
+    if (!phoneMatches) {
+      const tail = phoneKey(resolvedPhone).slice(-3);
+      return {
+        ...publicOrder,
+        // Found by a phone or email: the invoice number stays hidden too, otherwise knowing
+        // someone's phone number would be enough to unlock their address.
+        ...(foundByOwnNumber
+          ? {}
+          : { id: `order-${index + 1}`, invoice: `••••${String(order.invoice ?? "").slice(-2)}`, coupon: null }),
+        needsInvoice: !foundByOwnNumber,
+        customerId: null,
+        additionalNotes: null,
+        name: null,
+        phone: tail ? `•••••••${tail}` : null,
+        email: null,
+        address: null,
+        // the district stays: the page explains the delivery charge with it
+        shipping: shippingJson.district ? { district: shippingJson.district } : null,
+        billing: null,
+        customer: null,
+        detailsHidden: true,
+      };
+    }
+
     return {
       ...publicOrder,
+      detailsHidden: false,
       name: resolvedName,
       phone: resolvedPhone,
       email: resolvedEmail,

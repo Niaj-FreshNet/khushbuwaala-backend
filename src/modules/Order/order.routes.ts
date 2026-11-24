@@ -19,6 +19,8 @@ router.get('/get-all-orders', auth('SUPER_ADMIN', 'ADMIN'), OrderController.getA
 
 // Public order tracking (by ID, invoice, phone, or email)
 router.get('/track/:query', limits.track, OrderController.trackOrders);
+// Same lookup with the order's phone number in the body (kept out of the address and the logs)
+router.post('/track/:query', limits.track, OrderController.trackOrders);
 
 // Updated to authenticate so Super Admin gets profit data, while normal users/guests can still view via OPTIONAL/Token
 router.get('/get-order-by-id/:id', auth('SUPER_ADMIN', 'ADMIN', 'SALESMAN', 'USER', 'OPTIONAL'), OrderController.getOrderById);

@@ -224,7 +224,9 @@ export const getMonthlySalesOverview = catchAsync(async (req, res) => {
 
 const trackOrders = catchAsync(async (req, res) => {
   const { query } = req.params;
-  const result = await OrderServices.trackOrders(query);
+  const bodyPhone: unknown = (req.body as { phone?: unknown } | undefined)?.phone;
+  const phone = typeof bodyPhone === "string" ? bodyPhone : undefined;
+  const result = await OrderServices.trackOrders(query, phone);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
