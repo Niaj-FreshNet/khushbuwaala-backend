@@ -46,6 +46,37 @@ const moveStock = async (tx: Tx, orderId: string, direction: 'return' | 'take', 
   }
 };
 
+/**
+ * A cancelled or deleted order gives its coupon use back (owner decision 2026-11-25).
+ * The OrderDiscount row is the record that this order holds a use: it is removed together with
+ * the use, so the same order can never give it back twice. A RETURNED order keeps its use (the
+ * customer did receive the discounted parcel).
+ */
+export const releaseCouponUse = async (tx: Tx, orderId: string) => {
+  const links = await tx.orderDiscount.findMany({ where: { orderId }, select: { discountId: true } });
+  if (!links.length) return;
+  for (const link of links) {
+    await tx.discount.updateMany({
+      where: { id: link.discountId, usedCount: { gt: 0 } },
+      data: { usedCount: { decrement: 1 } },
+    });
+  }
+  await tx.orderDiscount.deleteMany({ where: { orderId } });
+};
+
+/** A cancelled order brought back to life holds its coupon use again. */
+const holdCouponUseAgain = async (tx: Tx, orderId: string) => {
+  const order = await tx.order.findUnique({ where: { id: orderId }, select: { coupon: true } });
+  const code = String(order?.coupon || '').trim();
+  if (!code) return;
+  const held = await tx.orderDiscount.findFirst({ where: { orderId } });
+  if (held) return;
+  const discount = await tx.discount.findFirst({ where: { code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+  if (!discount) return; // the coupon was deleted meanwhile: nothing to count
+  await tx.discount.update({ where: { id: discount.id }, data: { usedCount: { increment: 1 } } });
+  await tx.orderDiscount.create({ data: { orderId, discountId: discount.id } });
+};
+
 /** Call inside the same transaction as the status update, with the order's previous state. */
 export const syncStockForStatusChange = async (
   tx: Tx,
@@ -54,6 +85,12 @@ export const syncStockForStatusChange = async (
 ) => {
   if (!nextStatus || String(nextStatus).toUpperCase() === String(order.status).toUpperCase()) return;
   const returned = !!order.stockReturned;
+
+  // coupon use follows the same moment as the stock
+  const wasCancelled = String(order.status).toUpperCase() === 'CANCELED';
+  const willBeCancelled = String(nextStatus).toUpperCase() === 'CANCELED';
+  if (willBeCancelled) await releaseCouponUse(tx, order.id);
+  else if (wasCancelled && !isInactive(nextStatus)) await holdCouponUseAgain(tx, order.id);
 
   if (isInactive(nextStatus) && !returned) {
     await moveStock(tx, order.id, 'return', `ORDER_${String(nextStatus).toUpperCase()}`);
@@ -127,11 +164,14 @@ export const cancelAbandonedCheckout = async (tx: Tx, orderId: string) => {
   });
   if (claimed.count !== 1) return false;
   await moveStock(tx, orderId, 'return', 'ORDER_CHECKOUT_RETRY');
+  // the retry places a new order with the same coupon: free the use this one was holding
+  await releaseCouponUse(tx, orderId);
   return true;
 };
 
 /** Call inside the delete transaction, before the order's lines are removed. */
 export const returnStockBeforeDelete = async (tx: Tx, order: { id: string; stockReturned?: boolean | null }) => {
+  await releaseCouponUse(tx, order.id);
   if (order.stockReturned) return;
   await moveStock(tx, order.id, 'return', 'ORDER_DELETED');
 };
