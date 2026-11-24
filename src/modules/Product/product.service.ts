@@ -1009,6 +1009,10 @@ const computeRating = (reviews: { rating: number }[]) => {
   return { averageRating: parseFloat(averageRating.toFixed(2)), reviewCount };
 };
 
+/** Discounts that apply by themselves (no code to type). */
+const withoutCodes = <T extends { code?: string | null }>(discounts: T[] | null | undefined): T[] =>
+  (discounts || []).filter((x) => !x.code || String(x.code).trim() === "");
+
 const pickBestDiscount = (discounts: DiscountRow[] = []) => {
   if (!discounts.length) return undefined;
 
@@ -1173,13 +1177,15 @@ const formatProductDetailResponse = (product: ProductRow): IProductDetailRespons
     supplier: null,
     profile: toProfile(toDiscoveryDoc(product)),
 
-    discounts: product.discounts || [],
+    // Only automatic sales go out. A discount with a code is a secret between the shop and
+    // the customer it was given to: sending it here put the code in every page source.
+    discounts: withoutCodes(product.discounts),
     // costPrice is never exposed in this (public) response
      
     variants: variants.map(({ costPrice: _hiddenCost, ...v }) => ({
       ...v,
       images: v.images || [],
-      discounts: v.discounts || [],
+      discounts: withoutCodes(v.discounts),
     })),
 
     reviews: reviews.map((r) => ({
