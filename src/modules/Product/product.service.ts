@@ -28,6 +28,7 @@ import {
 } from './product.constant';
 import slugify from 'slugify';
 import { deleteFromCloudinaryByPublicId, getPublicIdFromCloudinaryUrl } from '../../utils/sendImageToCloudinary';
+import { resolveProductImages } from '../../utils/productImages';
 import type { DiscountRow, ProductRow } from '../../types/records';
 import type { Prisma } from '@prisma/client';
 import { cleanBrand, toDiscoveryDoc, toProfile } from '../Discovery/normalize';
@@ -373,34 +374,13 @@ export const updateProduct = async (
     existingProduct.variants.map((v) => [v.sku, v.costPrice ?? null])
   );
 
-  let primaryImage = existingProduct.primaryImage;
-  let otherImages = existingProduct.otherImages;
-
-  if (payload.imagesToKeep || payload.newImages) {
-    const imagesToKeep = payload.imagesToKeep || [];
-    const newImages = payload.newImages || [];
-
-    const currentImages = [existingProduct.primaryImage, ...existingProduct.otherImages];
-    const imagesToDelete = currentImages.filter(
-      img => img && !imagesToKeep.includes(img) && !newImages.includes(img)
-    );
-
-    const safeDeleteCloudinary = async (url: string) => {
-      const publicId = getPublicIdFromCloudinaryUrl(url);
-      if (!publicId) return;
-      await deleteFromCloudinaryByPublicId(publicId);
-    };
-
-    Promise.all(imagesToDelete.map(safeDeleteCloudinary)).catch(err =>
-      console.error('Cloudinary cleanup error:', err)
-    );
-
-    const allNewImages = [...imagesToKeep, ...newImages];
-    if (allNewImages.length > 0) {
-      primaryImage = allNewImages[0];
-      otherImages = allNewImages.slice(1);
-    }
-  }
+  // Which pictures the product has after this edit (see utils/productImages.ts). Pictures that
+  // were taken off are removed from storage only after the edit is saved (below).
+  const {
+    primaryImage,
+    otherImages,
+    removed: imagesToDelete,
+  } = resolveProductImages(existingProduct, payload);
 
   if (payload.variants?.length) {
     const existingSKUs = await prisma.productVariant.findMany({
@@ -584,6 +564,15 @@ export const updateProduct = async (
       timeout: 15000, // 15s timeout limit for the transaction
     }
   );
+
+  // The edit is saved: now clear pictures that were taken off the product from storage.
+  // A failure here never fails the edit.
+  Promise.all(
+    imagesToDelete.map(async (url) => {
+      const publicId = getPublicIdFromCloudinaryUrl(url);
+      if (publicId) await deleteFromCloudinaryByPublicId(publicId);
+    }),
+  ).catch((err) => console.error('Cloudinary cleanup error:', err));
 
   const finalProduct = await prisma.product.findUnique({
     where: { id },
