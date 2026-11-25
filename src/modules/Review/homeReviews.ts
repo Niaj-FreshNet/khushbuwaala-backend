@@ -1,7 +1,8 @@
 // Which customer reviews the home page shows. Pure functions, no database.
 //
-// By itself the section shows the shop's published 5-star reviews that say something, newest
-// first. The owner can change that from the admin's Reviews page:
+// By itself the section shows the shop's published 5-star reviews that say something, the most
+// telling first (a customer photo, then the fuller reviews, then the newest). The owner can
+// change that from the admin's Reviews page:
 //   pinned  -> shown first, in the order they were pinned
 //   hidden  -> never shown on the home page (the review stays on its product page)
 //   enabled -> the whole section on or off
@@ -51,7 +52,13 @@ export const withChoice = (settings: HomeReviewSettings, reviewId: string, choic
 export const choiceOf = (settings: HomeReviewSettings, reviewId: string): HomeChoice =>
   settings.hidden.includes(reviewId) ? 'hidden' : settings.pinned.includes(reviewId) ? 'pinned' : 'auto';
 
-type Candidate = { id: string; rating: number; comment: string; isPublished: boolean; createdAt: Date | string };
+type Candidate = { id: string; rating: number; comment: string; isPublished: boolean; createdAt: Date | string; imageUrl?: string | null };
+
+// How much a review tells a new visitor: a photo counts most, then how much was written (a very
+// long review is not better than a full one, so length stops counting after a few sentences).
+const FULL_REVIEW_LENGTH = 160;
+const weight = (r: Candidate): number =>
+  (r.imageUrl ? 1000 : 0) + Math.min(String(r.comment || '').trim().length, FULL_REVIEW_LENGTH);
 
 /** May this review appear on the home page at all? */
 export const canShowOnHome = (review: Candidate): boolean => review.isPublished === true && review.rating === 5;
@@ -71,7 +78,7 @@ export function pickHomeReviews<R extends Candidate>(
 
   const others = usable
     .filter((r) => !settings.pinned.includes(r.id) && String(r.comment || '').trim().length >= MIN_COMMENT_LENGTH)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .sort((a, b) => weight(b) - weight(a) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const picked = [...pinned, ...others].slice(0, limit);
   return picked.length >= MIN_REVIEWS_TO_SHOW ? picked : [];

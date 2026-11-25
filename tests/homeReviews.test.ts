@@ -18,10 +18,19 @@ const review = (n: number, over: Partial<{ rating: number; comment: string; isPu
   createdAt: new Date(2026, 0, over.day ?? n),
 });
 
-test('by itself: published 5-star reviews that say something, newest first', () => {
+test('by itself: published 5-star reviews that say something; equal ones newest first', () => {
   const list = [review(1), review(2), review(3), review(4, { rating: 4 }), review(5, { isPublished: false }), review(6, { comment: 'nice' })];
   const shown = pickHomeReviews(list, DEFAULT_HOME_REVIEW_SETTINGS).map((r) => r.id);
   assert.deepEqual(shown, [id(3), id(2), id(1)]);
+});
+
+test('the most telling first: a customer photo, then the fuller review', () => {
+  const list = [
+    { ...review(1), comment: 'Good perfume, thanks.' },
+    { ...review(2), comment: 'It lasts the whole working day and people at the office keep asking me what I am wearing. Delivery took two days.' },
+    { ...review(3), comment: 'Nice smell, arrived fast.', imageUrl: 'https://res.cloudinary.com/x/r.jpg' },
+  ];
+  assert.deepEqual(pickHomeReviews(list, DEFAULT_HOME_REVIEW_SETTINGS).map((r) => r.id), [id(3), id(2), id(1)]);
 });
 
 test('pinned reviews come first in pin order; a short pinned review still shows', () => {
